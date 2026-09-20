@@ -1,0 +1,32 @@
+# 機密 — public リポジトリのため絶対にコミットしない
+.env
+.env.local
+.dev.vars
+*.pem
+
+# 取得した生HTML（著作権上コミット不可。fixture は合成HTMLのみ）
+batch/cache/
+data/raw/
+**/fixtures/**/*.html
+*.html.gz
+
+# データ・モデル
+*.db
+*.sqlite
+models/*.pkl
+models/*.txt
+
+# 依存・ビルド
+node_modules/
+.next/
+out/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.wrangler/
+
+# OS・エディタ
+.DS_Store
+.vscode/
+.idea/

@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.4** |
+| 版数 | **1.5** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / **v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -572,9 +572,10 @@ CREATE INDEX idx_predres_calib  ON prediction_results(model_version, prob_bucket
 ```sql
 -- 日次で洗い替える集計層
 CREATE TABLE accuracy_summary (
-  scope         TEXT NOT NULL,   -- 'OVERALL'|'SEASON'|'MODEL'|'BUCKET'|'PROVISIONAL'
+  scope         TEXT NOT NULL
+                CHECK (scope IN ('OVERALL','SEASON','MODEL','BUCKET','PROVISIONAL')),
   scope_key     TEXT NOT NULL,
-  model_version TEXT,
+  model_version TEXT NOT NULL DEFAULT '',   -- モデル横断の集計では空文字。NULL にしない
   n             INTEGER NOT NULL,
   accuracy      REAL NOT NULL,
   brier         REAL NOT NULL,
@@ -584,6 +585,10 @@ CREATE TABLE accuracy_summary (
   PRIMARY KEY (scope, scope_key, model_version)
 );
 ```
+
+**`model_version` を NULL 許容にしない。** SQLite は主キー列の NULL 重複を許すため、`('OVERALL','all',NULL)` のような行が何行でも入り、`ON CONFLICT(scope, scope_key, model_version)` も衝突を検出しない（実測で確認済み）。モデル横断の集計（`OVERALL` / `SEASON` / `BUCKET` / `PROVISIONAL`）では**空文字を入れる**。`model_versions.target TEXT NOT NULL DEFAULT ''` と同じ書き方である。
+
+`scope` にも CHECK を付ける。列挙値に CHECK を置くのは本設計の原則であり、集計層だけ例外にしない。
 
 ### 1.7 運用
 

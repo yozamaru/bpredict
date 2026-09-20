@@ -69,6 +69,8 @@ Workers API は日付指定・チーム別・的中率といった動的クエ�
 
 **D1 REST API を直接叩く経路を作らない。** REST 直叩きを許すと上記すべてが迂回可能になり、予測の不変性を守る関門が存在しなくなる。`CF_API_TOKEN` はマイグレーション専用で、スコープは対象D1のEditのみに絞る。
 
+**手作業での調査クエリについて。** 障害対応で `wrangler d1 execute --remote` を使って SELECT を流すことがある（`/ingest` `/review-cost`）。これは**人間が手元から行う読み取り**であり、禁止している「D1 REST API を直接叩く経路」＝製品のコードパスとは別物である。ただし `CF_API_TOKEN`（Edit スコープ）を流用しない。**読み取り専用スコープの別トークンを手元にのみ置き、GitHub Secrets にも CI にも入れない。** 調べたい内容が `/api/v1/health` と `/internal/*` の GET で足りるなら、そちらを先に使う。
+
 ### 入力検証
 
 **すべてのパラメータを境界で検証し、不一致は D1 にもキャッシュにも触れず 400 で返す。**
@@ -284,7 +286,8 @@ schedule:
 |---|---|
 | `INGEST_TOKEN` / `INGEST_TOKEN_NEXT` | GitHub Secrets + Workers Secret |
 | `FINALIZE_TOKEN` | 同上 |
-| `CF_API_TOKEN` | GitHub Secrets（マイグレーション専用、スコープ限定） |
+| `CF_API_TOKEN` | GitHub Secrets（マイグレーション専用、Edit スコープ） |
+| `CF_API_TOKEN_RO` | **手元のみ**（CI・リポジトリに置かない。障害調査の SELECT 用、Read スコープ） |
 
 - コード・設定・ログ・エラーメッセージに値を出力しない
 - **例外オブジェクトをそのままログ・DBに入れない**。型名と自前メッセージに限定する

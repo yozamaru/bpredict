@@ -5,10 +5,11 @@ description: 無料枠に収まっているか検査する
 現在の構成が無料枠に収まっているか検査してください。
 
 ```bash
-# アプリ側のカウンタ
+# アプリ側のカウンタ（まずこれで足りるか確認する）
 curl -s "$API_BASE_URL/api/v1/health" | jq '.data.quota'
 
-# D1 の読取行数（直近のバッチ）
+# D1 の読取行数（直近のバッチ）。読み取り専用スコープのトークンで実行し、
+# CF_API_TOKEN（マイグレーション用の Edit スコープ）を流用しない
 wrangler d1 execute bpredict --remote --command \
   "SELECT job, started_at, d1_rows_read FROM ingestion_logs
    WHERE d1_rows_read IS NOT NULL ORDER BY started_at DESC LIMIT 10;"

@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.4** |
+| 版数 | **1.5** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / **v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先）** |
 | 上位文書 | `docs/requirements.md` |
 | 下位文書 | `docs/design-detail.md` |
 
@@ -440,11 +440,24 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 - `status` に `POSTPONED` を追加する（中止と延期は予測の扱いが異なる）
 - `rescheduled_to` で延期先を指す
 - `result_revision` を持ち、スコア訂正時に `prediction_results` の再評価をトリガする
-- 全ファクトテーブルに `updated_at` を持つ（`fetched_at` は「取得時刻」であって「値が変わった時刻」ではない）
+- **上書きされうるファクトテーブル**（`games` / `team_game_stats` / `player_game_stats`）に `updated_at` を持つ（`fetched_at` は「取得時刻」であって「値が変わった時刻」ではない）
+
+`team_games` と `game_entries` は `updated_at` を持たない。**持たせない理由を明示しておく。**
+
+| テーブル | 扱い |
+|---|---|
+| `team_games` | `games` からの派生であり、独立に更新されない。変更時刻は元の `games.updated_at` で追える |
+| `game_entries` | 取得のたびに当該試合の全行を DELETE → INSERT で洗い替える（4.4）。行が「更新される」ことがなく、`fetched_at` が実質の更新時刻になる |
+
+派生テーブルと洗い替えテーブルに `updated_at` を足すと、**実際には更新されていない行の時刻だけが毎回動き**、「値が変わった時刻」という列の意味が失われる。
 
 #### 集計層
 
 `accuracy_summary` を日次で洗い替える。`/api/v1/accuracy` は overall / bySeason / byModel / calibration / byProvisional の5系統を返すが、`prediction_results` に `season_id` と予測確率がないと毎回3テーブルの全件走査になる。日次バッチが既に走っているのだから、そこで畳んでおく。
+
+**主キーに NULL を含めない。** `model_version` はモデル横断の集計（`OVERALL` / `SEASON` / `BUCKET` / `PROVISIONAL`）では該当がないが、**NULL ではなく空文字 `''` を入れる**。SQLite は主キー列の NULL 重複を許すため、NULL 許容のままだと同一キーの行が何行でも入り、`ON CONFLICT` も衝突を検出しない。実測で、同じ `('OVERALL','all',NULL)` を2回 INSERT すると2行入り、`ON CONFLICT` 付きの3回目でさらに1行増えることを確認した。
+
+洗い替え（DELETE → INSERT）を厳密に守れば事故は起きないが、**主キーが保護になっていない状態を残さない**。`model_versions.target TEXT NOT NULL DEFAULT ''` と同じ書き方に揃える。
 
 #### チーム目標値にも恒等式を課す
 
@@ -778,6 +791,7 @@ bpredict/
 | `INGEST_TOKEN` / `INGEST_TOKEN_NEXT` | GitHub Secrets + Workers Secret | 内部API認証（2キー方式） |
 | `FINALIZE_TOKEN` | 同上 | freeze 専用（破壊的操作を分離） |
 | `CF_API_TOKEN` | GitHub Secrets | マイグレーション専用。スコープは対象D1のEditのみ |
+| `CF_API_TOKEN_RO` | **手元のみ**（GitHub Secrets にも CI にも置かない） | 障害調査で `wrangler d1 execute --remote` の SELECT を流すため。スコープは対象D1の Read のみ |
 
 `D1_DATABASE_ID` は機密ではない（操作には API トークンが別途必要）ため `wrangler.toml` に直書きしてよい。環境変数注入は `d1_databases` の必須フィールドでは効かないため、旧版の「直書きしない」という制約は実現不能だった。
 
@@ -910,4 +924,4 @@ U-05 と U-06 は受け入れ基準 A-01 / A-02 の判定条件そのもので�
 | P0-15 | Zod の実検証コスト | 手書き検証の3〜4倍（3〜4ms） | 10ms を超えるなら手書き検証へ |
 | P0-16 | ECE ノイズフロアの実分布での値 | 一様分布での参考値 | 閾値の確定 |
 
-詳細は `docs/requirements.md` 11章。設計段階で実行できた9件の検証結果とスクリプトは `verification/` にある。
+詳細は `docs/requirements.md` 11章。設計段階で実行できた9件の検証結果とスクリプトは `verification/` にあり、**実機での測定結果は `verification/RESULTS.md` に記録する**。

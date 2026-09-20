@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.3** |
+| 版数 | **1.4** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / **v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / **v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -132,7 +132,10 @@ CREATE TABLE games (
   league           TEXT NOT NULL,             -- API応答と一致させるため非正規化
   game_date        TEXT NOT NULL,             -- 変更されうる属性
   tipoff_at        TEXT NOT NULL,
-  finished_at      TEXT,                      -- 実績。なければ tipoff_at + 2h を推定値とする
+  finished_at      TEXT,                      -- 試合終了時刻。リーク判定の絞り込みはこの列で行う
+  finished_at_is_estimated INTEGER NOT NULL DEFAULT 0
+                   CHECK (finished_at_is_estimated IN (0,1)),
+                                              -- 1 = 実測が取れず tipoff_at + 2時間 を書いた
   home_club_id     TEXT NOT NULL REFERENCES clubs(id),
   away_club_id     TEXT NOT NULL REFERENCES clubs(id),
   venue_id         TEXT REFERENCES venues(id),
@@ -144,8 +147,9 @@ CREATE TABLE games (
   home_score       INTEGER,
   away_score       INTEGER,
   attendance       INTEGER,
-  spectator_restricted INTEGER NOT NULL DEFAULT 0
-                   CHECK (spectator_restricted IN (0,1)),
+  spectator_restricted INTEGER              -- NULL = 判定不能（attendance か capacity が欠損）
+                   CHECK (spectator_restricted IS NULL
+                          OR spectator_restricted IN (0,1)),
   result_revision  INTEGER NOT NULL DEFAULT 0, -- スコア訂正のたびに +1
   source_url       TEXT,
   fetched_at       TEXT,
@@ -161,6 +165,25 @@ CREATE INDEX idx_games_away     ON games(away_club_id, game_date);
 ```
 
 **upsert キーは `id`（公式試合ID）とする。** 自然キーに `game_date` を含めると、延期で日付が変わった瞬間に別レコードとして挿入され、旧行が `SCHEDULED` のまま永久に残る。ゴースト試合の予測が的中率の分母を汚染する。
+
+**`finished_at` は列として保持する。読み出し時に計算しない。** すべてのリーク判定クエリがこの値を通るため、`tipoff_at + 2時間` という推定式を呼び出し側に置くと、一箇所直し忘れただけでリークが復活する。取り込み時に次のとおり確定させる。
+
+| 状況 | `finished_at` | `finished_at_is_estimated` |
+|---|---|---|
+| 終了時刻が取得できた | 実測値 | 0 |
+| 終了時刻が取得できない（`status = 'FINISHED'`） | `tipoff_at + 2時間` | **1** |
+| 未実施（`SCHEDULED` / `POSTPONED` / `CANCELLED`） | NULL | 0 |
+
+推定値であることを区別できるようにするのは、後から実測が取れたときに上書き対象を特定するためと、リークテストの調査時に「境界に効いているのが実測か推定か」を切り分けるためである。
+
+**`spectator_restricted` は取り込み時に判定して列に書く。** 特徴量生成のたびに計算し直さない（計算式が二箇所に分かれると、片方だけ直したときに Elo と特徴量が食い違う）。
+
+| 条件 | 値 |
+|---|---|
+| `attendance / capacity < 0.2` | 1 |
+| 上記以外で両方の値が揃っている | 0 |
+| `attendance` または `capacity` が NULL | **NULL（判定不能）**。Elo 更新では通常のホームアドバンテージを使う |
+| シーズンが 2020-21 / 2021-22 | **期間指定で強制的に 1**（入場者数が非公開の試合を取りこぼさないため、上記の判定より優先する） |
 
 公式試合IDが取得できない場合に限り自然キーを使うが、その場合は日程変更の名寄せ処理を明示的に実装する。
 
@@ -357,12 +380,16 @@ CREATE TABLE prediction_team_targets (
 
 **目標値を「成功数」ではなく「試投数 + 成功率」で持つ理由。** 成功数と試投数を独立に保存すると、約2%の確率で `成功数 > 試投数` という**実行不能な目標**が生まれる。この状態ではどんな整合化アルゴリズムも目標に到達できない。試投数（非負）と成功率（0〜1）の組で持てば、`成功数 = 率 × 試投数 ≤ 試投数` が**構造的に保証される**。CHECK 制約はこの構造を DB レベルで固定するものであり、外さない。
 
-得点の目標値は別列として持たず、`tgt_fg2_pct × tgt_fg2a × 2 + tgt_fg3_pct × tgt_fg3a × 3 + tgt_ft_pct × tgt_fta` で導出する。この導出値が `predictions.pred_home_score` / `pred_away_score` と ±0.5点以内で一致することを `test_team_targets_are_feasible`（A-16）で検証する。
+得点の目標値は別列として持たず、`tgt_fg2_pct × tgt_fg2a × 2 + tgt_fg3_pct × tgt_fg3a × 3 + tgt_ft_pct × tgt_fta` で導出する。
+
+**この表に入る値は、TeamRates の生出力ではなく `reconcile_team_targets()` を通した後の値である（2.4）。** TeamRates と Margin / Total は別モデルであり、生出力の導出得点が `pred_home_score` / `pred_away_score` と一致する保証がない。**予想スコアを正とし、成功率3項目を共通のロジットシフトで寄せてから保存する。** 試投数（`tgt_fg2a` / `tgt_fg3a` / `tgt_fta`）は動かさない。
+
+導出得点が `predictions.pred_home_score` / `pred_away_score` と ±0.5点以内で一致することは `test_team_targets_match_predicted_score`（A-16）で検証する。制約（`成功数 ≤ 試投数`、恒等式）は `test_team_targets_are_feasible` が見る。
 
 **運用規則**
 
-- 再推論時は旧行の `is_active` を 0 にし、新行を `revision + 1` で追加する。**この2文は必ず単一の D1 `batch()` に入れる**（D1 にはリクエストを跨ぐトランザクションがない）
-- 試合開始時刻を過ぎたら、その時点の `is_active = 1` の行に `is_final = 1` を立てる
+- 再推論時は旧行の `is_active` を 0 にし、新行を `revision + 1` で追加する。**この2文は必ず単一の D1 `batch()` に入れる**（D1 にはリクエストを跨ぐトランザクションがない）。子テーブル（`player_predictions`）の非活性化も同じ `batch()` に含める
+- 試合開始時刻を過ぎたら、その時点の `is_active = 1` の行に `is_final = 1` を立てる。**`predictions` と `player_predictions` の2つを単一 `batch()` で、子 → 親の順に UPDATE する**（4.1）
 - `is_final = 1` の行は**一切更新・削除しない**。トリガで禁止し、アプリ層の規律だけに頼らない
 - 的中率の算出は `is_final = 1` の行のみを使用する
 
@@ -499,6 +526,8 @@ END;
 
 上限を超えた場合は**登録を拒否し、現行モデルを継続使用する**（学習ジョブは `PARTIAL` + exit 1 で終える）。`num_boost_round` の上限は 1,200 とし、`num_leaves` を 7 から増やす変更は artifact サイズの再測定とセットでのみ許可する。実サイズは Phase 0（P0-12）で測定する。
 
+**登録と読み出しは Workers 経由で行う。** 学習ジョブは `POST /internal/models` で登録し（アプリ層でも同じ1.5MB判定を行い、トリガと二重化する）、日次推論は `GET /internal/models/active` で有効モデル一式を取得する。バッチが D1 を直接読み書きすることも、D1 REST API を叩くこともしない（3.4）。
+
 `uq_model_active` があれば、ロールバック時に「先に 0 にしてから 1 にする」順序でのみ成功し、有効モデル2本という状態が構造的に作れなくなる。
 
 ```sql
@@ -514,7 +543,7 @@ CREATE TABLE prediction_model_bundle (
 
 **`predictions.model_version` だけでは出自を復元できない。** 1本の予測は Winner / Margin / Total / TeamRate×14 / PlayerAvail / PlayerMin / PlayerRate×14 の合成であり、単一の列にはチームモデルのバージョンしか書けない。個人スタッツのどのモデルで出た値かが記録されないと、「あの試合の個人予測はどのモデルか」を後から特定できず、モデル別の精度比較（`/accuracy` の byModel）も個人スタッツについては成立しない。
 
-`predictions.model_version` は「代表バージョン（Winner または Margin のうち採用経路のもの）」として残し、全体は `prediction_model_bundle` で記録する。1予測あたり最大32行増えるが、日次で最大13試合 × 32 = 約416行であり書込枠に対して問題ない。
+`predictions.model_version` は「代表バージョン（Winner または Margin のうち採用経路のもの）」として残し、全体は `prediction_model_bundle` で記録する。1予測あたりの行数は **WINNER / MARGIN / TOTAL / PLAYER_AVAIL / PLAYER_MIN の5 + TEAM_RATE 14 + PLAYER_RATE 14 = 最大33行**で、日次で最大13試合 × 33 = 約429行であり書込枠に対して問題ない。
 
 ```sql
 CREATE TABLE prediction_results (
@@ -656,6 +685,10 @@ END;
 
 表示上の誤り（ラベルの誤字など）が見つかった場合も、**過去の行は修正しない**。以後の生成ロジックのみを直す。`is_final = 1` を立てる freeze 操作自体は `predictions` の UPDATE であり、この2つのトリガは `OLD.is_final = 1` を条件にしているため、`0 → 1` の遷移は通る（`1 → 1` は通らない）。
 
+**`is_final` 列を持つのは `predictions` と `player_predictions` の2つだけである。** `prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle` は列を持たず、**親を参照するトリガによって親の凍結と同時に凍結される**。したがって freeze が UPDATE するのはこの2テーブルで、残り3つは何もしなくても凍結される。
+
+**freeze の `batch()` 内では、子（`player_predictions`）→ 親（`predictions`）の順に UPDATE する。** `trg_ppred_final_immutable` は自テーブルの `OLD.is_final` しか見ないため子の `0 → 1` はいつでも通るが、親を先に `is_final = 1` にすると、親参照トリガ（`trg_reasons_*` / `trg_team_targets_*` / `trg_bundle_*`）が以後その予測に紐づく子行への書き込みを拒否する。**順序が結果を変えるため、規約として固定し実装の偶然に委ねない。**
+
 ---
 
 ## 2. 特徴量定義
@@ -774,6 +807,51 @@ def build_features(game_id: str, as_of: datetime, ds: Dataset) -> dict[str, floa
 
 **チーム側の目標値も同じ構造で持つ**（`prediction_team_targets`、1.5）。各項目を独立に生成すると、約2%の確率で「FT成功数 > FT試投数」のような実行不能な目標が生まれ、整合化が原理的に成立しない（検証済み）。
 
+#### 前段: チーム目標の整合化
+
+**TeamRates の生出力をチーム目標にしない。** TeamRates（試投数・成功率の回帰14本）と Margin / Total は別モデルであり、TeamRates から導出した得点が予想スコアと一致する保証がない。一致しないまま選手側へ渡すと「選手の合計＝チーム目標」は満たされるが「チーム目標＝画面に出る予想スコア」が崩れ、**矛盾の位置が一段ずれるだけ**になる。
+
+**予想スコアを正とし、チームの成功率3項目を共通のロジットシフトで寄せる。** 選手側と同じ `shift_to_target()` の考え方を、得点の恒等式に対して1回だけ適用する。
+
+```python
+def reconcile_team_targets(rates, pred_score):
+    """TeamRates の出力を予想スコア（Margin/Total 由来）に整合させる。
+
+    試投数は動かさず、成功率3項目に共通のシフト量 d を入れる。
+
+        pts(d) = 2*sigmoid(l2+d)*A2 + 3*sigmoid(l3+d)*A3 + 1*sigmoid(lf+d)*Af
+
+    sigmoid は単調増加、係数（2/3/1）と試投数 A は非負であるため pts(d) は d について
+    単調増加であり、pts(d) = pred_score の解は一意に存在する。反復は不要。
+    値域は (0, 2*A2 + 3*A3 + Af) で、この外の目標は到達不能。
+    """
+    A = {a: float(rates[a]) for a in ATTEMPTS}          # fg2a, fg3a, fta
+    W = {"fg2a": 2.0, "fg3a": 3.0, "fta": 1.0}          # 得点の重み
+    lo = {p: logit(np.clip(rates[p], EPS, 1 - EPS)) for p, _ in PCTS}
+
+    def pts(d):
+        return sum(W[a] * sigmoid(lo[p] + d) * A[a] for p, a in PCTS)
+
+    if pts(-50) > pred_score or pts(50) < pred_score:
+        raise InfeasibleTargetError(pred_score, sum(W[a] * A[a] for a in A))
+
+    d = brentq(lambda x: pts(x) - pred_score, -50, 50)
+    out = dict(rates)
+    for p, _ in PCTS:
+        out[p] = float(sigmoid(lo[p] + d))              # [0,1] を出ない。クリップ不要
+    return out
+```
+
+- **試投数は動かさない。** ペースと配分の予測をそのまま残し、得点の帳尻は成功率だけで合わせる
+- **クリップを使わない。** ロジット空間で動かすため `[0,1]` を原理的に出ない
+- **反復しない。** 1回で `pts(d) = pred_score` が厳密に成立する
+- カウント8項目（`oreb` `dreb` `ast` `tov` `stl` `blk` `pf` `fd`）は得点の恒等式に関与しないため、この前段では触らない
+- 到達不能なら `InfeasibleTargetError` を投げる。無言でクリップしない（後述の「例外時の扱い」と同じ）
+
+ホーム・アウェイそれぞれについて独立に解く（`pred_score` は `(total + margin) / 2` と `(total - margin) / 2`）。この前段を通した値だけを `prediction_team_targets` に保存し、選手側の整合化へ渡す。
+
+> この前段は `verification/03_reconciliation_logit.py` と同型の構造であり、同スクリプトにチーム目標のケースを追加して収束と制約充足を再検証できる。
+
 #### アルゴリズム
 
 ```python
@@ -871,11 +949,14 @@ K, HOME_ADVANTAGE, SEASON_REGRESSION は walk-forward の Brier を
 
 K ∈ {12, 16, 20, 24, 32}                 初期 20
 HOME_ADVANTAGE ∈ {40, 55, 70, 85}        初期 70
-SEASON_REGRESSION ∈ {0.5, 0.6, 0.75, 0.85} 初期 0.65
+SEASON_REGRESSION ∈ {0.5, 0.65, 0.75, 0.85} 初期 0.65
 ```
 
 ```python
-ha = 0 if game.spectator_restricted else HOME_ADVANTAGE
+# spectator_restricted は 1 / 0 / NULL（判定不能）の3値。
+# NULL は「制限されていた証拠がない」であって「制限されていた」ではないため、
+# 通常のホームアドバンテージを使う（1 のときだけ 0 にする）。
+ha = 0 if game.spectator_restricted == 1 else HOME_ADVANTAGE
 
 expected_home = 1 / (1 + 10 ** ((elo_away - elo_home - ha) / 400))
 actual_home   = 1 if home_score > away_score else 0
@@ -1008,21 +1089,23 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
   "data": {
     "game": {
       "gameId": "...", "tipoffAt": "...", "league": "PREMIER",
+      "status": "SCHEDULED",
       "home": { "clubId": "...", "slug": "...", "name": "...", "shortName": "..." },
       "away": { ... },
-      "venue": { "name": "...", "isPrimary": true },
-      "prediction": {
-        "homeWinProb": 0.68,
-        "predHomeScore": 84, "predAwayScore": 78,
-        "isProvisional": false, "isFinal": false, "isEarlySeason": false,
-        "modelVersion": "winner-v1.0.0",
-        "summary": "ホームのチーム力が上回っていること、アウェイが2連戦の2戦目で疲労していることが、この予測の主な理由です。",
-        "reasons": [
-          { "group": "TEAM_STRENGTH", "label": "チーム力の差",
-            "value": "＋82ポイント", "favors": "HOME", "strength": 3 }
-        ]
-      }
+      "venue": { "name": "...", "isPrimary": true }
     },
+    "prediction": {
+      "homeWinProb": 0.68,
+      "predHomeScore": 84, "predAwayScore": 78,
+      "isProvisional": false, "isFinal": false, "isEarlySeason": false,
+      "modelVersion": "winner-v1.0.0",
+      "summary": "ホームのチーム力が上回っていること、アウェイが2連戦の2戦目で疲労していることが、この予測の主な理由です。",
+      "reasons": [
+        { "group": "TEAM_STRENGTH", "label": "チーム力の差",
+          "value": "＋82ポイント", "favors": "HOME", "strength": 3 }
+      ]
+    },
+    "evaluation": null,
     "playerPredictions": [
       {
         "playerId": "...", "name": "...", "position": "PG", "clubId": "...",
@@ -1048,6 +1131,18 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 }
 ```
 
+**レスポンス形状は試合前後で同一にする。** `game` は日程・会場・結果といった事実のみを持ち、`prediction` は `game` の内側ではなく `data` 直下に置く。試合前後で変わるのは各フィールドの中身であって、キーの位置ではない。
+
+| キー | 試合前 | 試合後 |
+|---|---|---|
+| `data.game` | `status: "SCHEDULED"`、スコアなし | `status: "FINISHED"`、`homeScore` / `awayScore` あり |
+| `data.prediction` | `isFinal: false` | `isFinal: true` |
+| `data.evaluation` | **`null`** | 判定・誤差・`bucketContext` |
+| `data.playerPredictions` | 予測値 | 予測値 + `actual`（`plusMinus` は実績のみ） |
+| `data.recentForm` / `data.modelAccuracy` | あり | あり |
+
+キーの位置が試合の状態で動くと、クライアントが状態ごとに別のパスを持つことになり、**片方だけ壊れる不具合が出る**。
+
 `availProb < 0.5` の選手は `playerPredictions` に含めない。`strength` は 1〜4 の段階値で、SHAP の生値は返さない。
 
 **`pct` は試投数の予測値が閾値以上のときのみ返す。** 閾値未満は `null` とし、クライアントは分数のみを表示する。
@@ -1070,12 +1165,17 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
   "data": {
     "game": { ..., "status": "FINISHED", "homeScore": 88, "awayScore": 81 },
     "prediction": { "homeWinProb": 0.68, "predHomeScore": 84, "predAwayScore": 78,
-                    "isFinal": true },
+                    "isProvisional": false, "isFinal": true, "isEarlySeason": false,
+                    "modelVersion": "winner-v1.0.0",
+                    "summary": "...", "reasons": [ ... ] },
     "evaluation": {
       "isCorrect": true,
       "scoreError": 3,
       "bucketContext": { "bucket": "60-70%", "n": 42, "correct": 29, "rate": 0.690 }
-    }
+    },
+    "playerPredictions": [ ... ],
+    "recentForm": { ... },
+    "modelAccuracy": { ... }
   }
 }
 ```
@@ -1120,12 +1220,66 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 
 `Authorization: Bearer` を要求する。トークンは用途で分離する。
 
-| メソッド | パス | トークン |
-|---|---|---|
-| POST | `/internal/games` `/internal/stats` `/internal/entries` `/internal/ratings` | `INGEST_TOKEN` |
-| POST | `/internal/predictions` | `INGEST_TOKEN` |
-| POST | `/internal/finalize` | `FINALIZE_TOKEN`（破壊的操作のため分離） |
-| POST | `/internal/evaluate` `/internal/summary` `/internal/log` | `INGEST_TOKEN` |
+| メソッド | パス | トークン | 用途 |
+|---|---|---|---|
+| POST | `/internal/games` `/internal/stats` `/internal/entries` `/internal/ratings` | `INGEST_TOKEN` | ファクトの取り込み |
+| POST | `/internal/predictions` | `INGEST_TOKEN` | 予測の追記（親子をまとめて受ける） |
+| POST | `/internal/finalize` | `FINALIZE_TOKEN`（破壊的操作のため分離） | freeze |
+| POST | `/internal/evaluate` `/internal/summary` `/internal/log` | `INGEST_TOKEN` | 照合・集計・ログ |
+| **POST** | **`/internal/models`** | `INGEST_TOKEN` | 学習済みモデルの登録 |
+| **GET** | **`/internal/models/active`** | `INGEST_TOKEN` | 有効モデル一覧（メタのみ） |
+| **GET** | **`/internal/models/:version/artifact`** | `INGEST_TOKEN` | artifact 本体を1本ずつ取得 |
+| **GET** | **`/internal/games/ingested`** | `INGEST_TOKEN` | backfill の再開判定 |
+| **GET** | **`/internal/predictions/pending`** | `INGEST_TOKEN` | 照合対象の確定予測 |
+| **GET** | **`/internal/metrics/active`** | `INGEST_TOKEN` | 現行モデルの識別子と記録済み評価値 |
+
+#### 内部 GET を置く理由と射程
+
+バッチは**入力データ**としては D1 を読まない（`batch/snapshot/*.parquet` のみ）。しかし運用上、D1 の現在値が要る場面が4つある — backfill の再開判定、照合対象の取得、モデル artifact の読み出し、現行モデルの識別。これらを `/internal/*` の GET に集約することで、**D1 REST API の直叩きを作らない**という方針を保ったまま実装できる。
+
+| 区分 | 読み取り元 |
+|---|---|
+| 特徴量生成・学習・推論の入力データ | **スナップショットのみ** |
+| 上記4つの運用上の読み取り | `/internal/*` の GET |
+| D1 REST API の直叩き | **全面禁止** |
+
+返却は `{ "data": ..., "meta": ... }`（3.1）に揃え、`Cache-Control: no-store` を付ける。いずれも1リクエストあたり1〜2クエリで、50クエリ制限にも読取枠にも影響しない。
+
+```jsonc
+// GET /internal/games/ingested?seasonId=2016-17-B1
+{ "data": { "seasonId": "2016-17-B1", "count": 540,
+            "gameIds": ["...", "..."] } }
+
+// GET /internal/predictions/pending?limit=200
+//   games.status が FINISHED / CANCELLED / POSTPONED で、
+//   prediction_results が未登録の is_final = 1 の予測
+{ "data": { "count": 12, "predictions": [
+    { "predictionId": "...", "gameId": "...", "seasonId": "...",
+      "modelVersion": "winner-v1.0.0", "homeWinProb": 0.68,
+      "predHomeScore": 84, "predAwayScore": 78, "wasProvisional": false }
+  ] } }
+
+// GET /internal/models/active?league=PREMIER
+//   artifact_text は含めない（33本 × 最大1.5MB になりレスポンスに載らない）
+{ "data": { "models": [
+    { "version": "winner-v1.0.0", "modelType": "WINNER", "target": "",
+      "algo": "lightgbm", "params": { }, "featureList": ["elo_diff"],
+      "winProbSource": "WINNER", "marginSigma": null,
+      "artifactSha256": "...", "artifactBytes": 412345, "calibrator": null }
+  ] } }
+
+// GET /internal/models/:version/artifact
+{ "data": { "version": "winner-v1.0.0",
+            "artifactText": "tree\nversion=v4\n...", "artifactSha256": "..." } }
+
+// GET /internal/metrics/active?modelType=WINNER&target=&league=PREMIER
+{ "data": { "version": "winner-v1.0.0", "evalWindow": "2024-25..2025-26",
+            "cvBrier": 0.2041, "cvEce": 0.031, "trainRows": 6120 } }
+```
+
+**`/internal/metrics/active` が返す値を採用判定の比較に使わない。** これは「学習当時のウィンドウで測った値」であり、新旧で評価対象が違えば比較にならない（4.6）。採用判定に使う現行モデルの Brier は、**この API で識別子を得てから artifact を取得し、新しい評価ウィンドウで再評価した値**である。API の返す `cvBrier` はログと突き合わせ用に限る。
+
+**`artifact_text` を一覧に含めない。** 有効モデルは最大33本あり、1本あたり最大1.5MB であるため、一覧に本体を載せるとレスポンスが数十MBになる。一覧（メタ）と本体（1本ずつ）を分け、日次推論は必要な分だけ取得する。取得後は `artifactSha256` を照合する。
 
 **`/internal/predictions` の必須ガード**
 
@@ -1135,11 +1289,13 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 4. **`games.tipoff_at <= now` の試合は 409 `ALREADY_FINAL` で拒否する**
 5. 旧行の非活性化と新行の挿入を**単一 `batch()`** で実行する
 6. UPDATE には必ず `WHERE is_final = 0` を付ける
-7. 日次の書き込み回数上限（予測は1日2000件）を設け、超過時は 429
+7. 日次の書き込み回数上限を設け、超過時は 429
+
+**日次上限は `predictions` テーブルへの挿入行数で数える（1日2,000行）。** 子テーブル（`player_predictions` / `prediction_team_targets` / `prediction_reasons` / `prediction_model_bundle`）は親に付随して増減するため**別枠とし、独立した上限は設けない**。子まで同じカウンタで数えると、`player_predictions` だけで約2,200行/日（1.5）に達し、正常な運用が上限に当たって止まる。この上限の目的は「トークンが漏れたときの被害を1日分に抑える」ことであり、親の本数を抑えれば子も連動して抑えられる。
 
 #### バッチサイズ（テーブルごとに算出する）
 
-D1 Free には**1 Worker 呼び出しあたり50クエリ**という上限がある（Paid は1,000）。旧版の「1リクエスト最大500件」は、この上限を9テーブル中6つで超えていた。
+D1 Free には**1 Worker 呼び出しあたり50クエリ**という上限がある（Paid は1,000）。旧版の「1リクエスト最大500件」は、**書き込み対象14テーブルのうち12**でこの上限を超えていた。
 
 1文に詰められる行数は `floor(100 / 列数)`（バインドパラメータ上限100）で決まるため、
 
@@ -1149,16 +1305,41 @@ max_rows_per_request = floor(100 / 列数) × 40
 
 とする（係数40は、50クエリのうち10を非活性化・ログ・整合性確認などの余裕として残すため）。
 
-| テーブル | 列数 | 1文の行数 | **1リクエスト上限** | 旧設計 | 旧設計での必要文数 |
-|---|---|---|---|---|---|
-| `player_predictions` | 26 | 3 | **120** | 500 | **167（上限の3.3倍）** |
-| `player_game_stats` | 22 | 4 | **160** | 200 | 50 |
-| `games` / `team_game_stats` | 20 | 5 | **200** | 500 | 100 |
-| `predictions` | 18 | 5 | **200** | 500 | 100 |
-| `prediction_team_targets` | 17 | 5 | **200** | — | — |
-| `game_entries` / `team_ratings` | 6–7 | 14–16 | **560–640** | 500 | 32–36 |
+**列数は DDL の全列数で数える。** `DEFAULT` を持つ列を「INSERT 文に含めない前提」で除くと、実装が明示指定に変わった瞬間に上限を超える。上限は最も厳しい側で固定し、実装の書き方に依存させない。
+
+**書き込み対象テーブル（バッチが `/internal/*` 経由で INSERT する）**
+
+| テーブル | 全列数 | 1文の行数 | **1リクエスト上限** | 旧設計500行での必要文数 |
+|---|---|---|---|---|
+| `player_predictions` | 31 | 3 | **120** | **167（上限の3.3倍）** |
+| `player_game_stats` | 24 | 4 | **160** | 125 |
+| `games` | 23 | 4 | **160** | 125 |
+| `team_game_stats` | 22 | 4 | **160** | 125 |
+| `model_versions` | 25 | 4 | **160** | —（1行ずつ登録） |
+| `predictions` | 19 | 5 | **200** | 100 |
+| `prediction_team_targets` | 17 | 5 | **200** | 100 |
+| `prediction_results` | 14 | 7 | **280** | 72 |
+| `team_games` | 9 | 11 | **440** | 46 |
+| `accuracy_summary` | 9 | 11 | **440** | 46 |
+| `team_ratings` | 8 | 12 | **480** | 42 |
+| `prediction_reasons` | 8 | 12 | **480** | 42 |
+| `game_entries` | 6 | 16 | **640** | 32（上限内） |
+| `prediction_model_bundle` | 4 | 25 | **1,000** | 20（上限内） |
+
+**マスタ・運用テーブル**（`seed_master` と `ingestion_logs`。件数が小さく制約にならないが、定数は同じ式で持つ）
+
+| テーブル | 全列数 | 1文の行数 | 1リクエスト上限 |
+|---|---|---|---|
+| `venue_source_keys` | 2 | 50 | 2,000 |
+| `clubs` / `players` / `seasons` / `club_source_ids` | 5 | 20 | 800 |
+| `venue_revisions` | 5 | 20 | 800 |
+| `venues` | 7 | 14 | 560 |
+| `club_seasons` / `player_seasons` | 8 | 12 | 480 |
+| `ingestion_logs` | 9 | 11 | 440 |
 
 上限値は `api/src/config/batch-limits.ts` に定数として置き、**列数から機械的に算出する関数と、その結果が50クエリ以内であることを検証するテスト**（`test_batch_size_within_query_limit`、A-10）を置く。列を1つ増やしたときに上限を静かに超えることを防ぐ。
+
+**列数は DDL を唯一の出典とする。** 上の表は `db/migrations/*.sql` から数えた値であり、手で書き換えない。CI で DDL と定数の一致を検査する（`test_batch_limits_match_schema`）。実際、v1.3 の表は `player_predictions` を26列・`games` と `team_game_stats` を20列としていたが、DDL 上はそれぞれ31・23・22列で、`games` と `team_game_stats` の上限は 200 ではなく **160** が正しかった。
 
 > **`batch()` 内の各文が50クエリ制限にどう計上されるかは、Cloudflare の公式ドキュメントに記載がない。** 1文＝1クエリという最も厳しい前提で設計し、Phase 0（P0-13）で実アカウントでの実測を行う。実測の結果 `batch()` 全体が1クエリと数えられるのであれば上限を緩められるが、**実測前に緩めない**。
 
@@ -1277,7 +1458,11 @@ jobs:
 
 この設定がないと、cron 遅延で `daily-ingest`（21:00 UTC・遅延して02:00に開始）と `gameday-update`（02:00 UTC）が重なった場合に、**両方が同じ試合に対して再推論を行い、`revision` の採番が競合する**。D1 にはリクエストを跨ぐトランザクションがないため、「最大 revision を読む → +1 して挿入する」という2段階が Read-Modify-Write 競合を起こし、`UNIQUE (game_id, model_version, revision)` 違反か、より悪い場合は2本の `is_active = 1` が同時に立つ（部分ユニークインデックスがあるため後者は防がれ、片方が例外で落ちる）。**走行中を殺してはならない**のは、殺されたジョブが `batch()` の途中で止まり `ingestion_logs` が `RUNNING` のまま残るため。
 
-`finalize` は Workers の Cron Trigger（毎時）で `/internal/finalize` を叩く。GitHub Actions ではなく Workers に置くのは、外部アクセスに依存しない純粋な D1 操作であり、スクレイピングの失敗に巻き込まれてはならないため。`finalize` は `predictions` の UPDATE のみを行い、`d1-write` グループには入らない（毎時実行を待たせると freeze が遅れるため）。freeze は他の書き込みと衝突しない（対象行が `is_final = 0 → 1` の遷移のみ）。
+`finalize` は Workers の Cron Trigger（毎時）で `/internal/finalize` を叩く。GitHub Actions ではなく Workers に置くのは、外部アクセスに依存しない純粋な D1 操作であり、スクレイピングの失敗に巻き込まれてはならないため。
+
+**`finalize` は `predictions` と `player_predictions` の `is_final` を、単一 `batch()` で子 → 親の順に 0 → 1 にする。** `prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle` は `is_final` 列を持たず、親参照トリガによって同時に凍結されるため UPDATE しない（1.8）。
+
+`finalize` は `d1-write` グループには入らない（毎時実行を待たせると freeze が遅れるため）。freeze は他の書き込みと衝突しない（対象行が `is_final = 0 → 1` の遷移のみで、`gameday_update` は `tipoff_at > now + 30分` の試合しか触らない）。
 
 **cron は UTC。** GitHub Actions の cron は数十分〜数時間遅延しうるため、遅延しても壊れない設計（tipoff ガード）を前提とする。`gameday-update` のスロットは JST 11:00 / 13:00 / 16:00 で、B.LEAGUE の主な開始時刻（14:05 / 15:05 / 17:05 / 19:05）の2〜3時間前を捕捉する。
 
@@ -1309,17 +1494,30 @@ def run():
 
     # 3. 内部処理（外部アクセスの失敗に巻き込まれない）
     detect_score_revisions()                  # result_revision を進め再評価キューへ
-    evaluate_finished_games()                 # VOID を除外して照合
+    evaluate_finished_games()                 # GET /internal/predictions/pending → 照合（VOID を除外）
     rebuild_accuracy_summary()
-    recompute_ratings(from_date=affected_min_date())
+    recompute_ratings(from_date=affected_min_date())   # 入力はスナップショット
+    write_snapshot(tables=["team_ratings"])   # 特徴量が読むのはこちら
+    post_ratings()                            # 同じ値を /internal/ratings で D1 にも送る
 
     # 4. 推論（未開始試合のみ）
-    ds = load_snapshot()                      # D1 は読まない
+    ds     = load_snapshot()                  # 入力データとして D1 は読まない
+    models = load_active_models()             # GET /internal/models/active → :version/artifact
     for g in get_upcoming_games(days=7):      # tipoff_at > now のみ
-        feats  = build_features(g.id, as_of=g.tipoff_at, ds=ds)
-        p      = predict(feats)               # 勝率・margin・total
-        target = predict_team_rates(feats)    # 整合化の目標値（試投数＋成功率）
-        box    = reconcile(predict_players(feats), target)   # 2.4
+        feats = build_features(g.id, as_of=g.tipoff_at, ds=ds)
+        p     = predict(models, feats)        # 勝率・margin・total
+        try:
+            # チーム目標を予想スコアへ整合化してから選手側へ渡す（2.4 前段）
+            target = {
+                side: reconcile_team_targets(predict_team_rates(models, feats, side),
+                                             pred_score=p.score[side])
+                for side in ("home", "away")
+            }
+            box = {side: reconcile(predict_players(models, feats, side), target[side])
+                   for side in ("home", "away")}
+        except InfeasibleTargetError as e:
+            log_event("infeasible_target", game_id=g.id, kind=type(e).__name__)
+            target, box = None, None          # チーム予測のみ保存し、個人は破棄する
         post_prediction(g, p, target, box, data_as_of=ds.max_finished_at)
 
     # 5. 静的JSON の書き出し
@@ -1332,6 +1530,10 @@ def run():
 ```
 
 **`AbortedByRemote` の捕捉範囲をスクレイピング区間に限定する。** 旧版は try が処理全体を覆っていたため、前日結果が取れないだけで freeze・照合・Elo・推論まですべてスキップされ、その日の予測更新が止まっていた。
+
+**`InfeasibleTargetError` の捕捉範囲は1試合に限定する。** チーム目標が到達不能だった試合は、チーム予測（勝率・予想スコア）のみを保存して個人スタッツを破棄し、次の試合へ進む。ジョブ全体を止めない。ただし例外オブジェクトはログに入れず、型名と自前メッセージに限定する（7.3）。発生が常態化する場合は `CLAUDE.md` の「止まるべき条件」に該当するため、実装を進めずに報告する。
+
+**Elo の書き出し順序を守る。** `recompute_ratings()` → `team_ratings.parquet` → `/internal/ratings` の順に固定する。特徴量生成が読むのはスナップショット側であり、D1 側は公開APIの表示用の複製である。
 
 **`PARTIAL` を exit 1 で終える。** exit 0 だと Actions の失敗通知に乗らず、誰も気づかないまま数日放置される。
 
@@ -1419,7 +1621,9 @@ def monthly_train():
     if len(artifact.encode()) > 1_572_864:            # 1.5 MiB
         log("artifact がサイズ上限を超えたため登録しない", size=len(artifact))
         sys.exit(1)                                   # PARTIAL 扱い。現行モデルを継続
-    version = register_model(artifact, calibrator, metrics)   # artifact_text を D1 へ
+    # POST /internal/models（Workers 経由。D1 を直接叩かない）
+    # Workers 側でも同じ 1.5MB 判定を行い、DBトリガと合わせて三重にする
+    version = register_model(artifact, calibrator, metrics)
     activate_model(version)               # uq_model_active が整合を保証
 
 
@@ -1453,7 +1657,12 @@ def train_player_models():
 
 
 def train_team_rate_models():
-    """整合化の目標値。選手側と同じ「試投数 + 成功率」の構造で予測する。"""
+    """整合化の目標値。選手側と同じ「試投数 + 成功率」の構造で予測する。
+
+    ここで学習するのは素の水準であり、推論時に reconcile_team_targets() を通して
+    予想スコア（Margin/Total 由来）へ整合させてから prediction_team_targets に
+    保存する（2.4 前段）。学習段階で予想スコアに合わせ込まない。
+    """
     for stat in COUNT_STATS:
         train_and_register('TEAM_RATE', Xt, y=team_df[stat], target=stat, folds=5)
     for pct, made, att in PCT_STATS:
@@ -1502,6 +1711,9 @@ def passes_criteria(m, model) -> bool:
         log("n < 500 のため比較せず現行モデルを継続", n=m.n)
         return False
 
+    # GET /internal/metrics/active で現行モデルの識別子を得て、その artifact を
+    # GET /internal/models/:version/artifact で取得し、新しいウィンドウで再評価する。
+    # API が返す cv_brier（学習当時の値）をそのまま比較に使わない。
     current = current_active_brier_on_same_window()
     return (
         # 1. 同一の評価ウィンドウで再評価した Brier が良い
@@ -1569,7 +1781,9 @@ PARAMS = {
 
 ```python
 def backfill(season_id: str):
-    done = fetch_ingested_game_ids(season_id)   # D1 から取得済みIDを取る
+    # GET /internal/games/ingested?seasonId=... （Workers 経由。D1 を直接叩かない）
+    # これは「入力データ」ではなく運用上の読み取りであり、絶対ルール3の射程外（3.4）
+    done = fetch_ingested_game_ids(season_id)
     for g in schedule_of(season_id):
         if g.id in done:
             continue                            # スキップ
@@ -1875,6 +2089,15 @@ def test_gameday_update_skips_started_games():
 def test_reinference_appends_not_replaces():   # 2行になり旧行が is_active=0
 def test_cron_delay_simulation():              # tipoff+5分に実行しても確定予測が不変
 def test_update_final_prediction_raises():     # トリガによる拒否
+
+def test_finalize_freezes_parent_and_children_atomically():
+    """finalize 後、predictions と player_predictions の is_final がともに 1 で、
+    prediction_reasons / prediction_team_targets / prediction_model_bundle への
+    UPDATE / DELETE が親参照トリガに拒否されること。"""
+
+def test_finalize_statement_order_is_child_then_parent():
+    """batch() の文順が 子 → 親 であること。親を先に立てると子への
+    書き込みがトリガに拒否されるため、順序が結果を変える（1.8）。"""
 ```
 
 ### 6.3 冪等性
@@ -1912,6 +2135,11 @@ def test_win_prob_and_score_agree():                # 符号の一致
 def test_parse_minutes_mmss() / test_parse_dnp() / test_parse_fullwidth_digits()
 def test_parse_box_score_identities()               # pts = 2fgm×2 + 3fgm×3 + ftm
 def test_null_score_game_raises_not_silently_zero()
+def test_finished_at_estimated_flag_set_when_unavailable()  # tipoff_at + 2h / flag=1
+def test_finished_at_null_for_unplayed_games()              # SCHEDULED は NULL
+def test_spectator_restricted_null_when_attendance_missing()
+def test_spectator_restricted_forced_for_2020_21_and_2021_22()
+def test_elo_uses_home_advantage_when_restriction_unknown() # NULL は 0 にしない
 ```
 
 ### 6.4.1 個人スタッツの整合性（必須）
@@ -1919,25 +2147,53 @@ def test_null_score_game_raises_not_silently_zero()
 ```python
 def test_team_targets_are_feasible(game):
     """チーム目標が制約と恒等式を満たすこと。整合化の前提条件。"""
-    for t in team_targets(game):
+    for t in team_targets(game):                       # home / away の2行
         assert t.fg2a >= 0 and t.fg3a >= 0 and t.fta >= 0
         assert 0 <= t.fg2_pct <= 1 and 0 <= t.fg3_pct <= 1 and 0 <= t.ft_pct <= 1
+        # 成功数 <= 試投数 は「率 × 試投数」という持ち方から構造的に成立する
+        assert t.fg2_pct * t.fg2a <= t.fg2a
+        assert t.fg3_pct * t.fg3a <= t.fg3a
+        assert t.ft_pct  * t.fta  <= t.fta
+
+
+def test_team_targets_match_predicted_score(game):
+    """チーム目標の導出得点が予想スコアと一致すること（2.4 前段の帰結）。
+
+    reconcile_team_targets() を通していなければ、ここで落ちる。
+    """
+    for t in team_targets(game):                       # side ごとに独立に検証する
         pts = t.fg2_pct * t.fg2a * 2 + t.fg3_pct * t.fg3a * 3 + t.ft_pct * t.fta
         assert abs(pts - team_pred(game)[t.side]) < 0.5
 
 
+def test_team_reconcile_raises_on_infeasible():
+    """到達不能な予想スコアに対して無言でクリップせず InfeasibleTargetError を
+    投げること（pred_score が (0, 2*A2 + 3*A3 + Af) の外にある場合）。"""
+
+
+def test_team_targets_attempts_unchanged_by_reconcile():
+    """前段の整合化が試投数を動かさないこと。動かすのは成功率3項目だけ。"""
+
+
 def test_player_predictions_reconcile_to_team(game):
-    """選手予測の合計がチーム予測と一致すること。"""
-    ps = player_predictions(game)
-    assert abs(sum(p.pts for p in ps) - team_pred(game).pts) < 0.5
-    assert abs(sum(p.minutes for p in ps) - 200.0) < 0.5
-    for s in ('fg2a', 'fg3a', 'fta', 'oreb', 'dreb', 'ast', 'tov',
-              'stl', 'blk', 'pf', 'fd'):
-        assert rel_error(sum(getattr(p, s) for p in ps), team_target(game)[s]) < 0.02
-    # 成功数はチーム目標の成功数に一致する（ロジットシフトの帰結）
-    for pct, att in (('fg2_pct','fg2a'), ('fg3_pct','fg3a'), ('ft_pct','fta')):
-        made = sum(getattr(p, pct) * getattr(p, att) for p in ps)
-        assert rel_error(made, team_target(game)[pct] * team_target(game)[att]) < 0.02
+    """選手予測の合計がチーム予測と一致すること。
+
+    検証は「1チームあたり」で行う。総出場時間は 5人 x 40分 = 200分であり、
+    1試合分（両チーム）を合計すると 400分になる。side をまたいで合計しない。
+    """
+    for side in ("home", "away"):
+        ps = player_predictions(game, side=side)
+        assert abs(sum(p.pts for p in ps) - team_pred(game)[side]) < 0.5
+        assert abs(sum(p.minutes for p in ps) - 200.0) < 0.5    # 1チームあたり
+        for s in ('fg2a', 'fg3a', 'fta', 'oreb', 'dreb', 'ast', 'tov',
+                  'stl', 'blk', 'pf', 'fd'):
+            assert rel_error(sum(getattr(p, s) for p in ps),
+                             team_target(game, side)[s]) < 0.02
+        # 成功数はチーム目標の成功数に一致する（ロジットシフトの帰結）
+        for pct, att in (('fg2_pct','fg2a'), ('fg3_pct','fg3a'), ('ft_pct','fta')):
+            made = sum(getattr(p, pct) * getattr(p, att) for p in ps)
+            tgt  = team_target(game, side)
+            assert rel_error(made, tgt[pct] * tgt[att]) < 0.02
 
 
 def test_player_prediction_identities(game):
@@ -1973,6 +2229,11 @@ def test_reconciliation_no_clipping():
 
 def test_reconciliation_raises_on_infeasible_target():
     """実行不能な目標に対して無言でクリップせず InfeasibleTargetError を投げること。"""
+
+
+def test_infeasible_target_discards_players_but_keeps_team_prediction(game):
+    """InfeasibleTargetError の試合で、チーム予測は保存され個人スタッツが
+    1行も保存されないこと。ジョブが止まらないこと（4.2）。"""
 
 
 def test_no_plus_minus_prediction_column():
@@ -2032,6 +2293,14 @@ def test_training_reads_no_d1(monkeypatch):
 def test_batch_size_within_query_limit():
     """各テーブルの max_rows_per_request が floor(100/列数)×40 以下で、
     1リクエストあたりの文数が 50 以下に収まること。"""
+
+
+def test_batch_limits_match_schema():
+    """batch-limits.ts の列数が db/migrations/*.sql の全列数と一致すること。
+
+    列を1つ足したときに定数だけ古いまま残ることを防ぐ。v1.3 では表の列数が
+    DDL と3テーブルでずれており、games / team_game_stats の上限が
+    200（正しくは160）になっていた。"""
 
 
 def test_artifact_size_guard():
@@ -2228,12 +2497,12 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る |
 | 6 | backfill による過去データ取り込み **＋ スナップショット書き出し** | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る |
-| 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**） | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路を決定 |
+| 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し | 予測が JSON に出る |
 | 10 | 公開API（動的クエリ） | `/games?date=` `/accuracy` が応答する |
 | 11 | 画面（今日の予測・試合詳細・結果） | 予測と結果が表示される。`out/` のファイル数が18,000以下 |
 | 12 | Margin/Total モデル | 予想スコアが出る。勝率と矛盾しない |
-| 12b | **TeamRate モデル**（整合化の目標値） | `test_team_targets_are_feasible` が通る |
+| 12b | **TeamRate モデル**（整合化の目標値）と **`reconcile_team_targets()`**（予想スコアへの前段整合化） | `test_team_targets_are_feasible` と `test_team_targets_match_predicted_score` が通る |
 | 12c | 個人モデル4段（Avail → Minutes → Rates → 整合化） | フルボックススコアが出る。`test_reconciliation_converges` と `test_player_predictions_reconcile_to_team` が通る |
 | 13 | SHAP のグループ集約 | 根拠が4グループで表示される |
 | 14 | 的中率ページ（較正の言い換えを含む） | `accuracy_summary` から表示される |

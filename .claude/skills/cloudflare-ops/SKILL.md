@@ -29,7 +29,7 @@ description: Cloudflare Workers・D1・Pages の実装と運用、GitHub Actions
 | **WAF レートリミット（Free）** | **1ルール / カウント10秒のみ / ブロック10秒のみ / IP のみ** |
 | GitHub Actions | public のため無制限 |
 
-**最初に当たる制約は「D1 の1呼び出し50クエリ」である。** ストレージでも CPU でもない。旧設計のバッチサイズ（一律500行）は9テーブル中6つでこの上限を超えていた。
+**最初に当たる制約は「D1 の1呼び出し50クエリ」である。** ストレージでも CPU でもない。旧設計のバッチサイズ（一律500行）は、書き込み対象14テーブルのうち12でこの上限を超えていた。
 
 **Workers CPU 10ms は制約ではない。** 実測で500行の JSON（141KB）はパース 0.56ms・検証 0.28ms・`batch()` 組立 0.50ms の合計 1.34ms。Zod で3〜4ms と見込まれるが予算内。**バッチサイズは CPU ではなくクエリ数で決める。**
 
@@ -65,7 +65,7 @@ Workers API は日付指定・チーム別・的中率といった動的クエ�
 5. 旧行の非活性化と新行の挿入を**単一 `batch()`** で実行する
 6. UPDATE には必ず `WHERE is_final = 0` を付ける
 7. トークンを用途で分離する（`INGEST_TOKEN` / `FINALIZE_TOKEN`）。2キー方式（`INGEST_TOKEN_NEXT`）で無停止回転できるようにする
-8. 日次の書き込み回数上限を設ける（予測1日2000件）。漏洩時の被害を「全DB汚染」から「1日分」に抑える
+8. 日次の書き込み回数上限を設ける。**`predictions` テーブルへの挿入行数で数え、1日2,000行**とする。子テーブル（`player_predictions` ほか）は親に付随するため別枠で、独立した上限を設けない（子まで同じカウンタで数えると `player_predictions` だけで約2,200行/日に達し、正常な運用が止まる）。目的は漏洩時の被害を「全DB汚染」から「1日分」に抑えることである
 
 **D1 REST API を直接叩く経路を作らない。** REST 直叩きを許すと上記すべてが迂回可能になり、予測の不変性を守る関門が存在しなくなる。`CF_API_TOKEN` はマイグレーション専用で、スコープは対象D1のEditのみに絞る。
 
@@ -141,26 +141,35 @@ wrangler d1 migrations apply bpredict --remote
 | リクエストを跨ぐトランザクションがない | 原子性が必要な操作は単一 `batch()` に入れる |
 | SQL文長 100KB | バッチサイズの上限と併せて考慮する |
 
-**テーブルごとのバッチサイズ**
+**テーブルごとのバッチサイズ**（列数は DDL の**全列数**で数える。実体は `docs/design-detail.md` 3.4）
 
-| テーブル | 列数 | 1文の行数 | 1リクエスト上限 |
+| テーブル | 全列数 | 1文の行数 | 1リクエスト上限 |
 |---|---|---|---|
-| `player_predictions` | 26 | 3 | **120** |
-| `player_game_stats` | 22 | 4 | **160** |
-| `games` / `team_game_stats` | 20 | 5 | **200** |
-| `predictions` | 18 | 5 | **200** |
+| `player_predictions` | 31 | 3 | **120** |
+| `model_versions` | 25 | 4 | **160** |
+| `player_game_stats` | 24 | 4 | **160** |
+| `games` | 23 | 4 | **160** |
+| `team_game_stats` | 22 | 4 | **160** |
+| `predictions` | 19 | 5 | **200** |
 | `prediction_team_targets` | 17 | 5 | **200** |
-| `game_entries` / `team_ratings` | 6–7 | 14–16 | **560–640** |
+| `prediction_results` | 14 | 7 | **280** |
+| `team_games` / `accuracy_summary` | 9 | 11 | **440** |
+| `team_ratings` / `prediction_reasons` | 8 | 12 | **480** |
+| `game_entries` | 6 | 16 | **640** |
+| `prediction_model_bundle` | 4 | 25 | **1,000** |
 
-列数から機械的に算出する関数を `api/src/config/batch-limits.ts` に置き、結果が50クエリ以内であることをテストで検証する。列を1つ増やしたときに静かに超えるのを防ぐ。
+列数から機械的に算出する関数を `api/src/config/batch-limits.ts` に置き、結果が50クエリ以内であることと、**列数が `db/migrations/*.sql` の全列数と一致すること**をテストで検証する（`test_batch_size_within_query_limit` / `test_batch_limits_match_schema`）。列を1つ増やしたときに静かに超えるのを防ぐ。
+
+**`DEFAULT` を持つ列を除いて数えない。** 実装が明示指定に変わった瞬間に上限を超える。上限は最も厳しい側で固定する。
 
 > **`batch()` 内の各文が50クエリ制限にどう計上されるかは公式に記載がない。** 「1文＝1クエリ」という最も厳しい前提で設計し、Phase 0（P0-13）で実測する。**実測前に緩めない。**
 
 **単一 `batch()` に入れるべき操作**
 
 1. 予測の非活性化＋新規挿入
-2. `team_ratings` の期間 DELETE＋INSERT（別リクエストに分かれると、Eloが一時的に消えた状態を特徴量生成とAPIが読む）
+2. `team_ratings` の期間 DELETE＋INSERT（別リクエストに分かれると、Elo が一時的に消えた状態を公開APIが読む）
 3. `model_versions` の切替
+4. freeze（`player_predictions` → `predictions` の順に `is_final` を立てる）
 
 ### 予測データの扱い
 
@@ -174,9 +183,26 @@ INSERT INTO predictions (...) VALUES (...);   -- 同一 batch() で
 
 **凍結の範囲に例外を設けない。** `predictions` だけでなく `player_predictions` / `prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle` にも同じトリガを置く。子テーブルだけ書き換えられるなら不変性の主張が成立しない。
 
+**`is_final` 列を持つのは `predictions` と `player_predictions` の2つだけ。** 残り3つは列を持たず、親を参照するトリガで同時に凍結される。`finalize` はこの2テーブルを**単一 `batch()` で、子 → 親の順に** 0 → 1 にする（親を先に立てると、以後その予測に紐づく子行への書き込みが親参照トリガに拒否されるため、順序が結果を変える）。
+
 ### 読取行数の削減
 
-**バッチは D1 を読まない。** 特徴量生成も学習も推論も、入力は `batch/snapshot/*.parquet` のみとする。「一括エクスポートして読む」経路も作らない。一度でも例外を許すと逐次クエリへの退行を設計で止められなくなる。
+**バッチは D1 を「入力データ」として読まない。** 特徴量生成も学習も推論も、入力は `batch/snapshot/*.parquet` のみとする。「一括エクスポートして読む」経路も作らない。一度でも例外を許すと逐次クエリへの退行を設計で止められなくなる。
+
+**ただし、運用上の読み取りは `/internal/*` の GET で行う。** これは入力データではなく、禁止の対象ではない。
+
+| 用途 | エンドポイント |
+|---|---|
+| backfill の再開判定（取得済み試合ID） | `GET /internal/games/ingested` |
+| 照合対象の確定予測 | `GET /internal/predictions/pending` |
+| 有効モデル一覧（メタのみ。artifact を含まない） | `GET /internal/models/active` |
+| artifact 本体（1本ずつ） | `GET /internal/models/:version/artifact` |
+| 現行モデルの識別子と記録済み評価値 | `GET /internal/metrics/active` |
+| 学習済みモデルの登録 | `POST /internal/models` |
+
+いずれも Bearer 必須、`Cache-Control: no-store`、1リクエストあたり1〜2クエリ。**D1 REST API の直叩きは区分を問わず全面禁止**という線は動かさない。
+
+`artifact_text` を一覧に載せない（有効モデル最大33本 × 最大1.5MB でレスポンスが数十MBになる）。`GET /internal/metrics/active` が返す `cvBrier` は**学習当時のウィンドウの値**であり、採用判定の比較に使わない。
 
 逐次クエリ方式では `games` の全件スキャンを試合ごとに繰り返すため1日150万〜1,450万行に達し、上限（500万行per日）を超える。一括エクスポート方式でも読取枠を消費し、学習が Cloudflare の可用性に依存する。**スナップショットを唯一の入力と決めれば、D1 の読取は公開APIの動的クエリ分だけになる。**
 
@@ -229,9 +255,26 @@ INSERT INTO predictions (...) VALUES (...);   -- 同一 batch() で
 - `workflow_dispatch` を必ず付ける
 - `timeout-minutes` を必ず設定する
 - GitHub Actions の cron は**数十分〜数時間遅延しうる**。遅延しても壊れない設計（tipoff ガード）を前提とする
-- 試合時刻に依存するジョブを固定時刻にしない。当日の最小 `tipoff_at` を基準にスロットを組む
 
-`finalize` は Workers の Cron Trigger（毎時）で実行する。外部アクセスに依存しない純粋な D1 操作であり、スクレイピングの失敗に巻き込まれてはならない。
+**`gameday_update` は「固定 cron 3スロット + 対象の絞り込み」で実現する。**
+
+GitHub Actions の `schedule` は**静的な記述であり、ワークフロー自身が次回の起動時刻を指定する手段がない**。「当日の最小 `tipoff_at` を読んで N 時間前に動的起動する」という方式は実現できない。
+
+```yaml
+schedule:
+  - cron: '0 2,4,7 * * *'   # JST 11:00 / 13:00 / 16:00
+```
+
+1. 固定 cron で1日3スロット起動する。B.LEAGUE の開始時刻は概ね 14:05 / 15:05 / 17:05 / 19:05 に集中するため、このスロットで大半の試合の2〜3時間前を捕捉できる
+2. 各スロットの先頭で当日の試合を読み、**対象を `tipoff_at > now + 30分` の試合に限定する**。すでに開始した試合・開始直前の試合は処理しない
+3. 当日に試合がなければ、スクレイピングを行わずに即座に終了する（外部アクセスを発生させない）
+4. cron 遅延で `tipoff_at` を過ぎていた場合は、Workers 側の tipoff ガードが 409 を返す。**遅延しても壊れない**
+
+スロットを増やせば捕捉率は上がるが、スクレイピング回数とワークフロー実行数が増える。3スロットは、要件5.2 の「取得は必要最小限のページに限る」を満たしたうえで開始時刻の分布を実用上カバーできる最小数である。
+
+**画面の文言に具体時刻を書かない。** エントリー情報の確定タイミングは U-06 / P0-3 で未確定であり、スロット時刻とも一致する保証がない（`docs/design-basic.md` 9章）。
+
+`finalize` は Workers の Cron Trigger（毎時）で実行する。外部アクセスに依存しない純粋な D1 操作であり、スクレイピングの失敗に巻き込まれてはならない。**`predictions` と `player_predictions` の `is_final` を単一 `batch()` で、子 → 親の順に 0 → 1 にする**（親を先に立てると、以後その予測に紐づく子行への書き込みが親参照トリガに拒否される）。
 
 ## シークレット管理
 
@@ -248,7 +291,7 @@ INSERT INTO predictions (...) VALUES (...);   -- 同一 batch() で
 - `/api/v1/health` に `error_message` を含めない
 - `.gitignore` に `.env`、`*.db`、`batch/cache/`、`**/fixtures/**/*.html`、`models/*.pkl` を含める
 - 学習済みモデルは D1 に格納する（Actions の artifact は90日で失効し、別ワークフローから取得できない）
-- **`artifact_text` は1.5MB以下。** D1 の1行上限は2,000,000バイト。`num_leaves=7`・木300〜800本なら 0.27〜0.70MB だが、木2,000本で 1.75MB、`num_leaves=15`・1,500本で 2.56MB（超過）。`num_boost_round` の上限を1,200に置き、登録時にサイズを検査する
+- **`artifact_text` は1.5MB以下。** D1 の1行上限は2,000,000バイト。`num_leaves=7`・木300〜800本なら 0.27〜0.70MB だが、木2,000本で 1.75MB、`num_leaves=15`・1,500本で 2.56MB（超過）。`num_boost_round` の上限を1,200に置き、`POST /internal/models` のアプリ層とDBトリガの両方でサイズを検査する
 
 `D1_DATABASE_ID` は機密ではない（操作には API トークンが別途必要）ため `wrangler.toml` に直書きしてよい。`d1_databases` の `database_id` は必須フィールドで環境変数注入が効かない。
 

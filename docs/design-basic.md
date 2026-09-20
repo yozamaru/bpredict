@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.3** |
+| 版数 | **1.4** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / **v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / **v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行）** |
 | 上位文書 | `docs/requirements.md` |
 | 下位文書 | `docs/design-detail.md` |
 
@@ -67,9 +67,11 @@
 1. **D1 への書き込みは Workers の `/internal/*` 経由に一本化する。** D1 REST API を直接叩く経路は設けない。REST 直叩きを許すと、Zod 検証・認可・「tipoff 経過後は拒否」というガードがすべて迂回可能になり、予測の不変性という中核価値を守る関門が存在しなくなる。
 2. **今日の予測・試合一覧は静的JSONで配信する。** バッチが `web/public/data/*.json` を書き出し、Pages の静的アセットとして配信する。Workers リクエストと D1 読取を消費しない。
 3. **ISR を使わない。** Cloudflare Pages 上の Next.js は ISR が成立しない（要件7章）。
-4. **バッチは D1 から読まない。学習・特徴量生成は自前のスナップショットを参照する。** バッチが取得・正規化したデータは、Workers 経由で D1 に書き込むのと同時に、リポジトリ配下の Parquet スナップショット（`batch/snapshot/`）にも書き出す。特徴量生成と学習はこのスナップショットのみを読む。
+4. **バッチは D1 を「入力データ」として読まない。学習・特徴量生成・推論は自前のスナップショットを参照する。** バッチが取得・正規化したデータは、Workers 経由で D1 に書き込むのと同時に、リポジトリ配下の Parquet スナップショット（`batch/snapshot/`）にも書き出す。特徴量生成・学習・推論はこのスナップショットのみを読む。
 
    **なぜ D1 からの一括読み出し経路を設けないのか。** D1 は「書き込み先」であって「学習データの供給元」ではない。一括エクスポート経路を残すと、(a) 読取行数の上限（500万行per日）を学習が消費する構造が残り、(b) 学習時のデータ取得が Cloudflare の可用性に依存し、(c) 「バッチは D1 を読んでよい」という例外が一度でも許されると、逐次クエリへの退行を設計で止められなくなる。**スナップショットが唯一の学習入力である**と決めれば、この3つが同時に消える。
+
+   **ただし、禁止するのは「入力データとしての読み取り」であって、運用上の読み取りではない。** backfill の再開判定（取得済みID）、結果照合の対象取得、モデル artifact の読み出し、現行モデルの評価値の取得は、**Workers の `/internal/*` に置いた GET 経由**で行う。いずれも1回あたり数行〜数百行で、読取枠にも可用性にも影響しない。これを禁じると再開可能な backfill も月次学習も実装不能になる。**D1 REST API の直叩きは、区分を問わず全面禁止**である（2.4）。
 
    スナップショットは決定論的に再生成でき、D1 の内容と一致することをテストで保証する（8.3）。
 
@@ -156,6 +158,7 @@ batch/snapshot/       学習入力（Parquet）。バッチが書き、バッチ
 ├── player_game_stats.parquet / game_entries.parquet
 ├── clubs.parquet / players.parquet / venues.parquet / seasons.parquet
 ├── club_seasons.parquet / player_seasons.parquet / venue_revisions.parquet
+├── team_ratings.parquet  Elo ほかの日次スナップショット（特徴量が参照する）
 └── MANIFEST.json     各ファイルの行数・SHA256・生成時刻・最新 finished_at
 ```
 
@@ -169,12 +172,22 @@ batch/snapshot/       学習入力（Parquet）。バッチが書き、バッチ
 
 | 項目 | 内容 |
 |---|---|
-| 書き出し | `daily_ingest` のステップ3（正規化直後、D1 書き込みと同一データから） |
+| 書き出し | ファクト・マスタは `daily_ingest` のステップ3（正規化直後、D1 書き込みと同一データから）。`team_ratings` はステップ7（再計算直後） |
 | 形式 | Parquet（列指向・圧縮。CSV よりロードが速く型が保存される） |
 | コミット | リポジトリに含める。生HTMLではなく事実データの構造化結果であるため 4.5.2 に抵触しない |
 | 検証 | `MANIFEST.json` に各ファイルの行数と SHA256 を記録。学習前に照合する |
 | 再現性 | スナップショットは D1 から決定論的に再生成できる（`scripts/rebuild_snapshot.py`）。ただし**これは復旧手段であり、日常の学習経路ではない** |
 | 一致テスト | `test_snapshot_matches_d1`（CI では D1 ローカルに対して実行） |
+
+**`team_ratings` もスナップショットに含める。** `elo_home` / `elo_away` は `team_ratings` の直前スナップショットを参照する特徴量であり、これが無いと特徴量生成が D1 を読まざるをえなくなる。書き込みの向きは次の順序に固定する。
+
+```
+Elo を再計算（入力はスナップショット）
+  → team_ratings.parquet へ書き出し（特徴量生成が読むのはこちら）
+  → 同じ値を /internal/ratings 経由で D1 にも送る（公開APIの表示用）
+```
+
+D1 側は表示のための複製であり、**特徴量生成が D1 の `team_ratings` を読むことはない**。詳細設計 1.4 の「Elo をその場で計算する実装にしない」は引き続き有効で、特徴量関数は必ず書き出し済みのスナップショットを参照する。
 
 スナップショットが破損・欠損した場合、学習を中止して現行モデルを継続使用する（推論は可能。推論に必要な特徴量も同じスナップショットから作るため、欠損時は前回の静的JSONを維持する）。
 
@@ -246,6 +259,8 @@ batch/model/
 
 **チーム目標も制約を満たしていなければならない。** 各項目を独立に生成すると約2%の確率で実行不能な目標（`FT成功数 > FT試投数`）が生まれ、この状態では整合化は原理的に成立しない。TeamRates が「試投数 + 成功率」を出すことで構造的に保証する（3.2）。
 
+**さらに、TeamRates の出力をそのままチーム目標にしない。** TeamRates と Margin / Total は別モデルであり、TeamRates から導出した得点が予想スコアと一致する保証がない。そのまま選手側へ渡すと「選手の合計＝チーム目標」は満たされても「チーム目標＝画面に出る予想スコア」が崩れ、矛盾の位置が一段ずれるだけになる。**予想スコアを正とし、チームの成功率3項目を共通のロジットシフトで寄せる前段を置く**（要件 6.8.5 前段、詳細設計 2.4 `reconcile_team_targets()`）。試投数は動かさない。シフト量は1変数で単調なため `brentq` で一意に解け、反復は不要である。到達不能なら `InfeasibleTargetError` を投げ、当該試合の個人スタッツを破棄する。
+
 **検証方式**: シーズン単位の walk-forward。各 fold で `train = seasons[:i-1]` / `valid（early stopping用） = seasons[i-1]` / `test = seasons[i]` とし、test に一切触れない。ランダムシャッフル分割は禁止。fold 数には上限を設ける（直近5シーズンのみ評価）。設けないとシーズンが増えるたびに学習時間が単調増加する。
 
 **最終モデル**: 各 fold の `best_iteration` の中央値を `num_boost_round` に固定し、early stopping なしで全データを学習する。
@@ -286,7 +301,19 @@ api/
 └── wrangler.toml
 ```
 
-**役割**: 書き込みの関門と、静的JSONで賄えない動的クエリの配信。今日の予測は Pages の静的アセットが担うため、Workers を通らない。
+**役割**: 書き込みの関門と、静的JSONで賄えない動的クエリの配信、そして**バッチが必要とする運用上の読み取り**。今日の予測は Pages の静的アセットが担うため、Workers を通らない。
+
+**内部エンドポイントには GET も置く。** バッチは入力データとして D1 を読まないが（1.2）、運用上どうしても D1 の現在値が要る場面がある。これらを Workers の `/internal/*` に集約し、D1 REST API の直叩きを作らない方針を保つ。
+
+| 用途 | エンドポイント |
+|---|---|
+| backfill の再開判定（取得済み試合ID） | `GET /internal/games/ingested` |
+| 結果照合の対象取得（確定済みで未評価の予測） | `GET /internal/predictions/pending` |
+| 日次推論が使うモデル一式の取得 | `GET /internal/models/active` |
+| 採用判定に使う現行モデルの評価値 | `GET /internal/metrics/active` |
+| 学習済みモデルの登録 | `POST /internal/models` |
+
+いずれも Bearer 必須で、返却行数は数行〜数百行に収まる。**特徴量・学習・推論の入力データをここから取らない。**
 
 **書き込みの関門として必ず行うこと**
 
@@ -441,6 +468,10 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 - **例外は設けない**。表示上の誤り（ラベルの誤字など）が見つかった場合も、過去の行は修正せず、以後の生成ロジックのみを直す
 - 再推論による追加は、親が `is_final = 0` の場合に限り、親の非活性化と同一 `batch()` の中でのみ許される
 
+**freeze は親子をまとめて単一の `batch()` で行う。** `is_final` 列を持つのは `predictions` と `player_predictions` の2つで、残りの子テーブル（`prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle`）は列を持たず、親を参照するトリガによって同時に凍結される。
+
+`batch()` 内の文の順序は **子（`player_predictions`）→ 親（`predictions`）** に固定する。親を先に `is_final = 1` にすると、以後その予測に紐づく子行への書き込みが親参照トリガに拒否されるため、順序が結果を変える。順序を規約として固定し、実装の偶然に委ねない。
+
 ---
 
 ## 4. 処理設計
@@ -451,7 +482,7 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 |---|---|---|
 | `daily_ingest` | 21:00 UTC（06:00 JST） | 前日結果取得、照合、**スナップショット更新**、Elo再計算、推論、静的JSON書き出し |
 | `gameday_update` | **固定 cron 3スロット**（02:00 / 04:00 / 07:00 UTC = 11:00 / 13:00 / 16:00 JST）。各スロットで対象を絞り込む | エントリー取得、再推論、静的JSON更新 |
-| `finalize` | 毎時（Workers Cron Trigger） | 開始時刻を過ぎた予測の freeze |
+| `finalize` | 毎時（Workers Cron Trigger） | 開始時刻を過ぎた予測の freeze（親子を単一 `batch()` で凍結する） |
 | `monthly_train` | 毎月1日 19:00 UTC（= JST 2日04:00） | 全データ再学習、同一ウィンドウで検証（タイムアウト120分。選手モデルは16本あり fold 数を3に制限） |
 | `parser_canary` | 日次 | 日程ページ1枚のみ取得してパース。失敗で Actions を fail |
 | `backfill` | 手動 | 過去シーズンの一括取得（再開可能） |
@@ -467,7 +498,7 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 3. 当日に試合がなければ、スクレイピングを行わずに即座に終了する（外部アクセスを発生させない）
 4. cron 遅延で `tipoff_at` を過ぎていた場合、Workers 側の tipoff ガードが 409 を返す。**遅延しても壊れない**
 
-スロット数を増やすほど捕捉率は上がるが、スクレイピング回数とワークフロー実行数が増える。3スロットは「試合のある日に1日3回まで」という取得ポリシー（要件5.2）と整合する。
+スロット数を増やすほど捕捉率は上がるが、スクレイピング回数とワークフロー実行数が増える。3スロットに抑えるのは、要件5.2 の「取得は必要最小限のページに限る」「1日あたりの総リクエスト数に上限（3,000）を設ける」を満たしたうえで、開始時刻の分布を実用上カバーできる最小のスロット数だからである。
 
 **`finalize` を `daily_ingest` から切り出す。** 旧版では翌朝06:00の `daily_ingest` 内で実行され、試合開始から約11時間 freeze されない状態が毎日生じていた。しかも外部スクレイピングの後段にあるため、429 で中止されると freeze ごと巻き添えになる。freeze は外部アクセスを必要としない純粋な D1 操作なので、独立させる。
 
@@ -485,13 +516,17 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 6. accuracy_summary を洗い替え
 7. Elo・各種レーティングを再計算（対象期間を洗い替え）
 8. 向こう7日間の試合について特徴量を生成（**スナップショットを参照。D1 は読まない**）
-9. 有効なモデルで推論 → predictions 追記（旧行を is_active=0）
+9. 有効なモデル一式を取得（`GET /internal/models/active`）し推論
+   → チーム目標を予想スコアへ整合化 → 選手予測を整合化
+   → predictions / prediction_team_targets / player_predictions を追記（旧行を is_active=0）
 10. SHAP をグループ集約 → prediction_reasons 登録
 11. 静的JSON（today.json ほか）を書き出し、Pages へ反映
 12. ingestion_logs に結果を記録
 ```
 
 **外部アクセスの失敗が内部処理を巻き添えにしないこと。** 429 で中止するのはステップ2のみで、ステップ5〜11（照合・Elo・推論・書き出し）は実行して `PARTIAL` で終わる。旧版は try が処理全体を覆っていたため、前日結果が取れないだけでその日の予測更新が止まっていた。
+
+ステップ9でチーム目標が到達不能（`InfeasibleTargetError`）だった試合は、**チーム予測のみを保存して個人スタッツを破棄し、次の試合へ進む**。ジョブ全体は止めない。
 
 各ステップは冪等とする。
 
@@ -774,7 +809,7 @@ bpredict/
 | **WAF レートリミット（Free）** | **1ルール / カウント期間10秒のみ / ブロック10秒のみ / IP のみ / 対象フィールドは Path と Verified Bot のみ** | `/api/v1/*` に1ルール |
 | GitHub Actions | public のため無制限 | 月 約600分 |
 
-**設計を実際に拘束するのは、ストレージでも CPU でもなく「D1 の1呼び出し50クエリ」である。** 検証の結果、9テーブル中6つが旧設計のバッチサイズ（500行）でこの上限を超えていた。`player_predictions`（26列）は500件で167文を要し、上限の3倍を超える。
+**設計を実際に拘束するのは、ストレージでも CPU でもなく「D1 の1呼び出し50クエリ」である。** DDL から列数を数え直した結果、**書き込み対象14テーブルのうち12**が、旧設計のバッチサイズ（一律500行）でこの上限を超えていた。`player_predictions`（31列）は500件で167文を要し、上限の3倍を超える。列数は DDL の**全列数**（バインドしうる最大）で数える（詳細設計 3.4）。
 
 **Workers CPU 10ms は当初 Critical と判断したが、実測で否定された。** 500行の JSON（141KB）のパース 0.56ms、検証 0.28ms、batch 組立 0.50ms で合計 1.34ms。Zod は手書き検証より数倍遅いため実際は3〜4ms と見込まれるが、それでも予算内に収まる。**バッチサイズは CPU ではなくクエリ数で決める。**
 
@@ -826,8 +861,8 @@ bpredict/
 | freeze | `test_finalize_at_tipoff_boundary`（前後1秒）、`test_internal_predictions_rejects_after_tipoff`、`test_reinference_appends_not_replaces`、`test_cron_delay_simulation` |
 | 冪等性 | `test_daily_ingest_twice_produces_identical_db`（全テーブルのハッシュ一致）、`test_evaluate_is_idempotent`、`test_recompute_ratings_full_rebuild` |
 | 境界・異常系 | ゼロ除算（`possessions` NULL、`fga = 0`、`capacity` NULL）、`POSTPONED`、シーズン跨ぎの `rest_days`、新規参入クラブ、全選手欠場、確率の合計、`"MM:SS"` / `"DNP"` / 全角数字のパース |
-| 整合性 | `test_win_prob_and_score_agree`、`test_win_probs_sum_to_one_after_calibration`、`test_only_one_active_model_per_type`、**`test_player_predictions_reconcile_to_team`**（得点 ±0.5点・その他 ±2%・総出場時間200分）、**`test_player_prediction_identities`**（`FGM = 2FGM + 3FGM`、`PTS = 2FGM×2 + 3FGM×3 + FTM`、`成功数 ≤ 試投数`） |
-| **整合化** | **`test_reconciliation_converges`**（1,500ケースのランダム入力で3回反復後の項目誤差99%点が 2% 以内、得点誤差が ±0.5点以内、制約違反0件）、**`test_reconciliation_no_clipping`**（成功率が `[0,1]` を出ないこと）、**`test_team_targets_are_feasible`**（チーム目標が恒等式と `成功数 ≤ 試投数` を満たすこと）、`test_minutes_sum_to_200` |
+| 整合性 | `test_win_prob_and_score_agree`、`test_win_probs_sum_to_one_after_calibration`、`test_only_one_active_model_per_type`、**`test_player_predictions_reconcile_to_team`**（**チームごとに**得点 ±0.5点・その他 ±2%・総出場時間200分）、**`test_player_prediction_identities`**（`FGM = 2FGM + 3FGM`、`PTS = 2FGM×2 + 3FGM×3 + FTM`、`成功数 ≤ 試投数`） |
+| **整合化** | **`test_reconciliation_converges`**（1,500ケースのランダム入力で3回反復後の項目誤差99%点が 2% 以内、得点誤差が ±0.5点以内、制約違反0件）、**`test_reconciliation_no_clipping`**（成功率が `[0,1]` を出ないこと）、**`test_team_targets_are_feasible`**（チーム目標が恒等式と `成功数 ≤ 試投数` を満たすこと）、**`test_team_targets_match_predicted_score`**（チーム目標の導出得点が予想スコアと ±0.5点以内）、**`test_team_reconcile_raises_on_infeasible`**（到達不能な目標で `InfeasibleTargetError`）、`test_minutes_sum_to_200`（**1チームあたり**200分） |
 | **凍結の網羅** | **`test_player_predictions_frozen_when_parent_final`**、**`test_prediction_reasons_frozen_when_parent_final`**（子テーブルにも例外なくトリガが効くこと） |
 | **スナップショット** | `test_snapshot_matches_d1`（行数と主キー集合の一致）、`test_snapshot_manifest_hashes`、`test_training_reads_no_d1`（学習パスで D1 クライアントが呼ばれないこと） |
 | **無料枠** | **`test_batch_size_within_query_limit`**（各テーブルの `max_rows_per_request` が `floor(100/列数)×40` 以下で、1リクエストの文数が50以下）、**`test_artifact_size_guard`**（1.5MB 超の artifact が拒否されること） |
@@ -853,8 +888,13 @@ bpredict/
 | U-06 | **エントリー情報の公開有無と確定タイミング** | **Phase 0** |
 | U-07 | 1試合あたりの取得ページ数と backfill の所要日数 | Phase 0 |
 | U-08 | 統計データの有償提供の有無（30条の4ただし書の判断材料） | Phase 0 |
+| **U-09** | **静的JSON の全体像** — `today.json` 以外のファイル構成、分割の粒度、スキーマ、更新遅延バナーに必要なメタ項目 | **工程9の着手前** |
 
 U-05 と U-06 は受け入れ基準 A-01 / A-02 の判定条件そのものであり、未決のままでは品質ゲートが機能しない。
+
+**U-06 は画面文言にも波及する。** エントリー情報の確定タイミングが未確定であるため、暫定バッジの説明文からは具体時刻を外し「試合当日の午前中に更新されます」としている（要件 8.4）。P0-3 で確定タイミングが判明したら、`gameday_update` のスロット時刻と突き合わせて文言を具体化する。**判明する前に「〇時ごろ」と書かない。**
+
+**U-09 は工程9（推論と静的JSON書き出し）の前提**である。現在名前が決まっているのは `today.json` のみで、日付別・試合詳細・結果の各画面が読むファイルの構成が決まっていない。推測で埋めず、工程9の着手前に確定させる。
 
 ### 9.1 実装前に実測が必要な項目
 
@@ -862,7 +902,7 @@ U-05 と U-06 は受け入れ基準 A-01 / A-02 の判定条件そのもので�
 
 | # | 項目 | 現在の前提 | 実測で変わりうること |
 |---|---|---|---|
-| P0-11 | 勝率の導出経路 A / B の比較 | 両方実装 | どちらを採用するか |
+| P0-11 | 勝率の導出経路 A / B の比較と、**経路B の σ の実測** | 両方実装。σ は未測定（12〜13点は他リーグからの見当であり定数化しない） | どちらを採用するか。σ の実測値 |
 | P0-12 | LightGBM の実 artifact サイズ | 書式からの推定 0.27〜0.70MB | 1.5MB を超えるなら gzip+base64 の追加 |
 | P0-13 | D1 `batch()` のクエリ計上 | **1文＝1クエリ（最も厳しい）** | 緩ければバッチサイズを上げられる |
 | P0-14 | Next.js 16 の実ビルドファイル数 | 1ルート2ファイル | 多ければ静的生成を3シーズンへ縮小 |

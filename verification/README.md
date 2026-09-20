@@ -4,13 +4,35 @@
 
 設計上の前提を数値で確かめるためのスクリプト。実装前に実行し、結果を設計書へ反映する。
 
+### 設計段階に実行済み（01〜05）
+
 | ファイル | 検証内容 | 依存 |
 |---|---|---|
 | `01_ece_noise_floor.py` | 完全較正下での ECE 分布。採用ゲートの閾値をnに応じて決める | numpy |
 | `02_acceptance_criteria_power.py` | 受け入れ基準とモデル比較の統計的検出力 | numpy |
 | `03_reconciliation_logit.py` | 個人スタッツのチーム整合化アルゴリズムの収束 | numpy, scipy |
-| `04_artifact_size_and_batch_limits.py` | artifact サイズ推定と D1 バッチ上限の算術 | numpy |
-| `05_workers_cpu_budget.mjs` | JSON パース＋検証の CPU コスト | Node のみ |
+| `04_artifact_size_and_batch_limits.py` | artifact サイズ**推定**と D1 バッチ上限の算術 | numpy |
+| `05_workers_cpu_budget.mjs` | JSON パース＋**手書き**検証の CPU コスト | Node のみ |
+
+> `04` の列数は v1.3 時点の値であり、**v1.4 で DDL から数え直した結果と一致しない**
+> （`player_predictions` 26→31 など）。バッチサイズの正は `docs/design-detail.md` 3.4 の表である。
+> `04` は「書式からサイズを推定する手順」の記録として残してある。
+
+### 実機で測る（06〜09）
+
+設計の前提を実測で裏取りするための計測用スクリプト。**結果は [`RESULTS.md`](RESULTS.md) に書く。**
+
+| ファイル | 対応 | 検証内容 | 必要なもの |
+|---|---|---|---|
+| `06_lightgbm_artifact_size.py` | **P0-12** | 設計パラメータで学習し `save_model()` の実バイト数を測る。1.5MB ゲートに収まるか。超える場合の gzip+base64 の実数値も出す | `pip install "lightgbm==4.5.0" "numpy==2.1.3"` |
+| `07_d1_batch_query_count/` | **P0-13** | `batch()` の各文が「50クエリ/呼び出し」にどう数えられるか。文数を増やして失敗点を探る | Cloudflare アカウント、**使い捨ての** D1 と Worker |
+| `08_nextjs_export_file_count.sh` | **P0-14** | 静的書き出しの1ルートあたりファイル数。CI 閾値 18,000 と静的生成範囲の妥当性 | Node 20.9+、`npm`。**リポジトリ外の捨てディレクトリで動く** |
+| `09_zod_validation_cost.mjs` | **P0-15** | 実スキーマ（24列・31列）を Zod で検証する CPU コスト。予算は 10ms | Node、捨てディレクトリに `npm i zod` |
+
+いずれも**本番の資源に触れない**。`07` は計測専用の D1 を新しく作り、済んだら消す。
+`08` は `mktemp -d` で作業するため、リポジトリに `web/` を先に作ってしまうことがない。
+
+P0-11 と P0-16 は実データが要るため、スクリプトは用意していない。工程8で消化する。
 
 ## Phase 0 の実機検証へ送った6項目（P0-11〜P0-16）
 

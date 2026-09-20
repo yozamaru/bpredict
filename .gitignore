@@ -3,6 +3,7 @@
 .env.local
 .dev.vars
 *.pem
+verification/07_d1_batch_query_count/wrangler.toml
 
 # 取得した生HTML（著作権上コミット不可。fixture は合成HTMLのみ）
 batch/cache/

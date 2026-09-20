@@ -1,0 +1,11 @@
+# cp wrangler.toml.example wrangler.toml して database_id を埋める。
+# wrangler.toml は .gitignore していないので、計測が済んだら消すこと。
+name = "d1-batch-probe"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+# ★ 本番の bpredict を指さないこと。計測専用のデータベースを作る。
+[[d1_databases]]
+binding = "DB"
+database_name = "d1-batch-probe"
+database_id = "<wrangler d1 create d1-batch-probe の出力を貼る>"

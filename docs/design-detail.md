@@ -1497,7 +1497,7 @@ def run():
     evaluate_finished_games()                 # GET /internal/predictions/pending → 照合（VOID を除外）
     rebuild_accuracy_summary()
     recompute_ratings(from_date=affected_min_date())   # 入力はスナップショット
-    write_snapshot(tables=["team_ratings"])   # 特徴量が読むのはこちら
+    write_snapshot(tables=["team_ratings"])   # 特徴量が読むのはこちら。MANIFEST も再生成する
     post_ratings()                            # 同じ値を /internal/ratings で D1 にも送る
 
     # 4. 推論（未開始試合のみ）
@@ -2493,12 +2493,12 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 1 | D1 スキーマとマイグレーション（トリガ・CHECK を含む） | `migrations apply` が成功、`test_migrations_apply_cleanly` が通る |
 | 2 | マスタ整備（`seed_master`、`club_source_ids` の対応表） | 旧B1と新リーグのクラブが紐付く |
 | 3 | CI の構築（`ci.yml`、`parser-canary.yml`、ESLint Flat Config） | push でテストが走る。`eslint .` が動く |
-| 4 | Workers API の骨格（`/internal/*` と認証・ガード・バッチサイズ上限） | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` が通る |
+| 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限） | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る |
 | 6 | backfill による過去データ取り込み **＋ スナップショット書き出し** | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
-| 9 | 推論と predictions 登録、静的JSON書き出し | 予測が JSON に出る |
+| 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |
 | 10 | 公開API（動的クエリ） | `/games?date=` `/accuracy` が応答する |
 | 11 | 画面（今日の予測・試合詳細・結果） | 予測と結果が表示される。`out/` のファイル数が18,000以下 |
 | 12 | Margin/Total モデル | 予想スコアが出る。勝率と矛盾しない |

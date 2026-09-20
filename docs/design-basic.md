@@ -175,7 +175,7 @@ batch/snapshot/       学習入力（Parquet）。バッチが書き、バッチ
 | 書き出し | ファクト・マスタは `daily_ingest` のステップ3（正規化直後、D1 書き込みと同一データから）。`team_ratings` はステップ7（再計算直後） |
 | 形式 | Parquet（列指向・圧縮。CSV よりロードが速く型が保存される） |
 | コミット | リポジトリに含める。生HTMLではなく事実データの構造化結果であるため 4.5.2 に抵触しない |
-| 検証 | `MANIFEST.json` に各ファイルの行数と SHA256 を記録。学習前に照合する |
+| 検証 | `MANIFEST.json` に各ファイルの行数と SHA256 を記録。学習前に照合する。**`team_ratings` を書き出した後に MANIFEST を再生成する**（ステップ3の時点の MANIFEST のままだと `test_snapshot_manifest_hashes` が落ちる） |
 | 再現性 | スナップショットは D1 から決定論的に再生成できる（`scripts/rebuild_snapshot.py`）。ただし**これは復旧手段であり、日常の学習経路ではない** |
 | 一致テスト | `test_snapshot_matches_d1`（CI では D1 ローカルに対して実行） |
 
@@ -515,6 +515,7 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 5. 確定予測と実績を照合 → prediction_results 登録（中止・延期は除外）
 6. accuracy_summary を洗い替え
 7. Elo・各種レーティングを再計算（対象期間を洗い替え）
+   → `team_ratings.parquet` を書き出し、`/internal/ratings` で D1 にも送り、MANIFEST を再生成
 8. 向こう7日間の試合について特徴量を生成（**スナップショットを参照。D1 は読まない**）
 9. 有効なモデル一式を取得（`GET /internal/models/active`）し推論
    → チーム目標を予想スコアへ整合化 → 選手予測を整合化

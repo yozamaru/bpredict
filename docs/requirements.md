@@ -943,7 +943,7 @@ Android はネイティブアプリを作らず、PWA によるホーム画面�
 | A-10 | **直近30日間のいずれの1日も** Workers 10万req / D1 読取500万行 / D1 書込10万行 を超えず、**かつ1リクエストあたりの D1 クエリ数が50を超えない** | `/api/v1/health` の日次カウンタ + `test_batch_size_within_query_limit` |
 | A-11 | 予測が表示される全画面で、勝率とスコアの勝敗が矛盾しない | `test_win_prob_and_score_agree` |
 | A-12 | リポジトリの fixtures に実サイト由来の文字列が含まれていない | CI検査 |
-| A-13 | 個人スタッツ予測の合計がチーム予測と一致する（得点 ±0.5点、その他 ±2%、制約違反0件、総出場時間200分） | `test_player_predictions_reconcile_to_team` |
+| A-13 | 個人スタッツ予測の合計がチーム予測と一致する（**ホーム・アウェイそれぞれについて**、得点 ±0.5点、その他 ±2%、制約違反0件、総出場時間**200分／チーム**） | `test_player_predictions_reconcile_to_team` |
 | A-14 | **`next build` 後の `out/` のファイル数が18,000以下である** | CI検査 |
 | A-15 | `FGM = 2FGM + 3FGM`、`PTS = 2FGM×2 + 3FGM×3 + FTM`、`成功数 ≤ 試投数` の恒等式・制約が予測値でも成立する | `test_player_prediction_identities` |
 | A-16 | **チームレベルの目標値が恒等式と制約を満たし、かつ予想スコアと一致する** — `成功数 ≤ 試投数`、`得点 = 2×2FGM + 3×3FGM + FTM`、および**チーム目標の整合化（6.8.5 前段）を経た導出得点が `pred_home_score` / `pred_away_score` と ±0.5点以内で一致する**こと。到達不能な場合は `InfeasibleTargetError` が送出され、個人スタッツが保存されないこと | `test_team_targets_are_feasible` / `test_team_targets_match_predicted_score` / `test_team_reconcile_raises_on_infeasible` |

@@ -11,6 +11,18 @@
 
 数値は生の測定値を書く。「問題なし」とだけ書かない。後から前提を再評価できなくなる。
 
+## リポジトリ設定
+
+測定ではないが、実装着手の前提なのでここに記録する。受け入れ基準 A-08 の判定でこの表を参照する。
+
+| 項目 | 状態 | 日付 | 備考 |
+|---|---|---|---|
+| Workflow permissions を「Read repository contents」既定に | 完了 | 2026-09-21 | 本人が有効化を確認 |
+| Secret scanning | 完了 | 2026-09-21 | 公開リポジトリのため無料。既定で有効の可能性あり |
+| **Push protection** | 完了 | 2026-09-21 | A-08 の判定条件。リリース前に再確認する |
+| Dependabot alerts / security updates | 完了 | 2026-09-21 | — |
+| Dependabot version updates（`.github/dependabot.yml`） | **工程3で実施** | — | 監視対象（`requirements.txt` / `package.json` / ワークフロー）がまだ存在しないため、CI 構築と同時に置く |
+
 ## 取得可否・データ（P0-1〜P0-10）
 
 | # | 項目 | 状態 | 測定日 | 結果 | 設計への反映 |

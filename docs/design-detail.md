@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.5** |
+| 版数 | **1.6** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -1574,24 +1574,75 @@ class RateLimitedClient:
 
 ### 4.4 パーサと値域検証
 
+**入力は HTML の表ではなく、`<script>` 内に埋め込まれた JSON である**（Phase 0 で確認。基本設計 2.1）。
+
 ```python
 class ParseError(Exception):      """必須項目が抽出できない。構造変更の可能性"""
 class ValidationError(Exception): """値域外。当該試合をスキップ"""
 
-def parse_boxscore(html: str) -> BoxScore:
-    ...                               # 必須項目が取れなければ ParseError
+def parse_boxscore(body: str) -> BoxScore:
+    raw = extract_embedded_json(body)     # 取れなければ ParseError
+    rows = [r for r in raw if r["PeriodCategory"] == PERIOD_TOTAL]
+    players = [to_player(r) for r in rows if r["PlayerID"]]        # 選手行
+    teams   = [to_team(r)   for r in rows if not r["PlayerID"]]    # チーム集計行
+    return BoxScore(players=players, teams=teams, ...)
 
 def validate(box: BoxScore, venue: Venue) -> None:
     check(0 <= box.pts <= 250)
-    check(box.fgm <= box.fga)
+    check(box.fg2m <= box.fg2a and box.fg3m <= box.fg3a and box.ftm <= box.fta)
     check(all(0 <= p.minutes <= 60 for p in box.players))
     if box.attendance and venue.capacity:
         check(box.attendance <= venue.capacity * 1.2)
 ```
 
-数値パースは全角数字、カンマ、`"-"`（未出場）、`"MM:SS"` 形式、`"DNP"`、空文字を考慮する。
+#### フィールド対応表（`parser/fields.py`）
+
+**この表にある列だけを抜き出す。** JSON 全体を保存しない（審判名とプレイバイプレイが含まれるため。要件 5.3）。
+
+| DB の列 | サイトのフィールド | 備考 |
+|---|---|---|
+| `player_id` | `PlayerID` | 空文字ならチーム集計行 |
+| `club_id` | `TeamID` | `club_source_ids` で `club_id` に解決する |
+| `started` | `StartingFlg` | |
+| `minutes` | `PlayTime` | **`"MM:SS"` 形式**。分の実数へ変換する |
+| `fg2m` / `fg2a` | `PT2M` / `PT2A` | |
+| `fg3m` / `fg3a` | `PT3M` / `PT3A` | |
+| `ftm` / `fta` | `FTM` / `FTA` | |
+| `oreb` / `dreb` | `RB_OFF` / `RB_DEF` | `RB_TOT` は検算に使い、保存しない |
+| `ast` / `tov` / `stl` / `blk` | `AS` / `TO` / `ST` / `BS` | |
+| `pf` | `FOUL` | |
+| **`fd`** | **`FOULON`** | 被ファウル数 |
+| `plus_minus` | `PLUSMINUS` | 実績のみ。予測しない |
+| `pts` | `Point` | 恒等式の検証に使う |
+| `attendance`（`games`） | `Attendance` | 試合単位。例: 5530 |
+
+**取得しないフィールド**: 審判名（`RefereeNameJ*` ほか。特徴量 #30 は見送り）、プレイバイプレイ（`ActionCD*` `PlayText` `X` `Y`）、シュートチャート座標、`EFF` / `EFG` / `TS` / `USG` / `AST_TO`（導出値なので保存しない）。
+
+`POSS` / `OFFRTG` / `DEFRTG` / `NETRTG` はサイト側にも存在するが、値の入り方が未確認である。**自前計算を正とし**、サイトの値は P0-7（係数 0.44 の妥当性）の突き合わせ材料として使う。
+
+#### 取り込み前に必ず行う3つの正規化
+
+Phase 0 の実地確認で見つかった、放置すると静かに壊れる箇所。
+
+| # | 内容 |
+|---|---|
+| 1 | **`PeriodCategory` で絞る。** 1〜4 がクォーター別、15 / 16 が前後半、**18 が試合通算**。18 以外を取り込むと行数が7倍になり、集計がすべて狂う |
+| 2 | **チーム集計行を選手行から分離する。** 1カテゴリ27件のうち数件は `PlayerID` が空のチーム集計行で、`TeamID` も空の行が含まれる。混ぜると `player_game_stats` と `team_game_stats` の両方が汚染される |
+| 3 | **空文字と 0 を区別する。** 数値フィールドが `0` ではなく `""` で入っていることがある。`int("")` は例外になり、`0` と誤って扱うと「記録なし」が「0回」になる。値域検証の**前に** None へ正規化する |
+
+数値パースは全角数字、カンマ、`"-"`（未出場）、**`"MM:SS"` 形式**、`"DNP"`、**空文字**を考慮する。
 
 `ParseError` が連続3件でジョブを中止し `PARTIAL` で記録する。修正時は**サンプルを取得して合成 fixture に落としてからテストを書く**。本番アクセスで試行錯誤しない。
+
+#### fixture の扱い
+
+fixture は**構造のみを模し、値をダミーに置換した合成データ**とする（要件 4.5.2）。埋め込み JSON を読むようになっても方針は変わらない。
+
+- 実サイトから取得した本文を、生のままコミットしない（HTML でも JSON でも同じ）
+- 選手名・チーム名・ID はダミーに置換する
+- 審判名とプレイバイプレイは fixture にも**含めない**（抽出対象外であることをテストで固定する）
+- `.gitignore` の `**/fixtures/**/*.html` に加え、`**/fixtures/**/*.raw.json` も対象にする
+- CI で fixtures に実サイト由来の文字列が混入していないことを検査する（A-12）
 
 ### 4.5 学習ジョブ
 
@@ -2332,7 +2383,7 @@ def test_deterministic_training():             # 同一入力・同一seedで予
 
 ### 6.6 パーサ
 
-`tests/fixtures/` には**構造のみを模し、値をダミーに置換した合成HTML**を置く。実サイトの文言・記事・画像参照を残さない（要件4.5.2）。CI で実サイト由来文字列の混入を検査する。
+`tests/fixtures/` には**構造のみを模し、値をダミーに置換した合成データ**を置く（埋め込みJSONを含む。4.4）。実サイトの文言・記事・画像参照を残さない（要件4.5.2）。審判名とプレイバイプレイは fixture にも含めない。CI で実サイト由来文字列の混入を検査する。
 
 fixture はスナップショットであるため、定義上サイト構造の変更を検知できない。検知は `parser-canary`（日次、実サイトの日程ページ1枚）が担う。
 

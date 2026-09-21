@@ -466,7 +466,7 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 
 公式サイトに年度別のクラブ一覧ページは存在せず、過去シーズンの正式名称をマスタ系ページから取る経路がない。一方でボックススコアの `TeamNameJ` は**その試合の時点の名称**である（`703` は 2016-17 で `栃木ブレックス`、現在は宇都宮ブレックス）。
 
-したがって `seed_master`（工程2）が投入するのは**恒久マスタと名寄せのみ**とし（`seasons` / `clubs` / `club_source_ids` / `venues` 系）、年度断面である `club_seasons` は backfill（工程6）が試合データから構築する。`name` / `short_name` はともに NOT NULL であり、試合データが入る前には埋められない。
+したがって `seed_master`（工程2）が投入するのは **`seasons` / `clubs` / `club_source_ids` のみ**とし、年度断面である `club_seasons` は backfill（工程6）が試合データから構築する。`name` / `short_name` はともに NOT NULL であり、試合データが入る前には埋められない。
 
 #### 会場マスタも試合データから作る
 

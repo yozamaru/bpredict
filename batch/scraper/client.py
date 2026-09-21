@@ -35,6 +35,10 @@ TERMS_URL = f"{ORIGIN}/site/"
 MAX_REQUESTS_PER_DAY = 3_000
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 30.0
+# A legitimate holder keeps the lock for one request: the 30s transport timeout
+# plus at most 4s of pacing. Waiting past that means the holder is wedged, so fail
+# closed instead of blocking the next job forever.
+LOCK_WAIT_SECONDS = 60.0
 
 
 class ScraperError(Exception):
@@ -262,10 +266,20 @@ class RateLimitedClient:
         except OSError:
             raise StateError("The shared request lock is unavailable.") from None
         with lock_file:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            except OSError:
-                raise StateError("The shared request lock is unavailable.") from None
+            # Bounded, not blocking: an unkillable or wedged holder must not stall
+            # every later job. Real time is used here; the injected clock paces
+            # requests, not lock waits.
+            deadline = time.monotonic() + LOCK_WAIT_SECONDS
+            while True:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise StateError("The shared request lock is held too long.") from None
+                    time.sleep(0.05)
+                except OSError:
+                    raise StateError("The shared request lock is unavailable.") from None
             try:
                 yield
             finally:
@@ -335,7 +349,11 @@ class RateLimitedClient:
                 json.dump(asdict(state), temporary, sort_keys=True, allow_nan=False)
                 temporary.write("\n")
                 temporary.flush()
-                os.fsync(temporary.fileno())
+                # No fsync. os.replace already gives atomicity and immediate
+                # visibility to other processes on this host, which is all this
+                # budget needs. fsync only guards against power loss, and it can
+                # block uninterruptibly when the disk stalls: a hung CI job that
+                # neither SIGKILL nor the job timeout could stop (see ci.yml).
             os.replace(temporary_path, self._state_path)
             temporary_path = None
         except OSError:

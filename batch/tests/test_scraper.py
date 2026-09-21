@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import gzip
 import hashlib
 import io
@@ -474,6 +475,45 @@ def test_separate_instances_never_overlap_transport_or_lose_reservations(tmp_pat
         assert second_future.result(timeout=5)["robots_sha256"] == digest(ROBOTS)
     assert read_state(state_path)["requests"] == 4
     assert len(calls) == 4
+
+
+def test_lock_wait_is_bounded(tmp_path, monkeypatch):
+    """ロック待ちを無制限にしない。
+
+    保持しているプロセスが停止（シグナルで殺せない状態を含む）していると、
+    無制限の flock では次のジョブが無言で待ち続ける。CI で実際に起きた。
+    上限を超えたら StateError で失敗する（fail closed）。
+    """
+    monkeypatch.setattr("batch.scraper.client.LOCK_WAIT_SECONDS", 0.0)
+    state_path = tmp_path / "state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    holder = state_path.with_name(state_path.name + ".lock").open("a+b")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+    clock = Clock()
+    transport = FakeTransport(clock, policy_responses())
+    client = make_client(state_path, clock, transport)
+    try:
+        with pytest.raises(StateError):
+            client.verify_policy()
+    finally:
+        holder.close()
+    assert transport.calls == []
+
+
+def test_state_is_replaced_atomically_without_fsync(tmp_path, monkeypatch):
+    """os.replace の原子性だけで足りる。fsync は呼ばない。
+
+    fsync はディスクが詰まるとシグナルでも中断できない待ちに入る。守るのは
+    電源喪失に対する耐久性だけで、この予算には要らない（詳細設計 4.3）。
+    """
+    calls: list[int] = []
+    monkeypatch.setattr("batch.scraper.client.os.fsync", lambda fd: calls.append(fd))
+    clock = Clock()
+    state_path = tmp_path / "state.json"
+    client = make_client(state_path, clock, FakeTransport(clock, policy_responses()))
+    client.verify_policy()
+    assert read_state(state_path)["requests"] == 2
+    assert calls == []
 
 
 def test_url_helpers_keep_exact_official_parameters():

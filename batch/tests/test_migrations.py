@@ -15,6 +15,7 @@ from conftest import (
     SEED_MODEL,
     SEED_PREDICTION,
     apply_migrations,
+    ddl_statements,
     freeze,
     insert_prediction,
     migration_files,
@@ -37,7 +38,7 @@ def test_migrations_apply_cleanly():
     objects = con.execute(
         "SELECT type, COUNT(*) FROM sqlite_master WHERE sql IS NOT NULL GROUP BY type"
     ).fetchall()
-    assert dict(objects) == {"table": 24, "index": 18, "trigger": 11}
+    assert dict(objects) == {"table": 24, "index": 18, "trigger": 13}
 
     with pytest.raises(sqlite3.OperationalError):
         apply_migrations(con)
@@ -74,7 +75,8 @@ def test_migrations_match_design_doc():
     def schema(scripts: list[str]) -> list[tuple[str, str, str]]:
         con = sqlite3.connect(":memory:")
         for script in scripts:
-            con.executescript(script)
+            for statement in ddl_statements(script):
+                con.execute(statement)
         rows = con.execute(
             "SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL"
             " ORDER BY type, name"
@@ -152,30 +154,35 @@ def test_children_frozen_when_parent_final(db, table, statement):
 @pytest.mark.parametrize(
     "statement",
     [
+        "UPDATE player_predictions SET pred_ast = 9 WHERE prediction_id = ?",
+        "DELETE FROM player_predictions WHERE prediction_id = ?",
         "UPDATE prediction_reasons SET label_ja = 'x' WHERE prediction_id = ?",
         "UPDATE prediction_team_targets SET tgt_ast = 21 WHERE prediction_id = ?",
         "UPDATE prediction_model_bundle SET model_version = 'x' WHERE prediction_id = ?",
     ],
 )
 def test_parent_referencing_children_frozen_by_parent_alone(db, statement):
-    """`is_final` 列を持たない子3つは、親を確定させただけで書き込めなくなること。
+    """子4テーブルすべてが、親を確定させただけで書き込めなくなること。
 
-    この3つは親参照トリガで守られている。したがって freeze の `batch()` で親を先に
-    立てると、以後これらへ書き込めない。文順を子 → 親に固定している根拠である。
+    `player_predictions` は自身の `is_final` が 0 のままでも親参照トリガで守られる。
+    自テーブルの列だけに頼ると、freeze が子への UPDATE を取りこぼしたときに
+    「親は確定済みなのに子は書き換えられる」状態が残る（詳細設計 1.8）。
     """
     seed_minimal(db)
     seed_prediction(db)
     db.execute("UPDATE predictions SET is_final = 1 WHERE id = ?", (SEED_PREDICTION,))
+    assert db.execute(
+        "SELECT is_final FROM player_predictions WHERE prediction_id = ?",
+        (SEED_PREDICTION,),
+    ).fetchone()[0] == 0, "子の is_final は 0 のままであること（前提の確認）"
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(statement, (SEED_PREDICTION,))
 
 
 def test_player_predictions_is_guarded_by_its_own_flag(db):
-    """`player_predictions` は自身の `is_final` で守られていること。
+    """`player_predictions` は自身の `is_final` でも守られていること（二重の守り）。
 
-    親の `is_final` は参照していない（詳細設計 1.8）。したがって freeze では
-    親と子の両方に立てる必要があり、子を取りこぼすと凍結が効かない。
-    この性質は `test_children_frozen_when_parent_final` が freeze 後の状態で担保する。
+    親が未確定でも、子に `is_final = 1` が立っていれば書き換えられない。
     """
     seed_minimal(db)
     seed_prediction(db)
@@ -183,11 +190,43 @@ def test_player_predictions_is_guarded_by_its_own_flag(db):
         "UPDATE player_predictions SET is_final = 1 WHERE prediction_id = ?",
         (SEED_PREDICTION,),
     )
+    assert db.execute(
+        "SELECT is_final FROM predictions WHERE id = ?", (SEED_PREDICTION,)
+    ).fetchone()[0] == 0, "親は未確定であること（前提の確認）"
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
             "UPDATE player_predictions SET pred_ast = 9 WHERE prediction_id = ?",
             (SEED_PREDICTION,),
         )
+
+
+def test_freeze_fails_if_parent_frozen_first(db):
+    """親を先に確定させると、子の `0 → 1` が拒否され freeze 自体が失敗すること。
+
+    順序（子 → 親）は任意ではなく必須である（詳細設計 1.8 / 4.1）。
+    """
+    seed_minimal(db)
+    seed_prediction(db)
+    db.execute("UPDATE predictions SET is_final = 1 WHERE id = ?", (SEED_PREDICTION,))
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "UPDATE player_predictions SET is_final = 1 WHERE prediction_id = ? AND is_final = 0",
+            (SEED_PREDICTION,),
+        )
+
+
+def test_freeze_is_idempotent(db):
+    """2回目の freeze が確定済みの行を UPDATE せず、例外にもならないこと。
+
+    `AND is_final = 0` により0行が一致し、トリガも発火しない。
+    """
+    seed_minimal(db)
+    seed_prediction(db)
+    freeze(db)
+    freeze(db)
+    assert db.execute(
+        "SELECT is_final FROM predictions WHERE id = ?", (SEED_PREDICTION,)
+    ).fetchone()[0] == 1
 
 
 # --- 単一性の担保（部分ユニークインデックス） --------------------------------------

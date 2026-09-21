@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.6** |
+| 版数 | **1.7** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / **v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成）** |
 | 上位文書 | `docs/requirements.md` |
 | 下位文書 | `docs/design-detail.md` |
 
@@ -497,9 +497,11 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 - **例外は設けない**。表示上の誤り（ラベルの誤字など）が見つかった場合も、過去の行は修正せず、以後の生成ロジックのみを直す
 - 再推論による追加は、親が `is_final = 0` の場合に限り、親の非活性化と同一 `batch()` の中でのみ許される
 
-**freeze は親子をまとめて単一の `batch()` で行う。** `is_final` 列を持つのは `predictions` と `player_predictions` の2つで、残りの子テーブル（`prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle`）は列を持たず、親を参照するトリガによって同時に凍結される。
+**freeze は親子をまとめて単一の `batch()` で行う。** `is_final` 列を持つのは `predictions` と `player_predictions` の2つで、残りの子テーブル（`prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle`）は列を持たない。
 
-`batch()` 内の文の順序は **子（`player_predictions`）→ 親（`predictions`）** に固定する。親を先に `is_final = 1` にすると、以後その予測に紐づく子行への書き込みが親参照トリガに拒否されるため、順序が結果を変える。順序を規約として固定し、実装の偶然に委ねない。
+**4つの子テーブルすべてに親参照トリガを置く。** `player_predictions` は自身の `is_final` に加えて親の確定でも守る。自テーブルの列だけで守ると、`finalize` が子への UPDATE を取りこぼした場合に「親は確定済みなのに子は書き換えられる」状態が残り、**トリガが関門として機能しない**。
+
+`batch()` 内の文の順序は **子（`player_predictions`）→ 親（`predictions`）** に固定する。親を先に確定させると子の `0 → 1` が親参照トリガに拒否され、**freeze 自体が失敗する**。順序は任意ではなく必須である。
 
 ---
 
@@ -902,7 +904,7 @@ bpredict/
 | 境界・異常系 | ゼロ除算（`possessions` NULL、`fga = 0`、`capacity` NULL）、`POSTPONED`、シーズン跨ぎの `rest_days`、新規参入クラブ、全選手欠場、確率の合計、`"MM:SS"` / `"DNP"` / 全角数字のパース |
 | 整合性 | `test_win_prob_and_score_agree`、`test_win_probs_sum_to_one_after_calibration`、`test_only_one_active_model_per_type`、**`test_player_predictions_reconcile_to_team`**（**チームごとに**得点 ±0.5点・その他 ±2%・総出場時間200分）、**`test_player_prediction_identities`**（`FGM = 2FGM + 3FGM`、`PTS = 2FGM×2 + 3FGM×3 + FTM`、`成功数 ≤ 試投数`） |
 | **整合化** | **`test_reconciliation_converges`**（1,500ケースのランダム入力で3回反復後の項目誤差99%点が 2% 以内、得点誤差が ±0.5点以内、制約違反0件）、**`test_reconciliation_no_clipping`**（成功率が `[0,1]` を出ないこと）、**`test_team_targets_are_feasible`**（チーム目標が恒等式と `成功数 ≤ 試投数` を満たすこと）、**`test_team_targets_match_predicted_score`**（チーム目標の導出得点が予想スコアと ±0.5点以内）、**`test_team_reconcile_raises_on_infeasible`**（到達不能な目標で `InfeasibleTargetError`）、`test_minutes_sum_to_200`（**1チームあたり**200分） |
-| **凍結の網羅** | **`test_player_predictions_frozen_when_parent_final`**、**`test_prediction_reasons_frozen_when_parent_final`**（子テーブルにも例外なくトリガが効くこと） |
+| **凍結の網羅** | **`test_children_frozen_when_parent_final`**（子4テーブルの UPDATE / DELETE が拒否されること）、**`test_parent_referencing_children_frozen_by_parent_alone`**（`player_predictions` を含む子4つが親の確定だけで守られること）、**`test_freeze_fails_if_parent_frozen_first`**（順序が必須であること）、`test_freeze_transition_is_allowed` |
 | **スナップショット** | `test_snapshot_matches_d1`（行数と主キー集合の一致）、`test_snapshot_manifest_hashes`、`test_training_reads_no_d1`（学習パスで D1 クライアントが呼ばれないこと） |
 | **無料枠** | **`test_batch_size_within_query_limit`**（各テーブルの `max_rows_per_request` が `floor(100/列数)×40` 以下で、1リクエストの文数が50以下）、**`test_artifact_size_guard`**（1.5MB 超の artifact が拒否されること） |
 | 回帰 | `test_golden_predictions_within_tolerance`（代表100試合の予測変化量）、`test_feature_list_diff_is_reported`（欠損率30%超で不採用） |

@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.6** |
+| 版数 | **1.7** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / **v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -642,6 +642,23 @@ BEGIN
   SELECT RAISE(ABORT, 'final player prediction cannot be deleted');
 END;
 
+-- player_predictions は自身の is_final に加えて、親の確定でも守る。
+-- 自テーブルの列だけで守ると、freeze が子への UPDATE を取りこぼした場合に
+-- 「親は確定済みなのに子は書き換えられる」状態が残る。
+CREATE TRIGGER trg_ppred_parent_final_immutable
+BEFORE UPDATE ON player_predictions
+WHEN (SELECT is_final FROM predictions WHERE id = OLD.prediction_id) = 1
+BEGIN
+  SELECT RAISE(ABORT, 'player predictions of a final prediction are immutable');
+END;
+
+CREATE TRIGGER trg_ppred_parent_final_nodelete
+BEFORE DELETE ON player_predictions
+WHEN (SELECT is_final FROM predictions WHERE id = OLD.prediction_id) = 1
+BEGIN
+  SELECT RAISE(ABORT, 'player predictions of a final prediction cannot be deleted');
+END;
+
 -- prediction_reasons は is_final を持たないため、親を参照して判定する
 CREATE TRIGGER trg_reasons_final_immutable
 BEFORE UPDATE ON prediction_reasons
@@ -690,9 +707,27 @@ END;
 
 表示上の誤り（ラベルの誤字など）が見つかった場合も、**過去の行は修正しない**。以後の生成ロジックのみを直す。`is_final = 1` を立てる freeze 操作自体は `predictions` の UPDATE であり、この2つのトリガは `OLD.is_final = 1` を条件にしているため、`0 → 1` の遷移は通る（`1 → 1` は通らない）。
 
-**`is_final` 列を持つのは `predictions` と `player_predictions` の2つだけである。** `prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle` は列を持たず、**親を参照するトリガによって親の凍結と同時に凍結される**。したがって freeze が UPDATE するのはこの2テーブルで、残り3つは何もしなくても凍結される。
+**子テーブルはすべて「親の確定」で凍結される。** `is_final` 列を持つのは `predictions` と `player_predictions` の2つだけだが、**4つの子テーブルすべてに親参照トリガを置く**。したがって freeze が UPDATE するのは `predictions` と `player_predictions` の2つで、残り3つは何もしなくても凍結される。
 
-**freeze の `batch()` 内では、子（`player_predictions`）→ 親（`predictions`）の順に UPDATE する。** `trg_ppred_final_immutable` は自テーブルの `OLD.is_final` しか見ないため子の `0 → 1` はいつでも通るが、親を先に `is_final = 1` にすると、親参照トリガ（`trg_reasons_*` / `trg_team_targets_*` / `trg_bundle_*`）が以後その予測に紐づく子行への書き込みを拒否する。**順序が結果を変えるため、規約として固定し実装の偶然に委ねない。**
+| テーブル | `is_final` 列 | 守るトリガ |
+|---|---|---|
+| `predictions` | あり | `trg_predictions_final_*`（自テーブル参照） |
+| `player_predictions` | あり | `trg_ppred_final_*`（自テーブル参照）**＋ `trg_ppred_parent_final_*`（親参照）** |
+| `prediction_reasons` | なし | `trg_reasons_final_*`（親参照） |
+| `prediction_team_targets` | なし | `trg_team_targets_final_*`（親参照） |
+| `prediction_model_bundle` | なし | `trg_bundle_final_*`（親参照） |
+
+**`player_predictions` にだけ二重にかける理由。** 自テーブルの `is_final` だけで守ると、`finalize` が子への UPDATE を取りこぼした場合に「**親は確定済みなのに子は書き換えられる**」状態が残る。DBトリガは「アプリ層の規律だけに頼らない」ための関門であり、`finalize` の実装ミスで無効化されるなら関門として機能していない。他の3つは列を持たないため、親参照トリガだけで同じ保護になる。
+
+**freeze の `batch()` 内では、子（`player_predictions`）→ 親（`predictions`）の順に UPDATE する。** `trg_ppred_parent_final_*` があるため、**親を先に `is_final = 1` にすると子の `0 → 1` が拒否され、freeze 自体が失敗する**。順序は任意ではなく必須である。
+
+```sql
+-- 単一 batch() 内。この順序で固定する
+UPDATE player_predictions SET is_final = 1 WHERE prediction_id = ? AND is_final = 0;
+UPDATE predictions        SET is_final = 1 WHERE id = ?            AND is_final = 0;
+```
+
+`AND is_final = 0` を付けるのは冪等性のため。2回目の実行では0行が一致し、トリガも発火しない（`test_finalize_is_idempotent`）。
 
 ---
 

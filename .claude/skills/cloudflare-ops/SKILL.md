@@ -185,7 +185,7 @@ INSERT INTO predictions (...) VALUES (...);   -- 同一 batch() で
 
 **凍結の範囲に例外を設けない。** `predictions` だけでなく `player_predictions` / `prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle` にも同じトリガを置く。子テーブルだけ書き換えられるなら不変性の主張が成立しない。
 
-**`is_final` 列を持つのは `predictions` と `player_predictions` の2つだけ。** 残り3つは列を持たず、親を参照するトリガで同時に凍結される。`finalize` はこの2テーブルを**単一 `batch()` で、子 → 親の順に** 0 → 1 にする（親を先に立てると、以後その予測に紐づく子行への書き込みが親参照トリガに拒否されるため、順序が結果を変える）。
+**`is_final` 列を持つのは `predictions` と `player_predictions` の2つだけ**だが、**子4テーブルすべてに親参照トリガを置く**（`player_predictions` は自身の `is_final` と親参照の二重）。`finalize` は列を持つ2テーブルを**単一 `batch()` で、子 → 親の順に** 0 → 1 にする。**親を先に立てると子の `0 → 1` が拒否され freeze 自体が失敗するため、順序は必須である。**
 
 ### 読取行数の削減
 

@@ -31,6 +31,23 @@ BEGIN
   SELECT RAISE(ABORT, 'final player prediction cannot be deleted');
 END;
 
+-- player_predictions は自身の is_final に加えて、親の確定でも守る。
+-- 自テーブルの列だけで守ると、freeze が子への UPDATE を取りこぼした場合に
+-- 「親は確定済みなのに子は書き換えられる」状態が残る。
+CREATE TRIGGER trg_ppred_parent_final_immutable
+BEFORE UPDATE ON player_predictions
+WHEN (SELECT is_final FROM predictions WHERE id = OLD.prediction_id) = 1
+BEGIN
+  SELECT RAISE(ABORT, 'player predictions of a final prediction are immutable');
+END;
+
+CREATE TRIGGER trg_ppred_parent_final_nodelete
+BEFORE DELETE ON player_predictions
+WHEN (SELECT is_final FROM predictions WHERE id = OLD.prediction_id) = 1
+BEGIN
+  SELECT RAISE(ABORT, 'player predictions of a final prediction cannot be deleted');
+END;
+
 -- prediction_reasons は is_final を持たないため、親を参照して判定する
 CREATE TRIGGER trg_reasons_final_immutable
 BEFORE UPDATE ON prediction_reasons

@@ -24,6 +24,40 @@ def apply_migrations(con: sqlite3.Connection) -> None:
         con.executescript(path.read_text(encoding="utf-8"))
 
 
+def split_statements(script: str) -> list[str]:
+    """SQL をステートメントに分割する（トリガ内の `;` を壊さない）。"""
+    out, buf = [], ""
+    for line in script.splitlines(keepends=True):
+        buf += line
+        if sqlite3.complete_statement(buf):
+            if buf.strip():
+                out.append(buf.strip())
+            buf = ""
+    if buf.strip():
+        out.append(buf.strip())
+    return out
+
+
+def _leading_keyword(statement: str) -> str:
+    """先頭のコメント行と空行を飛ばして、最初の実体行を返す。"""
+    for line in statement.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        return stripped.upper()
+    return ""
+
+
+def ddl_statements(script: str) -> list[str]:
+    """CREATE 文だけを返す。
+
+    設計文書には説明用の UPDATE 例が、マイグレーションには先頭のコメントヘッダがある。
+    どちらも素朴な前方一致では取りこぼすため、最初の実体行で判定する。
+    """
+    return [s for s in split_statements(script)
+            if _leading_keyword(s).startswith("CREATE ")]
+
+
 @pytest.fixture
 def db() -> sqlite3.Connection:
     """マイグレーションを適用した in-memory DB。外部キーは有効にする。"""

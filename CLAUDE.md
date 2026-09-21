@@ -85,12 +85,12 @@ API_BASE_URL=http://127.0.0.1:8787 INGEST_TOKEN=dev \
 - 試合開始時刻を過ぎた予測（`is_final = 1`）は**一切更新・削除しない**。DBトリガで禁止されている
 - 再推論は旧行を `is_active = 0` にして新行を `revision + 1` で追加する。UPDATE で上書きしない
 - **非活性化と挿入は必ず単一の `batch()` に入れる**（D1 にはリクエストを跨ぐトランザクションがない）。親（`predictions`）と子（`player_predictions` ほか）の非活性化も同じ `batch()` にまとめる
-- **freeze も親子をまとめて単一の `batch()` で行う。** `is_final` 列を持つのは `predictions` と `player_predictions` の2つで、子を先・親を後の順に UPDATE する（親を先に確定させると、以後その予測に紐づく子行への書き込みがトリガで拒否されるため）
+- **freeze も親子をまとめて単一の `batch()` で行う。** `is_final` 列を持つのは `predictions` と `player_predictions` の2つで、**子を先・親を後の順に UPDATE する。この順序は必須である**（子4テーブルすべてに親参照トリガがあり、親を先に確定させると子の `0 → 1` が拒否されて freeze 自体が失敗する）
 - `/internal/predictions` は `tipoff_at <= now` の試合を 409 で拒否する。このガードを外さない
 - 推論対象は `tipoff_at > now` の試合に限定する
 - 的中率の算出は `is_final = 1` の行のみを使う
 
-**凍結の範囲に例外を設けない。** `predictions` だけでなく `player_predictions` / `prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle` にも同じトリガを置く。根拠やスタッツだけ後から書き換えられるなら、予測の不変性という主張そのものが成立しない。表示上の誤り（ラベルの誤字など）が見つかっても**過去の行は修正せず**、以後の生成ロジックだけを直す。
+**凍結の範囲に例外を設けない。** `predictions` だけでなく `player_predictions` / `prediction_reasons` / `prediction_team_targets` / `prediction_model_bundle` にも同じトリガを置く。根拠やスタッツだけ後から書き換えられるなら、予測の不変性という主張そのものが成立しない。**子4テーブルはすべて親参照トリガで守る**（`player_predictions` は自身の `is_final` と親参照の二重）。自テーブルの列だけに頼ると、freeze が子を取りこぼしたときに関門が消える。表示上の誤り（ラベルの誤字など）が見つかっても**過去の行は修正せず**、以後の生成ロジックだけを直す。
 
 ### 3. D1 への書き込みは Workers 経由に一本化する
 

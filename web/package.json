@@ -10,7 +10,8 @@
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test:tokens": "node scripts/check-contrast.mjs"
+    "test:tokens": "node scripts/check-contrast.mjs",
+    "test:budget": "node scripts/check-js-budget.mjs"
   },
   "dependencies": {
     "next": "^16.3.5",

@@ -141,3 +141,5 @@ jobs:
           n=$(find out -type f | wc -l)
           echo "out/ のファイル数: $n"
           test "$n" -le 18000
+      # 初期JS の予算（gzip 180KB 以下。要件 4.2）。ライブラリを1つ足すと一気に超える
+      - run: npm run test:budget

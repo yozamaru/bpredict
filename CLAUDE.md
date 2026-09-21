@@ -24,6 +24,8 @@ B.LEAGUE PREMIER の試合について、勝敗確率・予想スコア・個人
 | **学習入力** | **Parquet スナップショット（D1 は読まない）** | — | `batch/snapshot/` |
 | CI・定期実行 | GitHub Actions | — | `.github/workflows/` |
 
+**Node のバージョン。** 要件の「Node 20.9+」は **Next.js 16 の下限**である。開発ツールチェーンの下限はこれより高く、`wrangler` は **Node >= 22**、`eslint` は `^20.19 || ^22.13 || >=24` を要求する。**手元と CI をそろえて Node 24 を使う**（`.github/workflows/ci.yml`）。手元が新しいまま CI に古い版を指定すると、ローカルで通って CI だけが落ちる。
+
 **Next.js 16 の非互換に注意する。**
 
 - `params` / `searchParams` は **Promise**。`const { date } = await params`

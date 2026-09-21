@@ -395,7 +395,7 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 | `params` / `searchParams` | **Promise になった。** `const { date } = await params` と書く。同期アクセスは型エラー |
 | `next lint` | **削除された。** ESLint は CLI（`eslint .`）を直接呼ぶ。`next build` はリントを実行しない |
 | ESLint 設定 | Flat Config（`eslint.config.mjs`）。`.eslintrc.json` は使わない |
-| Node.js | 20.9 以上が必須 |
+| Node.js | **Next.js 16 の下限は 20.9。ただし開発ツールチェーンの下限は高く、`wrangler` が >=22、`eslint` が `^20.19 \|\| ^22.13 \|\| >=24` を要求する。手元と CI をそろえて 24 を使う** |
 | TypeScript | 5.1 以上が必須 |
 | Turbopack | 既定のバンドラ。静的出力（`output: 'export'`）との組み合わせを Phase 0（P0-14）で確認する |
 

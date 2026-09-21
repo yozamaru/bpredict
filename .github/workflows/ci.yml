@@ -48,34 +48,16 @@ jobs:
         run: ruff check batch
       - name: mypy
         run: mypy
-      # 一時的な切り分け（工程5）。pytest が Linux でのみ停止し、ログを読めないため、
-      # ステップ名で止まった場所を特定する。判明後に単一ステップへ戻す。
-      - name: pytest-migrations
-        run: pytest batch/tests/test_migrations.py -q -o faulthandler_timeout=60
-      - name: pytest-seed-master
-        run: pytest batch/tests/test_seed_master.py -q -o faulthandler_timeout=60
-      - name: pytest-batch-limits-workflows
-        run: pytest batch/tests/test_batch_limits.py batch/tests/test_workflows.py -q -o faulthandler_timeout=60
-      - name: pytest-parsers
-        run: pytest batch/tests/test_boxscore_parser.py batch/tests/test_schedule_parser.py -q -o faulthandler_timeout=60
-      - name: pytest-canary
-        run: pytest batch/tests/test_parser_canary.py -q -o faulthandler_timeout=60
-      - name: pytest-scraper
-        run: pytest batch/tests/test_scraper.py -q -o faulthandler_timeout=60
-      # 全件を1プロセスで走らせると停止する。SIGABRT で faulthandler の
-      # スタックを出し、ログが読めないので annotation として取り出す。
-      - name: pytest-all
-        run: |
-          set +e
-          PYTHONFAULTHANDLER=1 timeout -s ABRT 240 pytest batch/tests -v > /tmp/pytest.log 2>&1
-          code=$?
-          set -e
-          tail -n 60 /tmp/pytest.log
-          if [ "$code" -ne 0 ]; then
-            grep -nE 'File \"|Thread |Current thread|^batch/tests|Traceback|::' /tmp/pytest.log \
-              | tail -n 30 | sed 's/^/::error::/'
-            exit "$code"
-          fi
+      # pytest が停止したとき、10 分の job timeout まで無言で待たない。
+      # 工程5のブランチで 4 回のうち 2 回、pytest が Linux でのみ停止した
+      # （手元では 373 件が 1.4 秒。ファイル単位に分けた 8 ステップはすべて
+      # 成功し、出力をファイルへ向けた全件実行も成功したため、再現条件は
+      # 特定できていない）。SIGABRT で faulthandler に全スレッドのスタックを
+      # 出させ、効かなければ 30 秒後に強制終了して失敗させる。
+      - name: pytest
+        env:
+          PYTHONFAULTHANDLER: '1'
+        run: timeout -k 30 -s ABRT 300 pytest batch/tests -v
 
   repo:
     runs-on: ubuntu-latest

@@ -48,9 +48,21 @@ jobs:
         run: ruff check batch
       - name: mypy
         run: mypy
-      # 停止したときに 10 分の job timeout まで待たず、全スレッドのスタックを
-      # 出して落ちる。どのテストで止まったかがログに残る（工程5で必要になった）。
-      - name: pytest
+      # 一時的な切り分け（工程5）。pytest が Linux でのみ停止し、ログを読めないため、
+      # ステップ名で止まった場所を特定する。判明後に単一ステップへ戻す。
+      - name: pytest-migrations
+        run: pytest batch/tests/test_migrations.py -q -o faulthandler_timeout=60
+      - name: pytest-seed-master
+        run: pytest batch/tests/test_seed_master.py -q -o faulthandler_timeout=60
+      - name: pytest-batch-limits-workflows
+        run: pytest batch/tests/test_batch_limits.py batch/tests/test_workflows.py -q -o faulthandler_timeout=60
+      - name: pytest-parsers
+        run: pytest batch/tests/test_boxscore_parser.py batch/tests/test_schedule_parser.py -q -o faulthandler_timeout=60
+      - name: pytest-canary
+        run: pytest batch/tests/test_parser_canary.py -q -o faulthandler_timeout=60
+      - name: pytest-scraper
+        run: pytest batch/tests/test_scraper.py -q -o faulthandler_timeout=60
+      - name: pytest-all
         run: pytest batch/tests -v -o faulthandler_timeout=120
 
   repo:

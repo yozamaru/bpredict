@@ -1,0 +1,19 @@
+name = "bpredict-api"
+main = "src/index.ts"
+# workerd の対応範囲を超える日付を書くとローカル実行が起動しない
+# （"This Worker requires compatibility date ... but the newest date supported ..."）。
+# wrangler を上げたときだけ前に進める。
+compatibility_date = "2026-08-22"
+compatibility_flags = ["nodejs_compat"]
+
+# D1_DATABASE_ID は機密ではない（操作には API トークンが別途必要）ため直書きしてよい。
+# `d1_databases` の必須フィールドは環境変数注入が効かない（基本設計 7.4）。
+#
+# database_id は `wrangler d1 create bpredict --location apac` で実物を作った時点で
+# 置き換える。`--local` のマイグレーションと `wrangler dev` はこの値を参照しないため、
+# ローカル開発は実物が無くても動く。
+[[d1_databases]]
+binding = "DB"
+database_name = "bpredict"
+database_id = "00000000-0000-0000-0000-000000000000"   # TODO: 実物を作ったら差し替える
+migrations_dir = "../db/migrations"

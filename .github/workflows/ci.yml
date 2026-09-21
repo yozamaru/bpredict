@@ -80,6 +80,8 @@ jobs:
           cache: npm
           cache-dependency-path: api/package-lock.json
       - run: npm ci
+      # wrangler types の生成物が最新であることを確認する（手で直さない生成物）
+      - run: npx wrangler types && git diff --exit-code worker-configuration.d.ts
       - run: npx tsc --noEmit
       # next lint は Next.js 16 で削除されている。eslint を直接呼ぶ（CLAUDE.md）
       - run: npx eslint .

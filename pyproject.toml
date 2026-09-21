@@ -1,0 +1,36 @@
+# Python 側の lint / 型検査の設定。
+# CLAUDE.md のコマンド: `ruff check batch && mypy batch`
+#
+# バージョンは batch/requirements-dev.txt で `==` 固定する（CLAUDE.md 絶対ルール / 依存の追加）。
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".venv", "verification"]   # verification は Phase 0 の計測用スクリプト
+
+[tool.ruff.lint]
+# 既定（E4/E7/E9/F）に、取り違えが静かなバグになるものだけを足す。
+#   I  = import の並び      B  = よくあるバグ（可変デフォルト引数など）
+#   UP = 古い書き方         SIM = 冗長な分岐
+# 網羅的に有効化はしない。落ちる理由が分からないルールを CI に入れると、
+# 規律ではなく `# noqa` を増やす方向に働く。
+extend-select = ["I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["batch"]
+exclude = "^\\.venv/"
+# 段階的に厳しくする。いまは「型が付いている関数は正しく検査する」水準。
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+# テストは pytest のフィクスチャが絡むため、関数の型注釈を必須にしない。
+module = "batch.tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false

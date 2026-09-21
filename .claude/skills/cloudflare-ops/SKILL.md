@@ -224,9 +224,17 @@ INSERT INTO predictions (...) VALUES (...);   -- 同一 batch() で
 | Python | `ruff` / `mypy` / `pytest batch/tests` |
 | api | `tsc --noEmit` / `eslint .` / vitest / `test_batch_size_within_query_limit` |
 | web | `tsc --noEmit` / **`eslint .`** / `next build` / トークンのコントラスト検証 / **`out/` のファイル数が18,000以下** |
-| リポジトリ | fixtures に実サイト由来文字列がないことの検査 / スナップショットと D1 ローカルの一致検査 |
+| リポジトリ | fixtures に実サイト由来文字列がないことの検査（`scripts/check_fixtures.py`）/ ワークフローの不変条件（`batch/tests/test_workflows.py`）/ スナップショットと D1 ローカルの一致検査 |
 
-**`next lint` を使わない。Next.js 16 で削除されている。** `next build` もリントを実行しない。ESLint は CLI を直接呼び（`eslint .`）、設定は Flat Config（`eslint.config.mjs`）とする。
+**`next lint` を使わない。Next.js 16 で削除されている。** `next build` もリントを実行しない。ESLint は CLI を直接呼び（`eslint .`）、設定は Flat Config（`eslint.config.mjs`）とする。**CI に `next lint` が現れないことをテストで固定する**（コメントでの言及は許す）。
+
+**`api` / `web` のジョブは、ディレクトリができる前から `ci.yml` に書いておく。** `detect` ジョブが `package.json` の有無を出力し、下流が `needs.detect.outputs.*` で分岐する。後から CI に足し忘れることがなくなる。
+
+**`hashFiles()` を job 単位の `if` に書かない。** checkout より前に評価されるためワークスペースが空で、**常に偽になり該当ジョブが永久にスキップされる**。存在判定は checkout 済みのジョブの出力で行う。
+
+**Dependabot の npm は `package.json` ができてから追記する。** 存在しないディレクトリを指定すると Dependabot がエラーを出し続ける。工程3では pip（`/batch`）と github-actions（`/`）のみ登録する。
+
+**依存が無いワークフローを毎日失敗させない。** `parser-canary` は `batch/parser` が無い間スキップする（工程5で有効になる）。毎日赤くすると通知が形骸化し、本当に壊れたときに気づけなくなる。`PARTIAL` を exit 0 で終えないという方針と同じ理由である。
 
 **静的生成は直近5シーズンまで。** Pages の1デプロイ20,000ファイル上限に対し、全10シーズンでは 20,184 ファイル（101%）で超過する。直近5シーズンなら 10,184（51%）。1ルートあたりのファイル数は Next.js のバージョンで変わるため、CI の件数検査を省略しない。
 

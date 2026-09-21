@@ -1,8 +1,12 @@
-# テスト用の依存。バージョンは == で固定する（CLAUDE.md「依存を追加するとき」）。
-# 実行時の依存は batch/requirements.txt に置く（工程5でスクレイパを作るときに追加）。
+# 開発・CI 用の依存。**バージョンは `==` で固定する**（CLAUDE.md「依存を追加するとき」）。
 #
-# Python 3.12 が必須（docs/requirements.md 7章）。
-#   python3.12 -m venv .venv && . .venv/bin/activate
-#   pip install -r batch/requirements-dev.txt
-#   pytest batch/tests -v
+# 実行時の依存（httpx / pandas / LightGBM ほか）は batch/requirements.txt に置く。
+# そちらは工程5で作る。
+#
+# Python 3.12 が必要。Homebrew の Python は PEP 668 により直接 pip できないため、
+# 仮想環境を作って入れる:
+#   python3.12 -m venv .venv && .venv/bin/python -m pip install -r batch/requirements-dev.txt
+
 pytest==8.3.4
+ruff==0.16.8
+mypy==2.3.1

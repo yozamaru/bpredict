@@ -139,7 +139,11 @@ def load_all(seed_dir: pathlib.Path = SEED_DIR) -> tuple[list[Season], list[Club
     return seasons, clubs, source_ids
 
 
-def build_payload(seasons, clubs, source_ids) -> dict:
+def build_payload(
+    seasons: list[Season],
+    clubs: list[Club],
+    source_ids: list[ClubSourceId],
+) -> dict[str, list[dict[str, object]]]:
     """`POST /internal/masters` のボディ。名前付き配列で送る（詳細設計 3.4）。"""
     return {
         "seasons": [

@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from conftest import (
+from batch.tests.conftest import (
     SEED_GAME,
     SEED_MODEL,
     SEED_PREDICTION,
@@ -70,7 +70,7 @@ def test_migrations_match_design_doc():
         encoding="utf-8"
     )
     section = doc[doc.index("## 1. データベース定義") : doc.index("## 2. 特徴量定義")]
-    blocks = re.findall(r"```sql\n(.*?)```", section, re.S)
+    blocks = re.findall(r"```sql\n(.*?)```", section, re.DOTALL)
     assert blocks, "詳細設計1章に sql ブロックが見つからない"
 
     def schema(scripts: list[str]) -> list[tuple[str, str, str]]:

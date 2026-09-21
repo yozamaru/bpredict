@@ -1,0 +1,112 @@
+# push / PR で必ず実行する（基本設計 7.2）。
+#
+# 最重要の test_leakage.py を人間の規律に任せると3ヶ月で形骸化するため、CI で強制する。
+# api / web はディレクトリができた時点で自動的に有効になる（detect ジョブの出力で分岐）。
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# 既定は contents: read。write を与えるのは daily-ingest と gameday-update だけ
+# （CLAUDE.md 絶対ルール4 / 詳細設計 4.1）
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 存在するディレクトリを調べ、下流のジョブの実行可否を決める。
+  # job 単位の `if: hashFiles(...)` は checkout 前に評価され常に偽になるため使えない。
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api: ${{ steps.dirs.outputs.api }}
+      web: ${{ steps.dirs.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: dirs
+        run: |
+          echo "api=$([ -f api/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "web=$([ -f web/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: batch/requirements-dev.txt
+      - run: pip install -r batch/requirements-dev.txt
+      - name: ruff
+        run: ruff check batch
+      - name: mypy
+        run: mypy
+      - name: pytest
+        run: pytest batch/tests -v
+
+  repo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # 取得したレスポンス本文のコミットと、fixtures への実サイト由来文字列の混入を検査する
+      # （受け入れ基準 A-12 / 要件 4.5.2）
+      - name: fixtures に実サイト由来の文字列がないこと
+        run: python scripts/check_fixtures.py
+
+  api:
+    needs: detect
+    if: needs.detect.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.9'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      # next lint は Next.js 16 で削除されている。eslint を直接呼ぶ（CLAUDE.md）
+      - run: npx eslint .
+      - run: npm run test
+
+  web:
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.9'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx eslint .
+      - run: npm run build
+      # Pages の1デプロイ20,000ファイル上限に対する検査（受け入れ基準 A-14）
+      - name: out/ のファイル数が 18,000 以下であること
+        run: |
+          n=$(find out -type f | wc -l)
+          echo "out/ のファイル数: $n"
+          test "$n" -le 18000

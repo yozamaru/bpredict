@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pathlib
 import sqlite3
+from collections.abc import Iterator
 
 import pytest
 
@@ -59,7 +60,7 @@ def ddl_statements(script: str) -> list[str]:
 
 
 @pytest.fixture
-def db() -> sqlite3.Connection:
+def db() -> Iterator[sqlite3.Connection]:
     """マイグレーションを適用した in-memory DB。外部キーは有効にする。"""
     con = sqlite3.connect(":memory:")
     con.execute("PRAGMA foreign_keys = ON")

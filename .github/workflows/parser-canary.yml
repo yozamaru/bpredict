@@ -1,0 +1,44 @@
+# fixture はスナップショットであるため、定義上サイト構造の変更を検知できない。
+# これが唯一の早期検知手段である（基本設計 7.2）。
+#
+# 検査するのは3つ（基本設計 7.2）。
+#   1. 本文から埋め込みJSONが取り出せる
+#   2. 対応表（詳細設計 4.4）の必須フィールドがすべて存在する
+#   3. PeriodCategory に 18（試合通算）が含まれる
+#
+# batch/parser は工程5で作る。それまでは取得を行わずにスキップする
+# （毎日失敗させると通知が形骸化し、本当に壊れたときに気づけなくなる）。
+name: parser-canary
+
+on:
+  schedule:
+    - cron: '0 22 * * *'      # 07:00 JST。cron は UTC で書く（CLAUDE.md）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: batch/requirements-dev.txt
+      - id: guard
+        run: echo "ready=$([ -d batch/parser ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.guard.outputs.ready == 'false'
+        run: echo '::notice::batch/parser がまだない（工程5で作る）。カナリアをスキップする'
+      - if: steps.guard.outputs.ready == 'true'
+        run: pip install -r batch/requirements.txt
+      # 実サイトの日程ページ1枚のみを取得してパースする。失敗で Actions を fail させる
+      - if: steps.guard.outputs.ready == 'true'
+        run: python -m batch.jobs.parser_canary

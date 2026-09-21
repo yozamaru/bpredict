@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.10** |
+| 版数 | **1.11** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / **v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / **v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -2730,8 +2730,8 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 0b | **実機検証**（P0-12 LightGBM サイズ / P0-13 `batch()` クエリ計上 / P0-14 Next.js ビルド / P0-15 Zod コスト） | 設計の前提が数値で裏付けられる。外れた項目は設計を修正してから先へ進む |
 | 1 | D1 スキーマとマイグレーション（トリガ・CHECK を含む） | `migrations apply` が成功、`test_migrations_apply_cleanly` が通る |
 | 2 | マスタ整備。`db/seeds/master/*.csv`（`seasons` 11行 / `clubs` 30行 / `club_source_ids` 30行）と `seed_master` の実装。**事前に列挙できるものに限定する** — `club_seasons` と会場マスタは含めない（1.2 / 4.4） | CSV を in-memory SQLite に適用して、旧B1と新リーグのクラブが `club_source_ids` で紐付くことをテストで確認できる。**D1 への投入は工程4（`POST /internal/masters`）の後**に行う |
-| 3 | CI の構築（`ci.yml`、`parser-canary.yml`、ESLint Flat Config） | push でテストが走る。`eslint .` が動く |
-| 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限） | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。**`POST /internal/masters`（工程2の CSV を投入する）**、`GET /internal/games/ingested`（工程6が使う）、`GET /internal/models/active`（工程9が使う）が応答する |
+| 3 | CI の構築（`ci.yml`、`parser-canary.yml`、`dependabot.yml`、リポジトリ検査）。**api / web のジョブは置くが、該当ディレクトリができた時点で有効になる形にする** | push で `ruff` / `mypy` / `pytest` と fixtures 検査（A-12）が走る。全ワークフローに `permissions: contents: read`・`concurrency`・`timeout-minutes` があり、`next lint` がないことをテストで固定できている。**ESLint（`eslint .`）は最初の TypeScript が入る工程4で有効になる** |
+| 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限）。**ESLint Flat Config（`eslint.config.mjs`）をここで置く** | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。**`POST /internal/masters`（工程2の CSV を投入する）**、`GET /internal/games/ingested`（工程6が使う）、`GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る |
 | 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする（1.2。**着手前に未決事項 U-10 を確定させる**） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る |
@@ -2747,6 +2747,10 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 15 | テーマ・PWA・免責・プライバシーポリシー | 受け入れ基準 A-01〜A-18 をすべて満たす |
 
 工程0で取得できないと判明した項目は、該当する特徴量を無効化して先に進む。工程を止めない。
+
+**工程3の時点ではリントする TypeScript が存在しない。** ESLint の Flat Config は最初の TypeScript が入る工程4（`api/`）で置き、工程11（`web/`）でもう1つ置く。CI 側は工程3で `api` / `web` のジョブを**書いておき**、`detect` ジョブが `package.json` の有無を出力して分岐させる。ディレクトリができた時点で自動的に有効になるため、**後から CI に足し忘れることがない**。
+
+`hashFiles()` を job 単位の `if` に書く方法は使えない。checkout より前に評価されるためワークスペースが空で、常に偽になる。
 
 **工程 12b を 12c より先に置く。** 整合化はチーム側の目標値がなければテストすらできず、目標値が制約を満たしていなければ原理的に成立しない。個人モデルから作ると、整合化の実装時に「目標が実行不能」という問題を個人モデル側の欠陥と誤認する。
 

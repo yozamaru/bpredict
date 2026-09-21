@@ -1,0 +1,17 @@
+# 依存の更新を weekly で受ける（基本設計 7.3）。
+#
+# npm（api / web）は package.json ができた時点で追記する。存在しないディレクトリを
+# 指定すると Dependabot がエラーを出し続けるため、先に書かない。
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /batch
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

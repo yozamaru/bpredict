@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.10** |
+| 版数 | **1.11** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / **v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / **v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定）** |
 | 上位文書 | `docs/requirements.md` |
 | 下位文書 | `docs/design-detail.md` |
 
@@ -825,9 +825,11 @@ bpredict/
 | Python | `ruff` / `mypy` / `pytest batch/tests`（リークテストを含む） |
 | api | `tsc --noEmit` / eslint / vitest（Zod契約、認証、キャッシュヘッダ） |
 | web | `tsc --noEmit` / **`eslint .`（`next lint` は Next.js 16 で削除された）** / `next build` / トークンのコントラスト検証 / **`out/` のファイル数検査（18,000以下）** |
-| リポジトリ | fixtures に実サイト由来文字列がないことの検査 / **スナップショットと D1 ローカルの一致検査** |
+| リポジトリ | fixtures に実サイト由来文字列がないことの検査（`scripts/check_fixtures.py`）/ ワークフローの不変条件（`permissions: contents: read`・`concurrency`・`timeout-minutes`・`next lint` の不在）/ **スナップショットと D1 ローカルの一致検査** |
 
-**`next lint` を使わない。** Next.js 16 で削除されており、`next build` もリントを実行しなくなった。ESLint は CLI を直接呼ぶ（`eslint .`）。設定は Flat Config（`eslint.config.mjs`）とする。`next lint` を CI に書くとコマンドが存在せず失敗するか、将来の互換シムに依存することになる。
+**`next lint` を使わない。** Next.js 16 で削除されており、`next build` もリントを実行しなくなった。ESLint は CLI を直接呼ぶ（`eslint .`）。設定は Flat Config（`eslint.config.mjs`）とする。`next lint` を CI に書くとコマンドが存在せず失敗するか、将来の互換シムに依存することになる。**CI に `next lint` が現れないことをテストで固定する**（コメントでの言及は許す）。
+
+**api / web のジョブは、該当ディレクトリができる前から CI に書いておく。** `detect` ジョブが `package.json` の有無を出力し、下流のジョブがそれで分岐する。ディレクトリができた時点で自動的に有効になるため、後から CI に足し忘れることがない。`hashFiles()` を job 単位の `if` に書く方法は使えない（checkout より前に評価され、ワークスペースが空で常に偽になる）。
 
 `monthly_train` の先頭にもリークテストを置き、失敗したらモデル登録に到達させない。
 
@@ -849,7 +851,7 @@ bpredict/
 | リポジトリ設定 | Workflow permissions を「Read repository contents」既定に |
 | サードパーティ Action | 増やさない。増やす場合はコミットSHAでピン留め |
 | `pull_request_target` | 使用禁止 |
-| Dependabot | pip / npm / github-actions を weekly で登録 |
+| Dependabot | pip / npm / github-actions を weekly で登録。**npm は `api/` `web/` の `package.json` ができた時点で追記する**（存在しないディレクトリを指定すると Dependabot がエラーを出し続ける） |
 | Secret scanning | Push protection を有効化（`git grep` と違い push 時点で止まる） |
 | 依存固定 | `requirements.txt` は `==` 固定、`package-lock.json` をコミットし `npm ci` を使う |
 

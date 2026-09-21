@@ -9,15 +9,15 @@ in-memory SQLite に対して検証する（`docs/design-detail.md` 9章 工程2
 from __future__ import annotations
 
 import csv
+import itertools
 import pathlib
 import re
 import sqlite3
+from collections.abc import Iterator
 
 import pytest
 
-from conftest import apply_migrations
 from batch.jobs.seed_master import (
-    SEED_DIR,
     SeedError,
     build_payload,
     load_all,
@@ -25,6 +25,7 @@ from batch.jobs.seed_master import (
     load_clubs,
     load_seasons,
 )
+from batch.tests.conftest import apply_migrations
 
 EXPECTED_SEASONS = 11          # 2016-17 〜 2026-27
 EXPECTED_CLUBS = 30           # トップリーグに現れた TeamID（verification/RESULTS.md）
@@ -57,7 +58,7 @@ def test_season_ranges_are_ordered_and_disjoint():
     seasons = sorted(load_seasons(), key=lambda s: s.start_date)
     for s in seasons:
         assert s.start_date < s.end_date, s.id
-    for a, b in zip(seasons, seasons[1:]):
+    for a, b in itertools.pairwise(seasons):
         assert a.end_date < b.start_date, f"{a.id} と {b.id} の範囲が重なっている"
 
 
@@ -101,14 +102,14 @@ def test_clubs_include_those_gone_from_premier():
     旧B1の試合データに現れるため、なければ取り込みが FK 違反で落ちる。
     """
     ids = {c.id for c in load_clubs()}
-    assert GONE_FROM_PREMIER <= ids
+    assert ids >= GONE_FROM_PREMIER
 
 
 # --- 実際のスキーマに入るか -----------------------------------------------------
 
 
 @pytest.fixture
-def seeded() -> sqlite3.Connection:
+def seeded() -> Iterator[sqlite3.Connection]:
     con = sqlite3.connect(":memory:")
     con.execute("PRAGMA foreign_keys = ON")
     apply_migrations(con)

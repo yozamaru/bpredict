@@ -17,3 +17,9 @@ binding = "DB"
 database_name = "bpredict"
 database_id = "00000000-0000-0000-0000-000000000000"   # TODO: 実物を作ったら差し替える
 migrations_dir = "../db/migrations"
+
+# freeze は毎時。外部アクセスを必要としない純粋な D1 操作であり、
+# スクレイピングの失敗に巻き込まれてはならない（基本設計 4.1）。
+# cron は UTC で書く（CLAUDE.md 時刻の扱い）。
+[triggers]
+crons = ["0 * * * *"]

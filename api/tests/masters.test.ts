@@ -1,7 +1,7 @@
 import { createExecutionContext, env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { applyMigrations, post, resetMasters, TOKEN } from './helpers';
+import { applyMigrations, post, resetAll, TOKEN } from './helpers';
 
 const season = {
   id: '2026-27-PREMIER',
@@ -24,7 +24,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await resetMasters();
+  await resetAll();
 });
 
 describe('認証（詳細設計 7.2）', () => {
@@ -205,10 +205,36 @@ describe('投入（詳細設計 3.4）', () => {
 });
 
 describe('認証の適用範囲', () => {
-  it('認証を /internal/* に一括で当てていない（未実装のパスは 404 ではなく 401 にしない）', async () => {
-    // トークンは用途で分離されている（finalize は FINALIZE_TOKEN）。
-    // 一括適用のままだと工程4b で足したときに誤って INGEST_TOKEN で通る。
-    const res = await post('/internal/finalize', {}, { token: null });
-    expect(res.status).toBe(404);
+  it('finalize は INGEST_TOKEN では通らない（トークンを用途で分離する）', async () => {
+    // freeze は破壊的操作のため FINALIZE_TOKEN を使う（詳細設計 3.4）。
+    // `/internal/*` に一括適用していると、ここが誤って通ってしまう。
+    const res = await post('/internal/finalize', {}, { token: TOKEN });
+    expect(res.status).toBe(401);
+  });
+
+  it('masters は FINALIZE_TOKEN では通らない', async () => {
+    const res = await post(
+      '/internal/masters',
+      { clubs: [club] },
+      { token: 'finalize-token', envOverride: { FINALIZE_TOKEN: 'finalize-token' } },
+    );
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('SQL の組み立て（CLAUDE.md 絶対ルール4）', () => {
+  it('値は必ず bind される。SQL に見える文字列も literal として保存される', async () => {
+    // 文字列連結で SQL を組んでいれば、ここでテーブルが消えるか構文エラーになる
+    const nasty = "'); DROP TABLE clubs; --";
+    const res = await post('/internal/masters', {
+      clubs: [{ id: 'inj-1', slug: 'inj-1', name: nasty }],
+    });
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare('SELECT name FROM clubs WHERE id = ?')
+      .bind('inj-1').first<{ name: string }>();
+    expect(row?.name).toBe(nasty);
+    // テーブルが残っていること
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM clubs').first<{ n: number }>();
+    expect(n?.n).toBe(1);
   });
 });

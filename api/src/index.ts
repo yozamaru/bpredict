@@ -14,8 +14,13 @@ import { masters, type Env } from './routes/internal/masters';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// 内部エンドポイントは Bearer 必須。2キー方式で無停止回転できる（基本設計 7.4）
-app.use('/internal/*', auth(['INGEST_TOKEN', 'INGEST_TOKEN_NEXT']));
+// 内部エンドポイントは Bearer 必須。2キー方式で無停止回転できる（基本設計 7.4）。
+//
+// **`/internal/*` に一括で当てない。** トークンは用途で分離されており
+// （`/internal/finalize` は `FINALIZE_TOKEN`。破壊的操作のため）、一括適用のままだと
+// 工程4b でエンドポイントを足したときに誤って `INGEST_TOKEN` で通ってしまう。
+// パスごとに明示する。
+app.use('/internal/masters', auth(['INGEST_TOKEN', 'INGEST_TOKEN_NEXT']));
 app.route('/internal/masters', masters);
 
 app.notFound((c) =>

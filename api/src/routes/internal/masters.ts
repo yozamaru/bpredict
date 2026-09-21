@@ -15,7 +15,6 @@ import {
   chunkRows,
   maxRowsPerRequest,
   MAX_QUERIES_PER_REQUEST,
-  statementsFor,
   type TableName,
 } from '../../config/batch-limits';
 import { mastersSchema } from '../../schemas/masters';
@@ -125,13 +124,11 @@ masters.post('/', async (c) => {
           clubs: body.clubs?.length ?? 0,
           clubSourceIds: body.clubSourceIds?.length ?? 0,
         },
+        // 50クエリ上限に対して何文使ったか。無料枠の監視に使う（A-10）
         statements: stmts.length,
-      },
-      meta: {
-        generatedAt: new Date().toISOString(),
         statementBudget: MAX_QUERIES_PER_REQUEST,
-        statementsBySeasons: statementsFor('seasons', body.seasons?.length ?? 0),
       },
+      meta: { generatedAt: new Date().toISOString() },
     },
     200,
     { 'Cache-Control': 'no-store' },

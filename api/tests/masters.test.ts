@@ -203,3 +203,12 @@ describe('投入（詳細設計 3.4）', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('認証の適用範囲', () => {
+  it('認証を /internal/* に一括で当てていない（未実装のパスは 404 ではなく 401 にしない）', async () => {
+    // トークンは用途で分離されている（finalize は FINALIZE_TOKEN）。
+    // 一括適用のままだと工程4b で足したときに誤って INGEST_TOKEN で通る。
+    const res = await post('/internal/finalize', {}, { token: null });
+    expect(res.status).toBe(404);
+  });
+});

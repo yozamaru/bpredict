@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.9** |
+| 版数 | **1.10** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / **v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / **v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -61,6 +61,28 @@ CREATE TABLE seasons (
 ```
 
 `seasons.id` にリーグを含める。旧版の `'2026-27'` 単独では、同一シーズンの PREMIER と ONE を同時に持てず、B.ONE 拡張時に主キー変更＝全ファクトテーブルの FK 移行が必要になる。実データ投入前の今なら修正コストはゼロ。
+
+#### `clubs.slug` は手で決め、改称でも変えない
+
+`slug` は `/teams/[slug]` の識別子である。**`db/seeds/master/clubs.csv` に手で持ち、改称があっても変更しない。**
+
+**機械的に導出しない。** 英語名（`TeamNameE`）の kebab-case が候補だったが、2016-17 の試合で `TeamNameE` が空文字だった実例があり、全クラブで取れる保証がない。さらに改称すると英語名も変わるため、導出した slug は改称のたびに変わり **URL が変わる**。
+
+**改称で変えないのは、`clubs` が恒久エンティティだからである。** 表示名は `club_seasons.name` が持ち、画面にはそれを出す。slug は恒久な識別子に徹する。結果として `703` の slug と現在の表示名（宇都宮ブレックス）が一致しない状態が生じうるが、URL の安定を優先する。
+
+出典が公式サイトではなく運営者の決定であるため、**CSV に決定の根拠を列として残す**。形式は `^[a-z0-9-]{1,40}$`（3.2）に従い、`UNIQUE` 制約で重複を防ぐ。
+
+#### `seasons.start_date` / `end_date` は一度だけ導出して固定する
+
+**出典はそのシーズンの日程一覧（`mon=all`、大会区分で絞らない）から得た試合日の最小・最大。** 1回だけ導出して `db/seeds/master/seasons.csv` に固定し、**実行時には取得しない**（会場の座標と同じ扱い。1.2）。
+
+**大会区分で絞らずに取る。** 取り込むのは `REGULAR` と `PLAYOFF` だけだが、範囲はプレシーズンやオールスターを含む**上位集合**にする。狭いと実在する試合日が404になる一方、広い分には害がない（該当日は「試合がありません」と表示される）。絞る手間を増やしてまで範囲を詰める理由がない。
+
+**公式の「年間スケジュール」ページは出典にならない。** 当季のみを扱い、日付もガント風の描画で、11シーズン分の範囲が取れない（Phase 0 で確認）。
+
+**試合投入後に求める経路は循環する。** `games.season_id REFERENCES seasons(id)` のため seasons が先に必要で、両列は NOT NULL である。
+
+この2列は **URL 空間の有限化**（シーズン範囲外の日付を D1 到達前に404）に使われ、無料枠を守る仕組みの一部である（3.5）。**実際の試合日を必ず含む範囲**でなければならない。狭いと実在する試合日が404になる。
 
 ### 1.2 マスタ（年度断面・履歴）
 
@@ -1327,6 +1349,7 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 
 | メソッド | パス | トークン | 用途 |
 |---|---|---|---|
+| **POST** | **`/internal/masters`** | `INGEST_TOKEN` | マスタの投入（`seasons` / `clubs` / `club_source_ids`） |
 | POST | `/internal/games` `/internal/stats` `/internal/entries` `/internal/ratings` | `INGEST_TOKEN` | ファクトの取り込み |
 | POST | `/internal/predictions` | `INGEST_TOKEN` | 予測の追記（親子をまとめて受ける） |
 | POST | `/internal/finalize` | `FINALIZE_TOKEN`（破壊的操作のため分離） | freeze |
@@ -1337,6 +1360,34 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 | **GET** | **`/internal/games/ingested`** | `INGEST_TOKEN` | backfill の再開判定 |
 | **GET** | **`/internal/predictions/pending`** | `INGEST_TOKEN` | 照合対象の確定予測 |
 | **GET** | **`/internal/metrics/active`** | `INGEST_TOKEN` | 現行モデルの識別子と記録済み評価値 |
+
+#### `POST /internal/masters`
+
+`seed_master`（工程2）が使う唯一の書き込み口である。D1 への書き込みは Workers 経由に一本化されているため（絶対ルール3）、マスタにも口が必要になる。
+
+```jsonc
+// POST /internal/masters
+{
+  "seasons": [
+    { "id": "2026-27-PREMIER", "label": "2026-27", "league": "PREMIER",
+      "startDate": "2026-09-22", "endDate": "2027-05-30" }
+  ],
+  "clubs": [
+    { "id": "703", "slug": "utsunomiya-brex", "name": "宇都宮ブレックス" }
+  ],
+  "clubSourceIds": [
+    { "sourceId": "703", "clubId": "703", "validFrom": "2016-09-01", "note": null }
+  ]
+}
+```
+
+**テーブル名を引数に取る汎用エンドポイントにしない。** 「任意のテーブルへ書ける口」を作ると、Zod 検証・認可・`is_final` 保護という関門の意味が失われる。**名前付きの配列**にし、配列ごとに個別の Zod スキーマを持つ。3つの配列はいずれも省略可とし、与えられたものだけを処理する。
+
+**1リクエストで全件が入る。** `seasons` 11行（5列 → `floor(100/5)=20` 行/文 → 1文）、`clubs` 30行（2文）、`club_source_ids` 30行（2文）で**計5文**。50クエリ上限に対して余裕がある。分割は不要だが、上限の算出は 3.4 の式に従う。
+
+**冪等にする。** `INSERT ... ON CONFLICT DO UPDATE` とし、何度実行しても同じ結果になること。`seed_master` は運用手順（8.1）で2回以上流れうる。
+
+**`club_seasons` と会場マスタはこの口では受けない。** どちらも backfill が試合データから作る（1.2 / 4.4）。ここで受けられるようにすると、事前に列挙できないはずのものを手で入れる経路が残る。
 
 #### 内部 GET を置く理由と射程
 
@@ -2320,6 +2371,11 @@ def test_venue_registered_from_game_data()                  # 未知の StadiumC
 def test_venue_source_keys_resolves_official_code()         # 公式ID → venue_id
 def test_attendance_rate_null_capacity()                    # capacity が NULL でも落ちない
 def test_spectator_restricted_null_when_capacity_missing()  # 通常のホームアドバンテージを使う
+def test_seed_master_is_idempotent()                        # 2回流して同一（ON CONFLICT）
+def test_club_source_ids_resolve_every_top_tier_team()      # 30件すべてが club_id に解決する
+def test_club_slug_format_and_uniqueness()                  # ^[a-z0-9-]{1,40}$ かつ重複なし
+def test_season_range_contains_every_game_date()            # 範囲が実試合日を必ず含む
+def test_masters_endpoint_rejects_unknown_array()           # 汎用テーブル指定を受け付けない
 def test_elo_uses_home_advantage_when_restriction_unknown() # NULL は 0 にしない
 ```
 
@@ -2673,9 +2729,9 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 0 | **Phase 0 の検証**（P0-1〜P0-10）と未決事項 U-01 / U-05 / U-06 の確定 | 取得可否と名称が決まる |
 | 0b | **実機検証**（P0-12 LightGBM サイズ / P0-13 `batch()` クエリ計上 / P0-14 Next.js ビルド / P0-15 Zod コスト） | 設計の前提が数値で裏付けられる。外れた項目は設計を修正してから先へ進む |
 | 1 | D1 スキーマとマイグレーション（トリガ・CHECK を含む） | `migrations apply` が成功、`test_migrations_apply_cleanly` が通る |
-| 2 | マスタ整備（`seed_master`）。**事前に列挙できるものに限定する** — `seasons` / `clubs` / `club_source_ids`。**`club_seasons` と会場マスタは含めない**（1.2 / 4.4） | 旧B1と新リーグのクラブが `club_source_ids` で紐付く。`clubs` は30件（順位表から名称が取れる） |
+| 2 | マスタ整備。`db/seeds/master/*.csv`（`seasons` 11行 / `clubs` 30行 / `club_source_ids` 30行）と `seed_master` の実装。**事前に列挙できるものに限定する** — `club_seasons` と会場マスタは含めない（1.2 / 4.4） | CSV を in-memory SQLite に適用して、旧B1と新リーグのクラブが `club_source_ids` で紐付くことをテストで確認できる。**D1 への投入は工程4（`POST /internal/masters`）の後**に行う |
 | 3 | CI の構築（`ci.yml`、`parser-canary.yml`、ESLint Flat Config） | push でテストが走る。`eslint .` が動く |
-| 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限） | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
+| 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限） | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。**`POST /internal/masters`（工程2の CSV を投入する）**、`GET /internal/games/ingested`（工程6が使う）、`GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る |
 | 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする（1.2。**着手前に未決事項 U-10 を確定させる**） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る |

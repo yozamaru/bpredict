@@ -1,5 +1,5 @@
 // **表示確認用の合成データ。** 実際の予測ではなく、選手名・クラブ名も架空である。
-import type { PlayerView, ReasonView } from '@/lib/view';
+import { derive, type PlayerView, type ReasonView } from '@/lib/view';
 
 export const SAMPLE_REASON_SUMMARY =
   'ホームのチーム力が上回っていること、アウェイが2連戦の2戦目で疲労していることが、この予測の主な理由です。';
@@ -11,13 +11,14 @@ export const SAMPLE_REASONS: ReasonView[] = [
   { label: '開催会場', value: '代替アリーナ', favors: 'AWAY', strength: 1 },
 ];
 
+/** 11a では fixture がサーバの役をする。導出値はここで作り、画面では計算しない。 */
 function player(
   playerId: string,
   name: string,
   position: PlayerView['position'],
-  overrides: Partial<PlayerView>,
+  overrides: Partial<Omit<PlayerView, 'derived'>>,
 ): PlayerView {
-  return {
+  const source: Omit<PlayerView, 'derived'> = {
     playerId,
     name,
     position,
@@ -40,6 +41,7 @@ function player(
     err: { minutes: 5.8, pts: 4.8, reb: 2.1, ast: 1.5 },
     ...overrides,
   };
+  return { ...source, derived: derive(source) };
 }
 
 export const SAMPLE_PLAYERS: PlayerView[] = [

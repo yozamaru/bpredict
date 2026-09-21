@@ -79,27 +79,48 @@ export type PlayerView = {
   fd: number;
   /** 誤差の目安は主要4項目のみ（要件 6.8.6） */
   err: { minutes: number; pts: number; reb: number; ast: number };
+  /**
+   * 導出値。**サーバが導出した値をそのまま表示する**（ui-implementation スキル）。
+   * クライアントで計算すると実装ごとにずれる。11b では API の
+   * `summary` / `box`（詳細設計 3.3）がこの位置に入る。
+   * `pct` が null は「試投数が閾値未満で率を出さない」を意味する。
+   */
+  derived: {
+    pts: number;
+    reb: number;
+    fg: { m: number; a: number; pct: number | null };
+    fg2: { m: number; a: number; pct: number | null };
+    fg3: { m: number; a: number; pct: number | null };
+    ft: { m: number; a: number; pct: number | null };
+    efgPct: number | null;
+  };
 };
 
 /** 試投数が閾値未満なら率を出さない（詳細設計 3.3 の閾値表） */
 export const PCT_THRESHOLD = { fg: 4, split: 3, ft: 3 } as const;
 
-export function derive(player: PlayerView) {
-  const fg2m = player.fg2Pct * player.fg2a;
-  const fg3m = player.fg3Pct * player.fg3a;
-  const ftm = player.ftPct * player.fta;
-  const fga = player.fg2a + player.fg3a;
+/**
+ * 導出の規則。**画面からは呼ばない。** 11a では fixture（サーバ役）が使い、
+ * 11b では API が同じ導出を行う。恒等式は要件 6.8.2 にある。
+ */
+export function derive(
+  source: Omit<PlayerView, 'derived'>,
+): PlayerView['derived'] {
+  const fg2m = source.fg2Pct * source.fg2a;
+  const fg3m = source.fg3Pct * source.fg3a;
+  const ftm = source.ftPct * source.fta;
+  const fga = source.fg2a + source.fg3a;
   const fgm = fg2m + fg3m;
+  const show = (attempted: number, threshold: number, pct: number) =>
+    attempted >= threshold ? pct : null;
   return {
-    fg2m,
-    fg3m,
-    ftm,
-    fga,
-    fgm,
-    // 得点は恒等式で導出する。独立に予測しない（要件 6.8.2）
+    // 得点は恒等式で導出する。独立に予測しない
     pts: fg2m * 2 + fg3m * 3 + ftm,
-    reb: player.oreb + player.dreb,
-    fgPct: fga >= PCT_THRESHOLD.fg ? fgm / fga : null,
-    efgPct: fga >= PCT_THRESHOLD.fg ? (fgm + 0.5 * fg3m) / fga : null,
+    reb: source.oreb + source.dreb,
+    fg: { m: fgm, a: fga, pct: show(fga, PCT_THRESHOLD.fg, fga > 0 ? fgm / fga : 0) },
+    fg2: { m: fg2m, a: source.fg2a, pct: show(source.fg2a, PCT_THRESHOLD.split, source.fg2Pct) },
+    fg3: { m: fg3m, a: source.fg3a, pct: show(source.fg3a, PCT_THRESHOLD.split, source.fg3Pct) },
+    ft: { m: ftm, a: source.fta, pct: show(source.fta, PCT_THRESHOLD.ft, source.ftPct) },
+    efgPct: show(fga, PCT_THRESHOLD.fg, fga > 0 ? (fgm + 0.5 * fg3m) / fga : 0),
   };
 }

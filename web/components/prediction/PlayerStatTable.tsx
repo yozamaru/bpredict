@@ -1,11 +1,17 @@
-import { derive, PCT_THRESHOLD, type PlayerView } from '@/lib/view';
+import type { PlayerView } from '@/lib/view';
 
-/** 率は**必ず分数と併記する**。単独で `48.9%` と出さない（要件 8.3） */
-function Shooting({ made, attempted, pct }: { made: number; attempted: number; pct: number | null }) {
+/**
+ * 率は**必ず分数と併記する**。単独で `48.9%` と出さない（要件 8.3）。
+ * `pct` が null なら試投数が閾値未満で、率を出さず分数だけにする。
+ * 閾値の判定はサーバ側（11a では fixture）で済んでいる。
+ */
+function Shooting({ value }: { value: { m: number; a: number; pct: number | null } }) {
   return (
     <span>
-      {made.toFixed(1)} / {attempted.toFixed(1)}
-      {pct !== null && <span className="text-text-2"> （{(pct * 100).toFixed(1)}%）</span>}
+      {value.m.toFixed(1)} / {value.a.toFixed(1)}
+      {value.pct !== null && (
+        <span className="text-text-2"> （{(value.pct * 100).toFixed(1)}%）</span>
+      )}
     </span>
   );
 }
@@ -36,7 +42,8 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
       </p>
       <ul className="mt-2 flex flex-col gap-1.5">
         {shown.map((player) => {
-          const d = derive(player);
+          // 導出はサーバが済ませている。画面では計算しない（ui-implementation スキル）
+          const d = player.derived;
           return (
             <li key={player.playerId} className="rounded-xl border border-border bg-surface">
               <details>
@@ -59,28 +66,16 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
                     {d.pts.toFixed(1)} <span className="text-text-2">±{player.err.pts.toFixed(1)}</span>
                   </Row>
                   <Row label="FG">
-                    <Shooting made={d.fgm} attempted={d.fga} pct={d.fgPct} />
+                    <Shooting value={d.fg} />
                   </Row>
                   <Row label="　2P">
-                    <Shooting
-                      made={d.fg2m}
-                      attempted={player.fg2a}
-                      pct={player.fg2a >= PCT_THRESHOLD.split ? player.fg2Pct : null}
-                    />
+                    <Shooting value={d.fg2} />
                   </Row>
                   <Row label="　3P">
-                    <Shooting
-                      made={d.fg3m}
-                      attempted={player.fg3a}
-                      pct={player.fg3a >= PCT_THRESHOLD.split ? player.fg3Pct : null}
-                    />
+                    <Shooting value={d.fg3} />
                   </Row>
                   <Row label="FT">
-                    <Shooting
-                      made={d.ftm}
-                      attempted={player.fta}
-                      pct={player.fta >= PCT_THRESHOLD.ft ? player.ftPct : null}
-                    />
+                    <Shooting value={d.ft} />
                   </Row>
                   <Row label="リバウンド">
                     {d.reb.toFixed(1)} <span className="text-text-2">±{player.err.reb.toFixed(1)}</span>
@@ -109,6 +104,10 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
       {/* ST / BS は MAE が平均値と同水準になる。隠さずに書く（要件 6.8.6） */}
       <p className="mt-2 text-[11px] leading-relaxed text-text-3">
         スティールとブロックは1試合あたりの回数が少なく、予測はその選手の平均に近い値になります。
+      </p>
+      {/* 固定注記。**省略しない**（ui-implementation スキル / 要件 4.5.4） */}
+      <p className="mt-1 text-[11px] leading-relaxed text-text-3">
+        個人予測は過去の公式記録から算出した統計的推定値であり、選手の能力や評価を示すものではありません。
       </p>
     </section>
   );

@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.11** |
+| 版数 | **1.12** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / **v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / **v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -2572,7 +2572,7 @@ fixture はスナップショットであるため、定義上サイト構造の
 
 | 対象 | 内容 |
 |---|---|
-| API | Zod 契約、Bearer なしで401、tipoff 経過後に409、キャッシュヘッダ、入力検証で400 |
+| API | Zod 契約、Bearer なしで401、tipoff 経過後に409、キャッシュヘッダ、入力検証で400。**テストは Workers ランタイム（`@cloudflare/vitest-pool-workers`）で走らせる** — `crypto.subtle.timingSafeEqual` と D1 の `batch()` は Workers の API であり Node 上では検証できない。スキーマは `readD1Migrations('../db/migrations')` で読み、テスト側に DDL を書き写さない |
 | トークン | コントラスト比 4.5:1 以上の**単体テスト**（目視では見落とす） |
 | E2E | `test_theme_persists_across_reload`、`test_no_horizontal_scroll_at_375px`、`test_disclaimer_reachable_from_every_page` |
 
@@ -2729,9 +2729,10 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 0 | **Phase 0 の検証**（P0-1〜P0-10）と未決事項 U-01 / U-05 / U-06 の確定 | 取得可否と名称が決まる |
 | 0b | **実機検証**（P0-12 LightGBM サイズ / P0-13 `batch()` クエリ計上 / P0-14 Next.js ビルド / P0-15 Zod コスト） | 設計の前提が数値で裏付けられる。外れた項目は設計を修正してから先へ進む |
 | 1 | D1 スキーマとマイグレーション（トリガ・CHECK を含む） | `migrations apply` が成功、`test_migrations_apply_cleanly` が通る |
-| 2 | マスタ整備。`db/seeds/master/*.csv`（`seasons` 11行 / `clubs` 30行 / `club_source_ids` 30行）と `seed_master` の実装。**事前に列挙できるものに限定する** — `club_seasons` と会場マスタは含めない（1.2 / 4.4） | CSV を in-memory SQLite に適用して、旧B1と新リーグのクラブが `club_source_ids` で紐付くことをテストで確認できる。**D1 への投入は工程4（`POST /internal/masters`）の後**に行う |
+| 2 | マスタ整備。`db/seeds/master/*.csv`（`seasons` 11行 / `clubs` 30行 / `club_source_ids` 30行）と `seed_master` の実装。**事前に列挙できるものに限定する** — `club_seasons` と会場マスタは含めない（1.2 / 4.4） | CSV を in-memory SQLite に適用して、旧B1と新リーグのクラブが `club_source_ids` で紐付くことをテストで確認できる。**D1 への投入は工程4b（`POST /internal/masters`）で完了した** — ローカル D1 に 11 / 30 / 30 行が入り、公式ID30件すべてが `club_id` に解決し、2回流しても行数が増えないことを実機で確認済み |
 | 3 | CI の構築（`ci.yml`、`parser-canary.yml`、`dependabot.yml`、リポジトリ検査）。**api / web のジョブは置くが、該当ディレクトリができた時点で有効になる形にする** | push で `ruff` / `mypy` / `pytest` と fixtures 検査（A-12）が走る。全ワークフローに `permissions: contents: read`・`concurrency`・`timeout-minutes` があり、`next lint` がないことをテストで固定できている。**ESLint（`eslint .`）は最初の TypeScript が入る工程4で有効になる** |
-| 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限）。**ESLint Flat Config（`eslint.config.mjs`）をここで置く** | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。**`POST /internal/masters`（工程2の CSV を投入する）**、`GET /internal/games/ingested`（工程6が使う）、`GET /internal/models/active`（工程9が使う）が応答する |
+| 4a | **Workers API の土台と `POST /internal/masters`。** Hono / Zod / vitest（Workers ランタイム）/ ESLint Flat Config / `wrangler.toml` / `batch-limits.ts` / Bearer 認証（2キー方式・定数時間比較） | Bearer なしで401、汎用テーブル指定で400、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`POST /internal/masters` がローカル D1 にマスタを投入でき、2回流しても行数が増えない |
+| 4b | 残りの `/internal/*`（`predictions` / `finalize` / `evaluate` / `summary` / `log` / `ratings` / `games` / `stats` / `entries` / `models` と GET 群） | tipoff 経過後に409、freeze が子 → 親の順で通る、`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る |
 | 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする（1.2。**着手前に未決事項 U-10 を確定させる**） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る |

@@ -150,12 +150,13 @@ wrangler d1 migrations apply bpredict --remote
 | `player_predictions` | 31 | 3 | **120** |
 | `model_versions` | 25 | 4 | **160** |
 | `player_game_stats` | 24 | 4 | **160** |
-| `games` | 23 | 4 | **160** |
+| `games` | 24 | 4 | **160** |
 | `team_game_stats` | 22 | 4 | **160** |
 | `predictions` | 19 | 5 | **200** |
 | `prediction_team_targets` | 17 | 5 | **200** |
 | `prediction_results` | 14 | 7 | **280** |
-| `team_games` / `accuracy_summary` | 9 | 11 | **440** |
+| `accuracy_summary` | 9 | 11 | **440** |
+| `team_games` | 10 | 10 | **400** |
 | `team_ratings` / `prediction_reasons` | 8 | 12 | **480** |
 | `game_entries` | 6 | 16 | **640** |
 | `prediction_model_bundle` | 4 | 25 | **1,000** |

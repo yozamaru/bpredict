@@ -91,9 +91,9 @@ def seed_minimal(con: sqlite3.Connection) -> None:
     )
     con.execute("INSERT INTO players (id, name) VALUES (?,?)", ("p-0001", "架空 選手"))
     con.execute(
-        "INSERT INTO games (id, season_id, league, game_date, tipoff_at,"
-        " home_club_id, away_club_id, status) VALUES (?,?,?,?,?,?,?,?)",
-        (SEED_GAME, SEED_SEASON, "PREMIER", "2026-09-22",
+        "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+        " home_club_id, away_club_id, status) VALUES (?,?,?,?,?,?,?,?,?)",
+        (SEED_GAME, SEED_SEASON, "PREMIER", "REGULAR", "2026-09-22",
          "2026-09-22T10:05:00Z", "c-home", "c-away", "SCHEDULED"),
     )
     con.execute(
@@ -102,6 +102,21 @@ def seed_minimal(con: sqlite3.Connection) -> None:
         " VALUES (?,?,?,?,?,?,?,?,?)",
         (SEED_MODEL, "WINNER", "lightgbm", "2026-09-01T00:00:00Z", 6120,
          "2016-17..2025-26", "2024-25..2025-26", "{}", '["elo_diff"]'),
+    )
+
+
+def seed_team_games(con: sqlite3.Connection, competition: str = "REGULAR") -> None:
+    """対象試合のチーム視点行を両チーム分入れる。
+
+    `competition` は `games` 側と一致させる（`test_team_games_competition_matches_games`）。
+    """
+    con.executemany(
+        "INSERT INTO team_games (game_id, club_id, opponent_id, season_id, game_date,"
+        " is_home, competition) VALUES (?,?,?,?,?,?,?)",
+        [
+            (SEED_GAME, "c-home", "c-away", SEED_SEASON, "2026-09-22", 1, competition),
+            (SEED_GAME, "c-away", "c-home", SEED_SEASON, "2026-09-22", 0, competition),
+        ],
     )
 
 

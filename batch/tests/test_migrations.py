@@ -21,6 +21,7 @@ from conftest import (
     migration_files,
     seed_minimal,
     seed_prediction,
+    seed_team_games,
 )
 
 # --- マイグレーションそのもの -----------------------------------------------------
@@ -403,17 +404,17 @@ def test_games_spectator_restricted_allows_null(db):
     """判定不能を NULL で表せること（v1.5 の修正）。2 のような値は拒否する。"""
     seed_minimal(db)
     db.execute(
-        "INSERT INTO games (id, season_id, league, game_date, tipoff_at, home_club_id,"
-        " away_club_id, status, spectator_restricted) VALUES"
-        " ('g-null','2026-27-PREMIER','PREMIER','2026-09-23','2026-09-23T10:05:00Z',"
-        " 'c-home','c-away','SCHEDULED', NULL)"
+        "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+        " home_club_id, away_club_id, status, spectator_restricted) VALUES"
+        " ('g-null','2026-27-PREMIER','PREMIER','REGULAR','2026-09-23',"
+        " '2026-09-23T10:05:00Z','c-home','c-away','SCHEDULED', NULL)"
     )
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO games (id, season_id, league, game_date, tipoff_at, home_club_id,"
-            " away_club_id, status, spectator_restricted) VALUES"
-            " ('g-bad','2026-27-PREMIER','PREMIER','2026-09-24','2026-09-24T10:05:00Z',"
-            " 'c-home','c-away','SCHEDULED', 2)"
+            "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+            " home_club_id, away_club_id, status, spectator_restricted) VALUES"
+            " ('g-bad','2026-27-PREMIER','PREMIER','REGULAR','2026-09-24',"
+            " '2026-09-24T10:05:00Z','c-home','c-away','SCHEDULED', 2)"
         )
 
 
@@ -421,10 +422,10 @@ def test_games_rejects_same_club_on_both_sides(db):
     seed_minimal(db)
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO games (id, season_id, league, game_date, tipoff_at, home_club_id,"
-            " away_club_id, status) VALUES"
-            " ('g-same','2026-27-PREMIER','PREMIER','2026-09-25','2026-09-25T10:05:00Z',"
-            " 'c-home','c-home','SCHEDULED')"
+            "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+            " home_club_id, away_club_id, status) VALUES"
+            " ('g-same','2026-27-PREMIER','PREMIER','REGULAR','2026-09-25',"
+            " '2026-09-25T10:05:00Z','c-home','c-home','SCHEDULED')"
         )
 
 
@@ -432,11 +433,73 @@ def test_games_rejects_same_club_on_both_sides(db):
 def test_games_accepts_all_documented_statuses(db, status):
     seed_minimal(db)
     db.execute(
-        "INSERT INTO games (id, season_id, league, game_date, tipoff_at, home_club_id,"
-        " away_club_id, status) VALUES (?,?,?,?,?,?,?,?)",
-        (f"g-{status}", "2026-27-PREMIER", "PREMIER", "2026-09-26",
+        "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+        " home_club_id, away_club_id, status) VALUES (?,?,?,?,?,?,?,?,?)",
+        (f"g-{status}", "2026-27-PREMIER", "PREMIER", "REGULAR", "2026-09-26",
          "2026-09-26T10:05:00Z", "c-home", "c-away", status),
     )
+
+
+@pytest.mark.parametrize("competition", ["REGULAR", "PLAYOFF"])
+def test_games_accepts_both_documented_competitions(db, competition):
+    """取り込む2区分がそのまま入ること（要件 5.3）。"""
+    seed_minimal(db)
+    db.execute(
+        "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+        " home_club_id, away_club_id, status) VALUES (?,?,?,?,?,?,?,?,?)",
+        (f"g-{competition}", "2026-27-PREMIER", "PREMIER", competition, "2026-09-27",
+         "2026-09-27T10:05:00Z", "c-home", "c-away", "SCHEDULED"),
+    )
+
+
+@pytest.mark.parametrize("competition", ["ALLSTAR", "PRESEASON", "REGULAR_SEASON", "", "regular"])
+def test_games_competition_rejects_values_outside_scope(db, competition):
+    """取り込み対象外の区分が DB に入らないこと。
+
+    オールスターを取り込むと Elo が壊れる（選抜チームであり `clubs` に存在しない）。
+    パーサ側の絞り込みが抜けても、ここで止まる。
+    """
+    seed_minimal(db)
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+            " home_club_id, away_club_id, status) VALUES (?,?,?,?,?,?,?,?,?)",
+            ("g-out", "2026-27-PREMIER", "PREMIER", competition, "2026-09-28",
+             "2026-09-28T10:05:00Z", "c-home", "c-away", "SCHEDULED"),
+        )
+
+
+def test_games_competition_is_not_nullable(db):
+    """区分を書き忘れた行が入らないこと。"""
+    seed_minimal(db)
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO games (id, season_id, league, game_date, tipoff_at,"
+            " home_club_id, away_club_id, status) VALUES (?,?,?,?,?,?,?,?)",
+            ("g-nocomp", "2026-27-PREMIER", "PREMIER", "2026-09-29",
+             "2026-09-29T10:05:00Z", "c-home", "c-away", "SCHEDULED"),
+        )
+
+
+@pytest.mark.parametrize("competition", ["REGULAR", "PLAYOFF"])
+def test_team_games_carries_competition(db, competition):
+    """`team_games` 側にも区分があること（JOIN を復活させないため）。"""
+    seed_minimal(db)
+    seed_team_games(db, competition=competition)
+    rows = db.execute(
+        "SELECT competition FROM team_games WHERE game_id = ?", (SEED_GAME,)
+    ).fetchall()
+    assert [r[0] for r in rows] == [competition, competition]
+
+
+def test_team_games_competition_rejects_values_outside_scope(db):
+    seed_minimal(db)
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO team_games (game_id, club_id, opponent_id, season_id, game_date,"
+            " is_home, competition) VALUES (?,?,?,?,?,?,?)",
+            (SEED_GAME, "c-home", "c-away", "2026-27-PREMIER", "2026-09-22", 1, "ALLSTAR"),
+        )
 
 
 def test_prediction_results_allows_void(db):

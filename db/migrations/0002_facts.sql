@@ -6,6 +6,8 @@ CREATE TABLE games (
   id               TEXT PRIMARY KEY,          -- 公式サイトの試合ID
   season_id        TEXT NOT NULL REFERENCES seasons(id),
   league           TEXT NOT NULL,             -- API応答と一致させるため非正規化
+  competition      TEXT NOT NULL              -- REGULAR = リーグ戦 / PLAYOFF = チャンピオンシップ
+                   CHECK (competition IN ('REGULAR','PLAYOFF')),
   game_date        TEXT NOT NULL,             -- 変更されうる属性
   tipoff_at        TEXT NOT NULL,
   finished_at      TEXT,                      -- 試合終了時刻。リーク判定の絞り込みはこの列で行う
@@ -52,6 +54,7 @@ CREATE TABLE team_games (
   game_date   TEXT NOT NULL,
   finished_at TEXT,
   is_home     INTEGER NOT NULL CHECK (is_home IN (0,1)),
+  competition TEXT NOT NULL CHECK (competition IN ('REGULAR','PLAYOFF')),
   result      INTEGER CHECK (result IN (0,1)),   -- NULL = 未実施
   margin      INTEGER,
   PRIMARY KEY (club_id, game_date, game_id)

@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.7** |
+| 版数 | **1.8** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / **v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / **v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -130,6 +130,8 @@ CREATE TABLE games (
   id               TEXT PRIMARY KEY,          -- 公式サイトの試合ID
   season_id        TEXT NOT NULL REFERENCES seasons(id),
   league           TEXT NOT NULL,             -- API応答と一致させるため非正規化
+  competition      TEXT NOT NULL              -- REGULAR = リーグ戦 / PLAYOFF = チャンピオンシップ
+                   CHECK (competition IN ('REGULAR','PLAYOFF')),
   game_date        TEXT NOT NULL,             -- 変更されうる属性
   tipoff_at        TEXT NOT NULL,
   finished_at      TEXT,                      -- 試合終了時刻。リーク判定の絞り込みはこの列で行う
@@ -164,6 +166,30 @@ CREATE INDEX idx_games_home     ON games(home_club_id, game_date);
 CREATE INDEX idx_games_away     ON games(away_club_id, game_date);
 ```
 
+**取り込むのはリーグ戦とチャンピオンシップだけである。** 公式サイトの試合一覧は大会区分
+（`event`）で分かれており、そこにはクラブ同士の対戦ではない試合が混ざっている。
+
+| サイトの `event` | 内容 | `competition` |
+|---:|---|---|
+| 2 | B1リーグ / B.PREMIER | `REGULAR` |
+| 3 | B1チャンピオンシップ | `PLAYOFF` |
+| 4 | B1残留プレーオフ | **取り込まない** |
+| 5 | オールスターゲーム | **取り込まない** |
+| 11 | B1・B2入替戦 | **取り込まない** |
+| 20 | アーリーカップ（2017-18〜2019-20） | **取り込まない** |
+
+**値は不変でラベルだけが変わる。** `2` は 2016-17〜2025-26 が「B1リーグ」、2026-27 から
+「B.PREMIER」である（Phase 0 で確認）。ラベルではなく**値で分岐する**。
+
+**オールスターゲームを取り込むと Elo が壊れる。** 選抜チーム同士の対戦であってクラブの試合では
+なく、`clubs` に存在しないチームが現れる。入替戦は相手が B2 のクラブで、`clubs` にも `seasons`
+にも存在しないため対戦相手を解決できない。アーリーカップはプレシーズンの地区大会である。
+
+**列として持ち、取り込み段階でも絞る。** 二重にするのは役割が違うためで、絞り込みは
+「クラブの成績に直結しない試合を DB に入れない」ため、列は「リーグ戦とチャンピオンシップを
+区別する」ためである。区別を捨てると特徴量 #17（順位・プレーオフ争いの状況）が算出できず、
+後から分離するには backfill をやり直すことになる。
+
 **upsert キーは `id`（公式試合ID）とする。** 自然キーに `game_date` を含めると、延期で日付が変わった瞬間に別レコードとして挿入され、旧行が `SCHEDULED` のまま永久に残る。ゴースト試合の予測が的中率の分母を汚染する。
 
 **`finished_at` は列として保持する。読み出し時に計算しない。** すべてのリーク判定クエリがこの値を通るため、`tipoff_at + 2時間` という推定式を呼び出し側に置くと、一箇所直し忘れただけでリークが復活する。取り込み時に次のとおり確定させる。
@@ -197,12 +223,17 @@ CREATE TABLE team_games (
   game_date   TEXT NOT NULL,
   finished_at TEXT,
   is_home     INTEGER NOT NULL CHECK (is_home IN (0,1)),
+  competition TEXT NOT NULL CHECK (competition IN ('REGULAR','PLAYOFF')),
   result      INTEGER CHECK (result IN (0,1)),   -- NULL = 未実施
   margin      INTEGER,
   PRIMARY KEY (club_id, game_date, game_id)
 );
 CREATE INDEX idx_team_games_finished ON team_games(club_id, finished_at);
 ```
+
+**`competition` を `team_games` にも持たせる。** この表は `games` への JOIN を消すために
+作ったものであり、勝率・得失点差・連戦の特徴量はここだけを読む。`games` 側にしか持たないと、
+大会区分で絞るたびに JOIN が復活し、表の存在理由が失われる。
 
 ```sql
 CREATE TABLE team_game_stats (
@@ -756,6 +787,9 @@ def build_features(game_id: str, as_of: datetime, ds: Dataset) -> dict[str, floa
 4. `status = 'SCHEDULED'` の試合を集計に含めない
 5. 欠損時は None を返し、呼び出し側で既定値へ変換する（関数内で0埋めしない）
 6. **チーム所属の判定は `players` の現在の所属ではなく、`player_game_stats.club_id`（実績）または `player_seasons`（当該シーズン断面）を使う**
+7. **`competition` で絞らない。** `REGULAR` と `PLAYOFF` の両方を集計に含める
+
+規約7の理由: DB に入っているのはこの2区分だけであり（1.3）、どちらもクラブ同士の公式戦である。プレーオフを除外すると、**プレーオフ期間中だけ当季勝率と得失点差が止まったまま Elo だけが動く**不連続が生じる。区分で絞る必要が出た場合は、この規約を先に書き換える（`team_games.competition` は絞れるように持たせてあるが、v1 では絞らない）。
 
 規約6を守らないと、移籍が発生した瞬間に「そのチームの過去の主力」が誤る。移籍した選手が過去の所属チームから消え、新チームに過去の出場時間ごと移動する。`as_of` 規約には違反しないため、テストでも検出されない静かなバグになる。
 
@@ -1020,7 +1054,17 @@ elo_new_season = 1500 + (elo_prev_season_end - 1500) * SEASON_REGRESSION
 
 Bリーグは NBA よりロスター変動が大きいため、NBA 標準の 0.75 より強い回帰（0.5〜0.65）が適切な可能性が高い。実データで探索する。
 
-**昇格クラブ**: 1500（＝旧B1平均）を与えない。B.ONE 時代の Elo があればリーグ間オフセットを推定して平行移動し、なければ前季 PREMIER 下位層の水準（1400前後）を初期値にする。`games_played < 10` の間は Elo の信頼度を特徴量として渡す。
+**昇格クラブ・復帰クラブ**: 1500（＝旧B1平均）を与えない。前季 PREMIER 下位層の水準（1400前後）を初期値にする。`games_played < 10` の間は Elo の信頼度を特徴量として渡す。
+
+**「前季にトップリーグの試合がないクラブ」はすべてこの扱いにする。** 空白が1シーズンでも8シーズンでも同じである。過去にトップリーグにいた Elo が残っていても**持ち越さず捨てる**。
+
+理由は2つある。第一に、`SEASON_REGRESSION` を空白シーズン数だけ適用すると偏差が `R^N` に縮み（R=0.65 なら N=8 で 3.2%）、実質 1500 = トップリーグ平均になる。**二部に8シーズンいたクラブを平均と評価することになり、過大評価の方向に倒れる。** 第二に、その期間のロスターは総入れ替えになっている。
+
+**空白シーズン数の閾値を設けない。** 11シーズンで空白を挟んだ復帰は7件（空白1年が4件、2年・5年・8年が各1件）しかなく、閾値を推定する検出力がない。閾値を置けば「実装しながら決めた値」が1つ増えるだけである。
+
+**B.ONE / B2 の Elo は存在しない。** 取得対象はトップリーグ（PREMIER と前身の B1）のみであり（要件 5.4）、下位リーグの試合を取り込まないため Elo も計算されない。旧版が書いていた「B.ONE 時代の Elo があればリーグ間オフセットを推定して平行移動する」という分岐は**永久に発火しないため削除した**。
+
+2026-27 で該当するのは `718` 神戸（B1 在籍は 2017-18 のみ、以後8シーズン不在）と `716` 信州（2シーズン不在）である。**B.PREMIER の構成は昇降格の結果ではない**ため、この状態が実際に発生する（`verification/RESULTS.md`）。
 
 **チーム別ホームアドバンテージ**: 素朴な推定は過学習する。1チームあたりのホーム試合は年約30試合で、ホーム勝率の標準誤差は約9ポイント、見かけの差の大半はノイズである。階層モデル（部分プーリング）にする。
 
@@ -1353,13 +1397,13 @@ max_rows_per_request = floor(100 / 列数) × 40
 |---|---|---|---|---|
 | `player_predictions` | 31 | 3 | **120** | **167（上限の3.3倍）** |
 | `player_game_stats` | 24 | 4 | **160** | 125 |
-| `games` | 23 | 4 | **160** | 125 |
+| `games` | 24 | 4 | **160** | 125 |
 | `team_game_stats` | 22 | 4 | **160** | 125 |
 | `model_versions` | 25 | 4 | **160** | —（1行ずつ登録） |
 | `predictions` | 19 | 5 | **200** | 100 |
 | `prediction_team_targets` | 17 | 5 | **200** | 100 |
 | `prediction_results` | 14 | 7 | **280** | 72 |
-| `team_games` | 9 | 11 | **440** | 46 |
+| `team_games` | 10 | 10 | **400** | 50 |
 | `accuracy_summary` | 9 | 11 | **440** | 46 |
 | `team_ratings` | 8 | 12 | **480** | 42 |
 | `prediction_reasons` | 8 | 12 | **480** | 42 |
@@ -1650,17 +1694,27 @@ def validate(box: BoxScore, venue: Venue) -> None:
 | `plus_minus` | `PLUSMINUS` | 実績のみ。予測しない |
 | `pts` | `Point` | 恒等式の検証に使う |
 | `attendance`（`games`） | `Attendance` | 試合単位。例: 5530 |
+| `club_seasons.name` | `TeamNameJ` | **当時の名称**が入る。`703` は 2016-17 で `栃木ブレックス`（現在は宇都宮ブレックス） |
+| `competition`（`games`） | 試合一覧の `event` | `2` → `REGULAR` / `3` → `PLAYOFF`。ボックススコア側にはない |
+
+**`club_seasons` の名称は試合データから作る。** 公式サイトに年度別のクラブ一覧ページは存在せず
+（`/club/` に年度指定がなく、`/club_detail/` は初回レスポンスが空）、過去シーズンの正式名称を
+マスタ系ページから取る経路がない。一方でボックススコアの `TeamNameJ` は**その試合の時点の
+名称**であるため、これを `club_seasons.name` の出典とする。短縮表記（`club_seasons.short_name`）
+は試合一覧ページのクラブ選択肢から取る。どちらも取り込みで必ず通るレスポンスであり、追加の
+リクエストは発生しない（`verification/RESULTS.md`）。
 
 **取得しないフィールド**: 審判名（`RefereeNameJ*` ほか。特徴量 #30 は見送り）、プレイバイプレイ（`ActionCD*` `PlayText` `X` `Y`）、シュートチャート座標、`EFF` / `EFG` / `TS` / `USG` / `AST_TO`（導出値なので保存しない）。
 
 `POSS` / `OFFRTG` / `DEFRTG` / `NETRTG` はサイト側にも存在するが、値の入り方が未確認である。**自前計算を正とし**、サイトの値は P0-7（係数 0.44 の妥当性）の突き合わせ材料として使う。
 
-#### 取り込み前に必ず行う3つの正規化
+#### 取り込み前に必ず行う4つの正規化
 
 Phase 0 の実地確認で見つかった、放置すると静かに壊れる箇所。
 
 | # | 内容 |
 |---|---|
+| 0 | **試合一覧を `event` で絞る。** 取り込むのは `2`（リーグ戦 → `REGULAR`）と `3`（チャンピオンシップ → `PLAYOFF`）だけ。`4` 残留プレーオフ / `5` オールスターゲーム / `11` 入替戦 / `20` アーリーカップは取り込まない。**ラベルではなく値で分岐する**（`2` のラベルは 2026-27 で「B1リーグ」から「B.PREMIER」に変わっている）。詳細は 1.3 |
 | 1 | **`PeriodCategory` で絞る。** 1〜4 がクォーター別、15 / 16 が前後半、**18 が試合通算**。18 以外を取り込むと行数が7倍になり、集計がすべて狂う |
 | 2 | **チーム集計行を選手行から分離する。** 1カテゴリ27件のうち数件は `PlayerID` が空のチーム集計行で、`TeamID` も空の行が含まれる。混ぜると `player_game_stats` と `team_game_stats` の両方が汚染される |
 | 3 | **空文字と 0 を区別する。** 数値フィールドが `0` ではなく `""` で入っていることがある。`int("")` は例外になり、`0` と誤って扱うと「記録なし」が「0回」になる。値域検証の**前に** None へ正規化する |
@@ -2230,6 +2284,13 @@ def test_finished_at_estimated_flag_set_when_unavailable()  # tipoff_at + 2h / f
 def test_finished_at_null_for_unplayed_games()              # SCHEDULED は NULL
 def test_spectator_restricted_null_when_attendance_missing()
 def test_spectator_restricted_forced_for_2020_21_and_2021_22()
+def test_allstar_game_not_ingested()                        # event=5 が1行も入らない
+def test_preseason_and_playin_not_ingested()                # event=4 / 11 / 20 も同じ
+def test_competition_check_rejects_unknown_value()          # CHECK 制約
+def test_team_games_competition_matches_games()             # 親子で区分が一致する
+def test_features_include_both_competitions()               # 規約7（2.1）の陽性確認
+def test_returning_club_treated_as_promoted()               # 前季にトップリーグの試合がない
+                                                            # クラブは古い Elo を持ち越さない
 def test_elo_uses_home_advantage_when_restriction_unknown() # NULL は 0 にしない
 ```
 
@@ -2519,6 +2580,7 @@ wrangler d1 migrations apply bpredict --remote
 cd api && wrangler deploy
 
 # 4. マスタ投入（冪等。ingestion_logs に job='seed_master' で記録）
+#    恒久マスタと名寄せのみ。club_seasons は backfill が作る（4.4）
 python -m batch.jobs.seed_master
 
 # 5. 過去データ取り込み（1日1シーズン。再開可能）
@@ -2582,11 +2644,11 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 0 | **Phase 0 の検証**（P0-1〜P0-10）と未決事項 U-01 / U-05 / U-06 の確定 | 取得可否と名称が決まる |
 | 0b | **実機検証**（P0-12 LightGBM サイズ / P0-13 `batch()` クエリ計上 / P0-14 Next.js ビルド / P0-15 Zod コスト） | 設計の前提が数値で裏付けられる。外れた項目は設計を修正してから先へ進む |
 | 1 | D1 スキーマとマイグレーション（トリガ・CHECK を含む） | `migrations apply` が成功、`test_migrations_apply_cleanly` が通る |
-| 2 | マスタ整備（`seed_master`、`club_source_ids` の対応表） | 旧B1と新リーグのクラブが紐付く |
+| 2 | マスタ整備（`seed_master`）。**恒久マスタと名寄せに限定する** — `seasons` / `clubs` / `club_source_ids` / `venues` / `venue_revisions` / `venue_source_keys`。**`club_seasons` は含めない**（4.4） | 旧B1と新リーグのクラブが `club_source_ids` で紐付く |
 | 3 | CI の構築（`ci.yml`、`parser-canary.yml`、ESLint Flat Config） | push でテストが走る。`eslint .` が動く |
 | 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限） | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る |
-| 6 | backfill による過去データ取り込み **＋ スナップショット書き出し** | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
+| 6 | backfill による過去データ取り込み **＋ `club_seasons` の構築 ＋ スナップショット書き出し** | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |

@@ -62,8 +62,20 @@ jobs:
         run: pytest batch/tests/test_parser_canary.py -q -o faulthandler_timeout=60
       - name: pytest-scraper
         run: pytest batch/tests/test_scraper.py -q -o faulthandler_timeout=60
+      # 全件を1プロセスで走らせると停止する。SIGABRT で faulthandler の
+      # スタックを出し、ログが読めないので annotation として取り出す。
       - name: pytest-all
-        run: pytest batch/tests -v -o faulthandler_timeout=120
+        run: |
+          set +e
+          PYTHONFAULTHANDLER=1 timeout -s ABRT 240 pytest batch/tests -v > /tmp/pytest.log 2>&1
+          code=$?
+          set -e
+          tail -n 60 /tmp/pytest.log
+          if [ "$code" -ne 0 ]; then
+            grep -nE 'File \"|Thread |Current thread|^batch/tests|Traceback|::' /tmp/pytest.log \
+              | tail -n 30 | sed 's/^/::error::/'
+            exit "$code"
+          fi
 
   repo:
     runs-on: ubuntu-latest

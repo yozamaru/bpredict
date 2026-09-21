@@ -37,3 +37,4 @@ venv/
 .DS_Store
 .vscode/
 .idea/
+pytest.log

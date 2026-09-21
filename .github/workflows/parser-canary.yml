@@ -6,8 +6,7 @@
 #   2. 対応表（詳細設計 4.4）の必須フィールドがすべて存在する
 #   3. PeriodCategory に 18（試合通算）が含まれる
 #
-# batch/parser は工程5で作る。それまでは取得を行わずにスキップする
-# （毎日失敗させると通知が形骸化し、本当に壊れたときに気づけなくなる）。
+# 運営者が robots/規約を確認して Variables を設定するまでは通信しない。
 name: parser-canary
 
 on:
@@ -24,21 +23,56 @@ concurrency:
 
 jobs:
   canary:
+    # 手動実行も既定ブランチだけ。PRや別ブランチのキャッシュを状態に混ぜない。
+    # ペイロード（github.event.repository）に依存させない。schedule イベントで
+    # 空になると毎日サイレントにスキップされ、カナリアが永久にグリーンになる。
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      SCRAPER_USER_AGENT: ${{ vars.SCRAPER_USER_AGENT }}
+      SCRAPER_ROBOTS_SHA256: ${{ vars.SCRAPER_ROBOTS_SHA256 }}
+      SCRAPER_TERMS_SHA256: ${{ vars.SCRAPER_TERMS_SHA256 }}
+      SCRAPER_STATE_PATH: batch/.scraper-state/state.json
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - id: guard
+        shell: bash
+        run: |
+          if [[ -n "$SCRAPER_USER_AGENT" && -n "$SCRAPER_ROBOTS_SHA256" && -n "$SCRAPER_TERMS_SHA256" ]]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.guard.outputs.ready == 'false'
+        run: echo '::warning::スクレイパの識別名・連絡先と確認済み規約ハッシュが未設定のため、カナリアをスキップする。設定するまでサイト構造の変更を検知できない'
+      - if: steps.guard.outputs.ready == 'true'
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: batch/requirements-dev.txt
-      - id: guard
-        run: echo "ready=$([ -d batch/parser ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - if: steps.guard.outputs.ready == 'false'
-        run: echo '::notice::batch/parser がまだない（工程5で作る）。カナリアをスキップする'
-      - if: steps.guard.outputs.ready == 'true'
-        run: pip install -r batch/requirements.txt
-      # 実サイトの日程ページ1枚のみを取得してパースする。失敗で Actions を fail させる
+      - id: state-date
+        if: steps.guard.outputs.ready == 'true'
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      # キーは変更ごとに新規保存し、同じUTC日の最新状態を復元する。
+      # このワークフロー全体の concurrency が restore〜save の競合を防ぐ。
+      - id: state-restore
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: batch/.scraper-state/state.json
+          key: scraper-state-v1-${{ runner.os }}-${{ steps.state-date.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            scraper-state-v1-${{ runner.os }}-${{ steps.state-date.outputs.day }}-
+      # 標準ライブラリだけを使う。規約2件を確認後、終了済み試合詳細1枚を検査する。
       - if: steps.guard.outputs.ready == 'true'
         run: python -m batch.jobs.parser_canary
+      # パース失敗や429/503でも件数・停止状態を次の実行へ引き継ぐ。
+      # 手動実行がUTC日付をまたいだ場合も、直近の日付のキーへ保存する。
+      - id: state-save-date
+        if: always() && steps.guard.outputs.ready == 'true' && steps.state-restore.outcome == 'success' && hashFiles('batch/.scraper-state/state.json') != ''
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - if: always() && steps.state-save-date.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: batch/.scraper-state/state.json
+          key: scraper-state-v1-${{ runner.os }}-${{ steps.state-save-date.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}

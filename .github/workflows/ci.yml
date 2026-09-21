@@ -48,8 +48,28 @@ jobs:
         run: ruff check batch
       - name: mypy
         run: mypy
+      # **pytest の出力を Actions のログへ直接流さない。**
+      # 工程5のブランチで、`-v` でログへ直接出す構成が 3 回中 3 回停止した
+      # （SIGABRT も SIGKILL も効かず、job の timeout-minutes すら遅延した）。
+      # 一方、ファイルへリダイレクトした全件実行と、`-q` に分けた 8 ステップは
+      # すべて成功した。fsync を外しても再発したため原因は pytest 側ではなく、
+      # ランナーのログ取り込み側と見ている（未特定）。
+      # 実績のある構成に寄せ、結果は末尾だけをログへ出す。停止した場合は
+      # SIGABRT で faulthandler のスタックを出し、効かなければ強制終了する。
       - name: pytest
-        run: pytest batch/tests -v
+        env:
+          PYTHONFAULTHANDLER: '1'
+        run: |
+          set +e
+          timeout -k 30 -s ABRT 300 pytest batch/tests -q > pytest.log 2>&1
+          code=$?
+          set -e
+          tail -n 80 pytest.log
+          if [ "$code" -ne 0 ]; then
+            grep -nE 'File \"|Thread |Current thread|failed|error' pytest.log \
+              | tail -n 20 | sed 's/^/::error::/'
+          fi
+          exit "$code"
 
   repo:
     runs-on: ubuntu-latest

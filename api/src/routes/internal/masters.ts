@@ -17,6 +17,7 @@ import {
   MAX_QUERIES_PER_REQUEST,
   type TableName,
 } from '../../config/batch-limits';
+import { fail, failValidation, readJson } from '../../lib/http';
 import { mastersSchema } from '../../schemas/masters';
 
 export type Env = {
@@ -31,23 +32,13 @@ const placeholders = (cols: number, rows: number): string =>
 export const masters = new Hono<{ Bindings: Env }>();
 
 masters.post('/', async (c) => {
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    // 例外オブジェクトをそのままレスポンスに入れない（絶対ルール4）
-    return c.json({ error: { code: 'BAD_REQUEST', message: 'JSON として解釈できない' } }, 400);
-  }
+  // 例外オブジェクトをそのままレスポンスに入れない（絶対ルール4）
+  const json = await readJson(c);
+  if (!json.ok) return fail(c, 'BAD_REQUEST', 'JSON として解釈できない');
+  const raw = json.value;
 
   const parsed = mastersSchema.safeParse(raw);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    const where = first?.path.join('.') || '(root)';
-    return c.json(
-      { error: { code: 'BAD_REQUEST', message: `入力が不正: ${where}: ${first?.message ?? ''}` } },
-      400,
-    );
-  }
+  if (!parsed.success) return failValidation(c, parsed.error.issues);
   const body = parsed.data;
 
   // 1リクエストあたりの行数上限を超えていないこと（詳細設計 3.4）

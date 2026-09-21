@@ -10,6 +10,12 @@ import { defineConfig } from 'vitest/config';
 const migrations = await readD1Migrations('../db/migrations');
 
 export default defineConfig({
+  test: {
+    // **テストファイル間で D1 が共有される。** このプールのバージョンには
+    // isolated storage の指定がないため、並行実行すると片方の DELETE が
+    // もう片方の挿入を消し、原因の分かりにくい失敗になる。直列に走らせる。
+    fileParallelism: false,
+  },
   plugins: [
     cloudflareTest({
       wrangler: { configPath: './wrangler.toml' },

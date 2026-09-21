@@ -9,23 +9,55 @@
  */
 import { Hono } from 'hono';
 
+import { fail } from './lib/http';
 import { auth } from './middleware/auth';
-import { masters, type Env } from './routes/internal/masters';
+import { facts } from './routes/internal/facts';
+import { finalize, freeze } from './routes/internal/finalize';
+import { masters } from './routes/internal/masters';
+import { metrics, models } from './routes/internal/models';
+import { ops } from './routes/internal/ops';
+import { predictions } from './routes/internal/predictions';
+
+export type Env = {
+  DB: D1Database;
+  INGEST_TOKEN?: string;
+  INGEST_TOKEN_NEXT?: string;
+  FINALIZE_TOKEN?: string;
+};
 
 const app = new Hono<{ Bindings: Env }>();
 
-// 内部エンドポイントは Bearer 必須。2キー方式で無停止回転できる（基本設計 7.4）。
-//
-// **`/internal/*` に一括で当てない。** トークンは用途で分離されており
-// （`/internal/finalize` は `FINALIZE_TOKEN`。破壊的操作のため）、一括適用のままだと
-// 工程4b でエンドポイントを足したときに誤って `INGEST_TOKEN` で通ってしまう。
-// パスごとに明示する。
-app.use('/internal/masters', auth(['INGEST_TOKEN', 'INGEST_TOKEN_NEXT']));
-app.route('/internal/masters', masters);
+// **トークンは用途で分離する。** `/internal/*` に一括で当てない。
+// `/internal/finalize` は破壊的操作のため `FINALIZE_TOKEN` を使う（詳細設計 3.4）。
+// 一括適用にすると、エンドポイントを足したときに誤って INGEST_TOKEN で通る。
+const ingest = auth(['INGEST_TOKEN', 'INGEST_TOKEN_NEXT']);
 
-app.notFound((c) =>
-  c.json({ error: { code: 'NOT_FOUND', message: '該当するエンドポイントがない' } }, 404),
-);
+app.use('/internal/masters', ingest);
+app.use('/internal/games', ingest);
+app.use('/internal/games/*', ingest);
+app.use('/internal/stats', ingest);
+app.use('/internal/entries', ingest);
+app.use('/internal/ratings', ingest);
+app.use('/internal/predictions', ingest);
+app.use('/internal/predictions/*', ingest);
+app.use('/internal/evaluate', ingest);
+app.use('/internal/summary', ingest);
+app.use('/internal/log', ingest);
+app.use('/internal/models', ingest);
+app.use('/internal/models/*', ingest);
+app.use('/internal/metrics/*', ingest);
+// freeze だけは別トークン
+app.use('/internal/finalize', auth(['FINALIZE_TOKEN']));
+
+app.route('/internal/masters', masters);
+app.route('/internal', facts);                     // /games /stats /entries /ratings
+app.route('/internal/predictions', predictions);   // POST / と GET /pending
+app.route('/internal/finalize', finalize);
+app.route('/internal/models', models);             // POST / と GET /active /:version/artifact
+app.route('/internal/metrics', metrics);           // GET /internal/metrics/active
+app.route('/internal', ops);                       // /evaluate /summary /log /games/ingested
+
+app.notFound((c) => fail(c, 'NOT_FOUND', '該当するエンドポイントがない'));
 
 /**
  * **例外オブジェクトをそのままレスポンス・ログに入れない**（CLAUDE.md 絶対ルール4）。
@@ -34,7 +66,30 @@ app.notFound((c) =>
  */
 app.onError((err, c) => {
   console.error(`unhandled: ${err.constructor.name}`);
-  return c.json({ error: { code: 'INTERNAL', message: '内部エラー' } }, 500);
+  return fail(c, 'INTERNAL', '内部エラー');
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+
+  /**
+   * freeze は Workers の Cron Trigger（毎時）で行う。
+   *
+   * GitHub Actions ではなく Workers に置くのは、外部アクセスを必要としない純粋な
+   * D1 操作であり、**スクレイピングの失敗に巻き込まれてはならない**ため
+   * （基本設計 4.1）。旧版は翌朝の日次ジョブ内で実行され、試合開始から約11時間
+   * freeze されない状態が毎日生じていた。
+   */
+  scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const r = await freeze(env.DB);
+          console.log(`finalize: frozen=${r.frozen.length} remaining=${r.remaining}`);
+        } catch (err) {
+          console.error(`finalize failed: ${(err as Error).constructor.name}`);
+        }
+      })(),
+    );
+  },
+} satisfies ExportedHandler<Env>;

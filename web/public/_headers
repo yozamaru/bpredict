@@ -1,0 +1,9 @@
+# Cloudflare Pages のヘッダ設定（詳細設計 3.6）。
+# テーマ適用の inline script は最初から sha256 で許可する形で書いてある。
+# 後から CSP を入れるとこのスクリプトが真っ先に壊れ、「CSPを入れるとテーマが
+# ちらつくのでCSPをやめる」という後退が起きる。
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=()
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'sha256-ctTd1LtemZMqI8Gg5aAp0E/GqGPNEucYYLtDrFiwde0='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

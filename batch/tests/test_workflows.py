@@ -115,6 +115,33 @@ def test_canary_cron_is_utc_for_0700_jst():
     assert "cron: '0 22 * * *'" in body
 
 
+def test_canary_gate_does_not_depend_on_event_payload():
+    """カナリアの分岐をイベントのペイロードに依存させない（工程5）。
+
+    `github.event.repository.default_branch` が schedule イベントで空になると、
+    条件が偽になって**毎日サイレントにスキップされる**。カナリアはサイト構造の変更を
+    検知する唯一の手段（基本設計 7.2）であり、永久にグリーンになるのは検知したい
+    壊れ方そのものである。既定ブランチ名はリテラルで書く。
+    """
+    body = (WORKFLOW_DIR / "parser-canary.yml").read_text(encoding="utf-8")
+    gate = re.search(r"^\s+if: (.+)$", body, re.MULTILINE)
+    assert gate, "parser-canary.yml: ジョブの分岐条件がない"
+    assert gate[1].strip() == "github.ref == 'refs/heads/main'", \
+        "parser-canary.yml: 分岐はリテラルの既定ブランチ名で書く"
+    assert "github.event." not in gate[1]
+
+
+def test_canary_skip_is_visible_and_does_not_fetch():
+    """規約ハッシュ未設定のスキップを警告として残す（工程5）。
+
+    notice は run の一覧に出ないため、設定し忘れたまま何ヶ月も気づけない。
+    スキップ自体は正しい（運営者が robots / 規約を確認するまで通信しない）。
+    """
+    body = (WORKFLOW_DIR / "parser-canary.yml").read_text(encoding="utf-8")
+    assert "::warning::" in body
+    assert "SCRAPER_ROBOTS_SHA256" in body and "SCRAPER_TERMS_SHA256" in body
+
+
 def test_dependabot_covers_pip_and_actions():
     """pip と github-actions を weekly で登録する（基本設計 7.3）。
 

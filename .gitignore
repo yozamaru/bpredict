@@ -8,6 +8,7 @@ verification/07_d1_batch_query_count/wrangler.toml
 # 取得したレスポンス本文（著作権上コミット不可。fixture は合成データのみ）
 # ボックススコアは <script> 内の埋め込みJSONで配信されるため、JSON も対象にする
 batch/cache/
+batch/.scraper-state/
 data/raw/
 **/fixtures/**/*.html
 **/fixtures/**/*.raw.json

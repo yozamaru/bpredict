@@ -48,8 +48,10 @@ jobs:
         run: ruff check batch
       - name: mypy
         run: mypy
+      # 停止したときに 10 分の job timeout まで待たず、全スレッドのスタックを
+      # 出して落ちる。どのテストで止まったかがログに残る（工程5で必要になった）。
       - name: pytest
-        run: pytest batch/tests -v
+        run: pytest batch/tests -v -o faulthandler_timeout=120
 
   repo:
     runs-on: ubuntu-latest

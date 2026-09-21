@@ -21,6 +21,9 @@ models/*.txt
 
 # 依存・ビルド
 node_modules/
+
+# wrangler types の生成物。.dev.vars を読むため環境依存になる（コミットしない）
+api/worker-configuration.d.ts
 .next/
 out/
 __pycache__/

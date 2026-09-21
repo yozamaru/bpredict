@@ -333,6 +333,7 @@ max_rows_per_request = floor(100 / 列数) × 40
 | `batch/snapshot/*.parquet` / `MANIFEST.json` | `daily_ingest` |
 | `web/out/` | `next build` |
 | `package-lock.json` | `npm install`（`npm ci` は変更しない） |
+| `api/worker-configuration.d.ts` | `wrangler types`。**`.dev.vars` を読むため環境依存になる。コミットしない**（`npm run typecheck` が先に生成する） |
 
 ### 依存を追加するとき
 

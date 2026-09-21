@@ -91,8 +91,8 @@ CREATE TABLE venue_revisions (
   PRIMARY KEY (venue_id, valid_from)
 );
 
--- 会場名の表記ゆれを名寄せする
+-- 公式の会場ID（StadiumCD）を venue_id に解決する。club_source_ids と同じ役割
 CREATE TABLE venue_source_keys (
-  source_name TEXT PRIMARY KEY,
+  source_code TEXT PRIMARY KEY,
   venue_id    TEXT NOT NULL REFERENCES venues(id)
 );

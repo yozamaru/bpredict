@@ -502,6 +502,46 @@ def test_team_games_competition_rejects_values_outside_scope(db):
         )
 
 
+def test_venue_source_keys_keyed_by_official_code(db):
+    """会場の名寄せが公式の会場ID（StadiumCD）で行われること。
+
+    会場名で寄せる設計は v1.9 で廃止した。公式IDが全シーズンに存在するため
+    （`verification/RESULTS.md`）、`club_source_ids` と同じ形にしてある。
+    """
+    cols = [r[1] for r in db.execute("PRAGMA table_info(venue_source_keys)")]
+    assert cols == ["source_code", "venue_id"]
+    pk = [r[1] for r in db.execute("PRAGMA table_info(venue_source_keys)") if r[5]]
+    assert pk == ["source_code"]
+
+
+def test_venues_accept_official_code_as_id(db):
+    """StadiumCD をそのまま id に使えること（独自採番しない）。"""
+    db.execute("INSERT INTO venues (id, name) VALUES ('169','架空総合体育館')")
+    db.execute("INSERT INTO venue_source_keys (source_code, venue_id) VALUES ('169','169')")
+    assert db.execute(
+        "SELECT v.name FROM venue_source_keys k JOIN venues v ON v.id = k.venue_id"
+        " WHERE k.source_code = '169'"
+    ).fetchone()[0] == "架空総合体育館"
+
+
+def test_venue_master_allows_missing_capacity_and_coordinates(db):
+    """収容人数と緯度経度が NULL でも会場を登録できること。
+
+    公式サイトに収容人数がなく、代替会場は NULL のまま進める（要件 5.3）。
+    ここが NOT NULL だと、埋まっていない会場の試合を取り込めなくなる。
+    """
+    db.execute("INSERT INTO venues (id, name) VALUES ('3','架空アリーナ')")
+    assert db.execute(
+        "SELECT prefecture, lat, lng FROM venues WHERE id = '3'"
+    ).fetchone() == (None, None, None)
+    db.execute(
+        "INSERT INTO venue_revisions (venue_id, valid_from, name) VALUES ('3','2016-09-01','架空アリーナ')"
+    )
+    assert db.execute(
+        "SELECT capacity FROM venue_revisions WHERE venue_id = '3'"
+    ).fetchone()[0] is None
+
+
 def test_prediction_results_allows_void(db):
     """中止・延期は outcome='VOID' で、actual_home_win が NULL でも入ること（A-04）。"""
     seed_minimal(db)

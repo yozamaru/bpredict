@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.8** |
+| 版数 | **1.9** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / **v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / **v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -13,7 +13,9 @@
 
 D1（SQLite）を使用する。日時は ISO 8601 文字列（UTC）、日付は `YYYY-MM-DD`。
 
-**ID 体系の方針**: マスタ・試合の `id` は**公式サイトの ID を採用し、独自採番しない**。公式 ID が存在しないエンティティ（会場など）のみ `v_` プレフィックスで採番し、`venue_source_keys` で名寄せする。
+**ID 体系の方針**: マスタ・試合の `id` は**公式サイトの ID を採用し、独自採番しない**。**会場も例外ではない** — 試合の埋め込みJSONに `StadiumCD`（公式の会場ID）があり、全シーズンに存在する（Phase 0 で確認）。`venues.id` にはこれを使い、独自採番も会場名による名寄せも行わない。`venue_source_keys` は `club_source_ids` と同じ「公式ID → 内部ID」の対応表として持つ。
+
+> v1.8 まで「公式 ID が存在しないエンティティ（会場など）のみ `v_` プレフィックスで採番し、`venue_source_keys` で名寄せする」と書いていたが、**会場には公式IDがあったため誤りだった**（`verification/RESULTS.md`）。
 
 **列挙値には必ず CHECK 制約を付ける。** スクレイピングは入力が信用できないパイプラインであり、値域の防壁をパーサだけに置くのは弱い。
 
@@ -112,12 +114,31 @@ CREATE TABLE venue_revisions (
   PRIMARY KEY (venue_id, valid_from)
 );
 
--- 会場名の表記ゆれを名寄せする
+-- 公式の会場ID（StadiumCD）を venue_id に解決する。club_source_ids と同じ役割
 CREATE TABLE venue_source_keys (
-  source_name TEXT PRIMARY KEY,
+  source_code TEXT PRIMARY KEY,
   venue_id    TEXT NOT NULL REFERENCES venues(id)
 );
 ```
+
+#### 会場マスタの出典
+
+| 列 | 出典 | 取得の経路 |
+|---|---|---|
+| `venues.id` | 試合JSONの **`StadiumCD`** | 取り込みで自動 |
+| `venues.name` / `venue_revisions.name` | 試合JSONの `StadiumNameJ`（その試合時点の名称） | 取り込みで自動 |
+| `venues.prefecture` / `lat` / `lng` | `/arena_detail/?ArenaCD=<cd>` の**住所**を国土地理院でジオコーディング | **1回だけ解決し `db/seeds/master/venues_geo.csv` に固定** |
+| **`venue_revisions.capacity`** | **公式サイトに存在しない** | **手入力。`db/seeds/master/venue_revisions.csv` に行ごとの出典URLつき** |
+
+**`StadiumCD` は型がシーズンで違う。** 2016-17 は整数 `3`、2025-26 は文字列 `"169"`。**取り込み前に文字列へ正規化する**（4.4 の正規化5）。
+
+**座標を実行時に取りに行かない。** 会場は一度確定すれば動かないため、日次バッチで外部サービスに依存する理由がない。1回だけ解決して CSV に固定し、リポジトリにコミットする。国土地理院の住所検索は無料・APIキー不要で、出典表記が条件である（政府標準利用規約）。座標を使うのは特徴量 #16（移動距離・**検証**区分）だけで、距離は数百kmの単位であるため精度の要求は低い。
+
+**`capacity` は 2026-27 の26クラブのメイン会場から埋める。** 代替会場は NULL のまま進める。定義は**「B.LEAGUE 開催時の観客席数」に固定**する（建物の最大収容と混ぜると動員率が比較不能になる）。
+
+NULL のときに失うもの: `spectator_restricted` が NULL（= 通常のホームアドバンテージ。**2020-21 / 2021-22 は期間指定で強制的に 1 なのでコロナ期には影響しない**）、`attendance <= capacity × 1.2` の検証がスキップ、動員率（#29・検証区分）が当該会場で欠損。
+
+**「その会場の入場者数の最大値を収容人数とみなす」自動化を行わない。** 出典が不要で定義も正しく見えるが、**未来の試合から値を作ることになりデータリークの禁止に触れる**。さらに観客制限期間は最大値そのものが抑制されており、`spectator_restricted` の判定が循環する。
 
 **取り込み時に `club_source_ids` で `club_id` に解決してから保存する。** 旧IDのまま保存すると `team_ratings.team_id` が分断され、旧B1の Elo を新リーグへ引き継げない。
 
@@ -1696,6 +1717,8 @@ def validate(box: BoxScore, venue: Venue) -> None:
 | `attendance`（`games`） | `Attendance` | 試合単位。例: 5530 |
 | `club_seasons.name` | `TeamNameJ` | **当時の名称**が入る。`703` は 2016-17 で `栃木ブレックス`（現在は宇都宮ブレックス） |
 | `competition`（`games`） | 試合一覧の `event` | `2` → `REGULAR` / `3` → `PLAYOFF`。ボックススコア側にはない |
+| `venues.id` | **`StadiumCD`** | 公式の会場ID。**2016-17 は整数 `3`、2025-26 は文字列 `"169"`**。文字列へ正規化する |
+| `venues.name` / `venue_revisions.name` | `StadiumNameJ` | その試合時点の名称 |
 
 **`club_seasons` の名称は試合データから作る。** 公式サイトに年度別のクラブ一覧ページは存在せず
 （`/club/` に年度指定がなく、`/club_detail/` は初回レスポンスが空）、過去シーズンの正式名称を
@@ -1708,7 +1731,7 @@ def validate(box: BoxScore, venue: Venue) -> None:
 
 `POSS` / `OFFRTG` / `DEFRTG` / `NETRTG` はサイト側にも存在するが、値の入り方が未確認である。**自前計算を正とし**、サイトの値は P0-7（係数 0.44 の妥当性）の突き合わせ材料として使う。
 
-#### 取り込み前に必ず行う4つの正規化
+#### 取り込み前に必ず行う5つの正規化
 
 Phase 0 の実地確認で見つかった、放置すると静かに壊れる箇所。
 
@@ -1718,6 +1741,7 @@ Phase 0 の実地確認で見つかった、放置すると静かに壊れる箇
 | 1 | **`PeriodCategory` で絞る。** 1〜4 がクォーター別、15 / 16 が前後半、**18 が試合通算**。18 以外を取り込むと行数が7倍になり、集計がすべて狂う |
 | 2 | **チーム集計行を選手行から分離する。** 1カテゴリ27件のうち数件は `PlayerID` が空のチーム集計行で、`TeamID` も空の行が含まれる。混ぜると `player_game_stats` と `team_game_stats` の両方が汚染される |
 | 3 | **空文字と 0 を区別する。** 数値フィールドが `0` ではなく `""` で入っていることがある。`int("")` は例外になり、`0` と誤って扱うと「記録なし」が「0回」になる。値域検証の**前に** None へ正規化する |
+| 5 | **`StadiumCD` を文字列へ正規化する。** 2016-17 は整数 `3`、2025-26 は文字列 `"169"` で、型がシーズンで違う。正規化しないと同じ会場が `3` と `"3"` の2行になり、`venues` が分裂して収容人数と移動距離が欠損する |
 
 数値パースは全角数字、カンマ、`"-"`（未出場）、**`"MM:SS"` 形式**、`"DNP"`、**空文字**を考慮する。
 
@@ -2291,6 +2315,11 @@ def test_team_games_competition_matches_games()             # 親子で区分が
 def test_features_include_both_competitions()               # 規約7（2.1）の陽性確認
 def test_returning_club_treated_as_promoted()               # 前季にトップリーグの試合がない
                                                             # クラブは古い Elo を持ち越さない
+def test_stadium_cd_normalized_to_string()                  # 整数 3 と文字列 "3" が同一会場
+def test_venue_registered_from_game_data()                  # 未知の StadiumCD で venues に登録
+def test_venue_source_keys_resolves_official_code()         # 公式ID → venue_id
+def test_attendance_rate_null_capacity()                    # capacity が NULL でも落ちない
+def test_spectator_restricted_null_when_capacity_missing()  # 通常のホームアドバンテージを使う
 def test_elo_uses_home_advantage_when_restriction_unknown() # NULL は 0 にしない
 ```
 
@@ -2580,7 +2609,7 @@ wrangler d1 migrations apply bpredict --remote
 cd api && wrangler deploy
 
 # 4. マスタ投入（冪等。ingestion_logs に job='seed_master' で記録）
-#    恒久マスタと名寄せのみ。club_seasons は backfill が作る（4.4）
+#    事前に列挙できるものだけ。club_seasons と会場マスタは backfill が作る（1.2 / 4.4）
 python -m batch.jobs.seed_master
 
 # 5. 過去データ取り込み（1日1シーズン。再開可能）
@@ -2644,11 +2673,11 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 0 | **Phase 0 の検証**（P0-1〜P0-10）と未決事項 U-01 / U-05 / U-06 の確定 | 取得可否と名称が決まる |
 | 0b | **実機検証**（P0-12 LightGBM サイズ / P0-13 `batch()` クエリ計上 / P0-14 Next.js ビルド / P0-15 Zod コスト） | 設計の前提が数値で裏付けられる。外れた項目は設計を修正してから先へ進む |
 | 1 | D1 スキーマとマイグレーション（トリガ・CHECK を含む） | `migrations apply` が成功、`test_migrations_apply_cleanly` が通る |
-| 2 | マスタ整備（`seed_master`）。**恒久マスタと名寄せに限定する** — `seasons` / `clubs` / `club_source_ids` / `venues` / `venue_revisions` / `venue_source_keys`。**`club_seasons` は含めない**（4.4） | 旧B1と新リーグのクラブが `club_source_ids` で紐付く |
+| 2 | マスタ整備（`seed_master`）。**事前に列挙できるものに限定する** — `seasons` / `clubs` / `club_source_ids`。**`club_seasons` と会場マスタは含めない**（1.2 / 4.4） | 旧B1と新リーグのクラブが `club_source_ids` で紐付く。`clubs` は30件（順位表から名称が取れる） |
 | 3 | CI の構築（`ci.yml`、`parser-canary.yml`、ESLint Flat Config） | push でテストが走る。`eslint .` が動く |
 | 4 | Workers API の骨格（`/internal/*` の POST と GET、認証・ガード・バッチサイズ上限） | Bearer なしで401、tipoff 経過後に409、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る |
-| 6 | backfill による過去データ取り込み **＋ `club_seasons` の構築 ＋ スナップショット書き出し** | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
+| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする（1.2。**着手前に未決事項 U-10 を確定させる**） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |

@@ -1,0 +1,79 @@
+@import 'tailwindcss';
+
+/* 色はすべてここで定義し、コンポーネントに直接書かない（CLAUDE.md UI）。
+   値は基本設計 6.1 / 詳細設計 5.4 のトークン表と一致させる。 */
+:root {
+  --bg: #F6F7F9;
+  --surface: #FFFFFF;
+  --border: #E5E8ED;
+  --text: #0F1622;
+  --text-2: #5A6577;
+  --text-3: #667184;  /* 本文用 */
+  --text-4: #8E99AB;  /* 罫線など非テキスト専用 */
+  --accent: #416A0E;
+  --accent-bg: rgba(65, 106, 14, 0.1);
+  --track: #E8EBF0;
+  --warn: #7A4A12;
+  --warn-bg: #FEF3E7;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0B0E13;
+  --surface: #131820;
+  --border: #212A36;
+  --text: #E6EAF2;
+  --text-2: #93A0B5;
+  --text-3: #7C8798;
+  --text-4: #59657A;
+  --accent: #A3E635;
+  --accent-bg: rgba(163, 230, 53, 0.12);
+  --track: #232C3A;
+  --warn: #E0A458;
+  --warn-bg: rgba(224, 164, 88, 0.12);
+}
+
+/* トークンを Tailwind のユーティリティへ橋渡しする。
+   inline にすることで、値は上の変数のまま残る（ダーク切替が効く）。 */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-text-4: var(--text-4);
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --color-track: var(--track);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  /* システムフォントスタック。Web フォントは数字用1ウェイトのみ許す（基本設計 6.2） */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN',
+    'Noto Sans JP', Meiryo, sans-serif;
+}
+
+@layer base {
+  html {
+    background: var(--bg);
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    /* 桁を揃える。数値が主役の画面であるため全体に効かせる（要件 8.1） */
+    font-variant-numeric: tabular-nums;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* --accent の上に --accent のリングが乗ると消えるため、トークンで分ける */
+  :focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+}

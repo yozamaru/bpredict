@@ -131,6 +131,9 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npx eslint .
+      # 両テーマのコントラスト比 4.5:1 以上をトークンの単体検査で確かめる
+      # （基本設計 6.1。目視のスナップショット確認では必ず見落とす）
+      - run: npm run test:tokens
       - run: npm run build
       # Pages の1デプロイ20,000ファイル上限に対する検査（受け入れ基準 A-14）
       - name: out/ のファイル数が 18,000 以下であること

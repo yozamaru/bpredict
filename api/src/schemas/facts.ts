@@ -57,8 +57,56 @@ export const teamGameSchema = z
   })
   .strict();
 
+/**
+ * 試合データから導かれるマスタ（詳細設計 3.4）。
+ * backfill が同じ試合レスポンスから抜き出すため、`games` と同じ本文で受ける。
+ * `venue_revisions` と `player_seasons` はここでは受けない（U-10 / C03）。
+ */
+export const venueSchema = z
+  .object({
+    id: ID,
+    name: z.string().min(1).max(200),
+    prefecture: z.string().min(1).max(20).nullable().optional(),
+    lat: z.number().min(-90).max(90).nullable().optional(),
+    lng: z.number().min(-180).max(180).nullable().optional(),
+  })
+  .strict();
+
+export const venueSourceKeySchema = z
+  .object({ sourceCode: ID, venueId: ID })
+  .strict();
+
+export const playerSchema = z
+  .object({
+    id: ID,
+    name: z.string().min(1).max(200),
+    heightCm: int(100, 250).nullable().optional(),
+  })
+  .strict();
+
+export const clubSeasonSchema = z
+  .object({
+    clubId: ID,
+    seasonId: ID,
+    name: z.string().min(1).max(200),
+    shortName: z.string().min(1).max(60),
+    league: z.enum(LEAGUES),
+    primaryVenueId: ID.nullable().optional(),
+    colorPrimary: z.string().max(20).nullable().optional(),
+    colorSecondary: z.string().max(20).nullable().optional(),
+  })
+  .strict();
+
 export const gamesBody = z
-  .object({ games: z.array(gameSchema).min(1), teamGames: z.array(teamGameSchema).optional() })
+  .object({
+    games: z.array(gameSchema).min(1),
+    teamGames: z.array(teamGameSchema).optional(),
+    // FK の順序で入れるため、すべて `games` より前に流す
+    venues: z.array(venueSchema).optional(),
+    venueSourceKeys: z.array(venueSourceKeySchema).optional(),
+    players: z.array(playerSchema).optional(),
+    clubSeasons: z.array(clubSeasonSchema).optional(),
+  })
   .strict();
 
 const countable = int(0, 250).nullable().optional();

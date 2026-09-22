@@ -247,6 +247,12 @@ CREATE INDEX idx_games_away     ON games(away_club_id, game_date);
 **値は不変でラベルだけが変わる。** `2` は 2016-17〜2025-26 が「B1リーグ」、2026-27 から
 「B.PREMIER」である（Phase 0 で確認）。ラベルではなく**値で分岐する**。
 
+**ただし `event` の値だけでは絞り込めない。** `event=2` は「そのシーズンの日程」であり、
+リーグ戦のほかに**チャンピオンシップ・オールスター・国際試合を含む**。2016-17 の実測では
+`event=2` が555試合（リーグ戦540 ＋ CS15）で、加えて非リーグ戦2試合が混ざっていた。
+絞り込みは要件 5.3 の3段で行う（CS を先に確定 → `event=2` の残りを REGULAR →
+その年度のクラブ一覧にないチームの試合を飛ばす）。
+
 **オールスターゲームを取り込むと Elo が壊れる。** 選抜チーム同士の対戦であってクラブの試合では
 なく、`clubs` に存在しないチームが現れる。入替戦は相手が B2 のクラブで、`clubs` にも `seasons`
 にも存在しないため対戦相手を解決できない。アーリーカップはプレシーズンの地区大会である。
@@ -1414,6 +1420,32 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 
 **`club_seasons` と会場マスタはこの口では受けない。** どちらも backfill が試合データから作る（1.2 / 4.4）。ここで受けられるようにすると、事前に列挙できないはずのものを手で入れる経路が残る。
 
+#### `POST /internal/games` は、試合データから導かれるマスタも受ける
+
+**backfill が試合データから作るマスタ（`players` / `club_seasons` / `venues` /
+`venue_source_keys`）を D1 へ書く口が必要である。** D1 への書き込みは Workers 経由に
+一本化されており（絶対ルール3）、これらに口がないと backfill が実装できない。
+v1.16 まで、この口が設計に書かれていなかった。
+
+**専用のエンドポイントを増やさず、`POST /internal/games` の本文に任意の配列として足す。**
+理由は2つある。
+
+1. **FK の順序と原子性。** `player_game_stats` は `players` を、`games` は `venues` を
+   参照する。別リクエストに分けると、途中で失敗したときに「試合はあるが会場がない」
+   状態が残る。同一 `batch()` に **`venues` → `venue_source_keys` → `players` →
+   `club_seasons` → `games` → `team_games`** の順で入れれば、FK 順を守ったまま原子性が保てる
+2. **出所が同じ。** これらはすべて同じ試合レスポンスから抜き出した値である
+   （`StadiumCD` / `StadiumNameJ` / `PlayerID` / `PlayerNameJ` / `TeamNameJ`）。
+   別の口にすると、同じ1回の取得結果が2つのリクエストに分かれる
+
+**テーブル名を引数に取る汎用の口にはしない**（`POST /internal/masters` と同じ理由）。
+名前付きの配列にし、配列ごとに Zod スキーマを持つ。行数上限は各テーブルの
+`max_rows_per_request` で個別に検査する。
+
+`venue_revisions`（名称履歴）と `player_seasons` はこの口では受けない。前者は
+シーズンをまたいだ集計が必要で1試合の取り込みでは決められず（U-10 の解決に従い
+別の工程で作る）、後者は登録区分とポジションが未決（C03）で推測で埋めないためである。
+
 #### 内部 GET を置く理由と射程
 
 バッチは**入力データ**としては D1 を読まない（`batch/snapshot/*.parquet` のみ）。しかし運用上、D1 の現在値が要る場面が4つある — backfill の再開判定、照合対象の取得、モデル artifact の読み出し、現行モデルの識別。これらを `/internal/*` の GET に集約することで、**D1 REST API の直叩きを作らない**という方針を保ったまま実装できる。
@@ -1803,6 +1835,27 @@ JavaScriptは実行しない。`PeriodCategory=18` で絞り、選手行、チ�
 **取得しないフィールド**: 審判名（`RefereeNameJ*` ほか。特徴量 #30 は見送り）、プレイバイプレイ（`ActionCD*` `PlayText` `X` `Y`）、シュートチャート座標、`EFF` / `EFG` / `TS` / `USG` / `AST_TO`（導出値なので保存しない）。
 
 `POSS` / `OFFRTG` / `DEFRTG` / `NETRTG` はサイト側にも存在するが、値の入り方が未確認である。**自前計算を正とし**、サイトの値は P0-7（係数 0.44 の妥当性）の突き合わせ材料として使う。
+
+#### 日程ページの2つの形（2026-09-22 の実測）
+
+日程の試合行は、区画の見出しによって**日付の出どころが変わる**。
+
+| 区画 | 見出し | 行の `info-arena` の span | 日付の出どころ |
+|---|---|---|---|
+| 通常のリーグ戦 | `2016.09.22(木)`（日付） | `[第1節, 県 \| 会場, 18:55]` の3つ | **見出し** |
+| ステージ（CS ほか） | `B.LEAGUE CHAMPIONSHIP 2016-17`（ステージ名） | `[クォーターファイナル, 県 \| 会場, 05/13 (土), 16:05]` の**4つ** | **行（時刻の直前の span）** |
+
+**見出しだけを日付の出どころにすると、チャンピオンシップが丸ごと落ちる。** 実測では
+CS 15試合すべてが欠落した（見出しが日付でないため区画ごと飛ばされた）。行の span が
+4つある場合は、時刻の直前を日付として読む。
+
+**暦年は月から決める。** 行の日付は `MM/DD` で年を持たないため、9〜12月はシーズン開始年、
+1〜8月は翌年とする。結果は既存の範囲検査（開始年または翌年）を通す。
+
+**`index` が `null` なら、試合があってもそれが最終ページである。** 2016-17 の
+チャンピオンシップは 15試合 / `index=null` の単一ページで、`index` の前進を必須に
+していた実装は**CSを1件も取り込めなかった**。空の `topics` と `index=null` の組だけを
+終端とみなす実装は誤りである。
 
 #### 取り込み前に必ず行う5つの正規化
 
@@ -2756,7 +2809,7 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 4a | **Workers API の土台と `POST /internal/masters`。** Hono / Zod / vitest（Workers ランタイム）/ ESLint Flat Config / `wrangler.toml` / `batch-limits.ts` / Bearer 認証（2キー方式・定数時間比較） | Bearer なしで401、汎用テーブル指定で400、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`POST /internal/masters` がローカル D1 にマスタを投入でき、2回流しても行数が増えない |
 | 4b | 残りの `/internal/*`（`predictions` / `finalize` / `evaluate` / `summary` / `log` / `ratings` / `games` / `stats` / `entries` / `models` と GET 群）。**freeze の Cron Trigger（毎時）もここで置く** | tipoff 経過後に409、freeze が子 → 親の順で通る、`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る。**完了した** — `batch/scraper/`（HTTP・取得前確認・URL構築）と `batch/parser/`（日程・終了済みボックススコア）を**標準ライブラリのみ**で実装し、batch のテストは 371 件。取得前確認は robots / 利用規約のハッシュが未設定・不一致なら試合データを取得しない。日次3,000件と 429/503 の停止はプロセス再起動を跨いで保たれる。**実サイトの取得は `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定するまで行わない**（カナリアは警告を残してスキップする）。利用方法は [スクレイパ・パーサ](scraper-parser.md) |
-| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
+| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/` と `batch/jobs/backfill.py` を実装し、合成応答でテスト済み。`recompute_ratings` とスナップショット書き出しジョブ、`venue_revisions` の構築は未実装）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る。**完了した** — `batch/features/`（`dataset` / `base` / `team_strength` / `schedule_ctx` / `player` / `builder`）と採用16キー、`db/seeds/test/`（架空8クラブ × 2シーズン / 224試合の決定論的シード）、`scripts/rebuild_snapshot.py`。batch のテストは 404 件で、リーク検証10件・スナップショット9件・特徴量10件を含む |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |

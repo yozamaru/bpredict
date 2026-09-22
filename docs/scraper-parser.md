@@ -61,7 +61,7 @@ UTC日単位の件数、最後のリクエスト時刻、429/503による当日�
 ## 解析の契約
 
 `parse_club_options(html)` は年度別の日程HTMLのクラブ選択肢から短縮名→公式IDを返す。
-`parse_schedule(body, year=..., event=..., clubs=..., previous_date=...)` は日程JSONを読み、
+`parse_schedule(body, year=..., event=..., clubs_by_name=..., previous_date=...)` は日程JSONを読み、
 `SchedulePage` を返す。`previous_date` はページ先頭に日付見出しがないときだけ使う。
 空の `topics` と `index=null` が終端。非空なのに試合が取れない応答は正常な空ページにしない。
 スコア・時刻が未公表ならNoneを返す。時刻未公表の行を `tipoff_at NOT NULL` のDBへそのまま投入しない。
@@ -69,6 +69,8 @@ UTC日単位の件数、最後のリクエスト時刻、429/503による当日�
 
 `parse_boxscore(body, event=..., clubs=..., expected_game_id=...)` は終了済み試合を読み、
 `BoxScore` を返す。`clubs` は公式TeamID→内部club_idの対応表。名前でIDを推測しない。
+**日程側の `clubs_by_name`（短縮名→公式ID）とは向きが違う。** 同名にしていたため、
+実サイトでの確認時に取り違えて失敗した。
 返すのは許可した項目だけで、元JSONは返さない。公式合計行はCategory=3を1チーム1件要求する。
 未開始のデータ欠落と、構造が壊れた終了試合は `DataUnavailable` / `ParseError` で区別する。
 NULLの値を含む恒等式は評価不能として扱い、揃っている値だけ検証する。

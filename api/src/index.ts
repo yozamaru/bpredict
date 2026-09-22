@@ -25,7 +25,9 @@ export type Env = {
   FINALIZE_TOKEN?: string;
 };
 
-const app = new Hono<{ Bindings: Env }>();
+// **ベースパスは `/api/v1`**（詳細設計 3.1 の「すべて」に内部エンドポイントも含む）。
+// WAF のレートリミットは `/api/v1/*` に当てるため、ここに載っていないと保護の外に出る。
+const app = new Hono<{ Bindings: Env }>().basePath('/api/v1');
 
 // **トークンは用途で分離する。** `/internal/*` に一括で当てない。
 // `/internal/finalize` は破壊的操作のため `FINALIZE_TOKEN` を使う（詳細設計 3.4）。

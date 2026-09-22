@@ -38,15 +38,37 @@ const TEAM_GAME_COLS = [
   'competition', 'result', 'margin',
 ] as const;
 
+const VENUE_COLS = ['id', 'name', 'prefecture', 'lat', 'lng'] as const;
+const VENUE_KEY_COLS = ['source_code', 'venue_id'] as const;
+const PLAYER_COLS = ['id', 'name', 'height_cm'] as const;
+const CLUB_SEASON_COLS = [
+  'club_id', 'season_id', 'name', 'short_name', 'league', 'primary_venue_id',
+  'color_primary', 'color_secondary',
+] as const;
+
 facts.post('/games', async (c) => {
   const json = await readJson(c);
   if (!json.ok) return fail(c, 'BAD_REQUEST', 'JSON として解釈できない');
   const raw = json.value;
   const parsed = gamesBody.safeParse(raw);
   if (!parsed.success) return failValidation(c, parsed.error.issues);
-  const { games, teamGames = [] } = parsed.data;
+  const {
+    games,
+    teamGames = [],
+    venues = [],
+    venueSourceKeys = [],
+    players = [],
+    clubSeasons = [],
+  } = parsed.data;
 
-  const over = overLimit([['games', games.length], ['team_games', teamGames.length]]);
+  const over = overLimit([
+    ['games', games.length],
+    ['team_games', teamGames.length],
+    ['venues', venues.length],
+    ['venue_source_keys', venueSourceKeys.length],
+    ['players', players.length],
+    ['club_seasons', clubSeasons.length],
+  ]);
   if (over) return fail(c, 'BAD_REQUEST', over);
 
   const gameRows: Row[] = games.map((g) => [
@@ -62,6 +84,35 @@ facts.post('/games', async (c) => {
   ]);
 
   const stmts = [
+    // **FK の順序で入れる**（詳細設計 3.4）。会場・選手がない状態で試合を入れると
+    // 外部キーで失敗し、別リクエストに分けると途中で失敗したときに
+    // 「試合はあるが会場がない」状態が残る。
+    ...upsertStatements(c.env.DB, 'venues', VENUE_COLS,
+      venues.map((v) => [v.id, v.name, v.prefecture ?? null, v.lat ?? null, v.lng ?? null]), {
+        conflict: ['id'],
+        // 名称は当時の値で上書きしない。現在の表示名は別の経路で更新する（詳細設計 1.2）
+        update: ['prefecture', 'lat', 'lng'],
+        extra: ["updated_at = datetime('now')"],
+      }),
+    ...upsertStatements(c.env.DB, 'venue_source_keys', VENUE_KEY_COLS,
+      venueSourceKeys.map((k) => [k.sourceCode, k.venueId]), {
+        conflict: ['source_code'],
+        update: ['venue_id'],
+      }),
+    ...upsertStatements(c.env.DB, 'players', PLAYER_COLS,
+      players.map((p) => [p.id, p.name, p.heightCm ?? null]), {
+        conflict: ['id'],
+        update: ['name', 'height_cm'],
+        extra: ["updated_at = datetime('now')"],
+      }),
+    ...upsertStatements(c.env.DB, 'club_seasons', CLUB_SEASON_COLS,
+      clubSeasons.map((s) => [
+        s.clubId, s.seasonId, s.name, s.shortName, s.league, s.primaryVenueId ?? null,
+        s.colorPrimary ?? null, s.colorSecondary ?? null,
+      ]), {
+        conflict: ['club_id', 'season_id'],
+        update: ['name', 'short_name', 'league', 'primary_venue_id', 'color_primary', 'color_secondary'],
+      }),
     // upsert キーは id（公式試合ID）。延期で game_date が変わっても別レコードにならない
     ...upsertStatements(c.env.DB, 'games', GAME_COLS, gameRows, {
       conflict: ['id'],
@@ -77,7 +128,17 @@ facts.post('/games', async (c) => {
     return fail(c, 'BAD_REQUEST', `文数が上限を超えている: ${stmts.length}`);
   }
   await c.env.DB.batch(stmts);
-  return ok(c, { applied: { games: games.length, teamGames: teamGames.length }, statements: stmts.length });
+  return ok(c, {
+    applied: {
+      venues: venues.length,
+      venueSourceKeys: venueSourceKeys.length,
+      players: players.length,
+      clubSeasons: clubSeasons.length,
+      games: games.length,
+      teamGames: teamGames.length,
+    },
+    statements: stmts.length,
+  });
 });
 
 const TGS_COLS = [

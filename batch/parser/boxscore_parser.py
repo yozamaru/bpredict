@@ -58,10 +58,18 @@ def _side(
         if row_team_id not in (None, "") and source_id(row_team_id) != team_id:
             raise ValidationError("チームIDが親と一致しない")
         player_id = required(row, "PlayerID")
+        # **`Category` で分岐する。`PlayerID` の有無で分けない。**
+        # 1 = 選手 / 2 = 選手以外の登録行 / 3 = 公式のチーム合計。
+        # 2 の意味は年度で違い、2016-17 はヘッドコーチの行（PlayerID を持ち
+        # PlayTime は DNP、全スタッツ0）、2025-26 は選手に付かないチーム記録
+        # （PlayerID が空で、リバウンド等に値が入る）だった。どちらも
+        # 選手ではなく、公式合計にも加算しない。
         category = required_integer(required(row, "Category"), maximum=3)
-        if player_id not in (None, ""):
-            if category != 1 or row_team_id in (None, ""):
-                raise ParseError("選手行の区分または所属が不正")
+        if category == 1:
+            if player_id in (None, ""):
+                raise ParseError("選手行に PlayerID がない")
+            if row_team_id in (None, ""):
+                raise ParseError("選手行に所属がない")
             pid = source_id(player_id)
             if pid in seen:
                 raise ParseError("選手の通算行が重複")
@@ -79,14 +87,14 @@ def _side(
                 stats=_counts(row, player=True),
             ))
         elif category == 3:
+            if player_id not in (None, ""):
+                raise ParseError("公式合計行に PlayerID がある")
             totals.append(_counts(row, player=False))
-        elif category == 2:
+        else:  # category == 2
             team_records += 1
             _counts(row, player=False)  # 値域は検証するが、公式合計へ加算しない
-        else:
-            raise ParseError("未対応の非選手行")
-    if len(totals) != 1 or not players or team_records > 1:
-        raise ParseError("通算行の欠落または重複")
+    if len(totals) != 1 or not players:
+        raise ParseError("公式合計行の欠落または重複")
     total = totals[0]
     if total.pts != score:
         raise ValidationError("ボックススコア合計と試合得点が一致しない")

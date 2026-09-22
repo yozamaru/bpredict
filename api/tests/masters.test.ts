@@ -1,7 +1,7 @@
 import { createExecutionContext, env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { applyMigrations, post, resetAll, TOKEN } from './helpers';
+import { applyMigrations, post, resetAll, TOKEN, BASE } from './helpers';
 
 const season = {
   id: '2026-27-PREMIER',
@@ -41,7 +41,7 @@ describe('認証（詳細設計 7.2）', () => {
 
   it('Bearer スキームがなければ 401', async () => {
     // `.replace("Bearer ", "")` はスキーム検証にならない。正規表現で厳格に見る
-    const req = new Request('https://example.invalid/internal/masters', {
+    const req = new Request(`https://example.invalid${BASE}/internal/masters`, {
       method: 'POST',
       headers: { Authorization: TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify({ clubs: [club] }),

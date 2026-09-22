@@ -171,7 +171,15 @@ def main(argv: list[str] | None = None) -> int:
             from_date=None if args.full else args.from_date,
         )
         _log(api, result)
+    except LoaderError as error:
+        # **`LoaderError` のメッセージは出す。** この例外は設計上、URL のクエリ文字列も
+        # 応答本文もトークンも含まない（`batch/loader/api.py`）。型名だけにすると
+        # 「4xx なのか 5xx なのか、どの口なのか」が分からず、原因の切り分けに
+        # 本番の再実行が要る。実際に2度それが起きた。
+        print(f"recompute_ratings: 失敗（{type(error).__name__}: {error}）", file=sys.stderr)
+        return 1
     except Exception as error:  # noqa: BLE001 — 公開ログの境界で本文を除去する
+        # 想定外の例外は型名のみ。本文に何が入るか保証できない（絶対ルール4）
         print(f"recompute_ratings: 失敗（{type(error).__name__}）", file=sys.stderr)
         return 1
 

@@ -140,7 +140,15 @@ def main(argv: list[str] | None = None) -> int:
         # 入力の矛盾。**自動で解決しない**（詳細設計 4.9）。本文は自前のメッセージのみ
         print(f"build_venue_revisions: 中止（{error}）", file=sys.stderr)
         return 1
+    except LoaderError as error:
+        # **`LoaderError` のメッセージは出す。** この例外は設計上、URL のクエリ文字列も
+        # 応答本文もトークンも含まない（`batch/loader/api.py`）。型名だけにすると
+        # 「4xx なのか 5xx なのか、どの口なのか」が分からず、原因の切り分けに
+        # 本番の再実行が要る。実際に2度それが起きた。
+        print(f"build_venue_revisions: 失敗（{type(error).__name__}: {error}）", file=sys.stderr)
+        return 1
     except Exception as error:  # noqa: BLE001 — 公開ログの境界で本文を除去する
+        # 想定外の例外は型名のみ。本文に何が入るか保証できない（絶対ルール4）
         print(f"build_venue_revisions: 失敗（{type(error).__name__}）", file=sys.stderr)
         return 1
 

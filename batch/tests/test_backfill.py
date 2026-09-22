@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from batch.jobs import backfill
-from batch.loader.api import InternalApi, Response
+from batch.loader.api import InternalApi, LoaderError, Response
 from batch.loader.payload import series_numbers, spectator_restricted
 from batch.scraper.client import ScrapingStopped
 from batch.tests.fixtures.boxscore import boxscore_data, page
@@ -258,6 +258,48 @@ def test_spectator_restricted_forces_the_covid_seasons(
 ) -> None:
     """観客制限期間は期間指定で強制的に 1（詳細設計 1.3）。"""
     assert spectator_restricted(label, attendance) == expected
+
+
+def _job_env(monkeypatch, tmp_path: Path) -> None:
+    """`main()` が `RateLimitedClient` と `InternalApi` を組めるだけの環境を与える。"""
+    monkeypatch.setenv("API_BASE_URL", "http://127.0.0.1:8787")
+    monkeypatch.setenv("INGEST_TOKEN", "token")
+    monkeypatch.setenv("SCRAPER_USER_AGENT", "test/1.0 (+https://example.invalid/about)")
+    monkeypatch.setenv("SCRAPER_STATE_PATH", str(tmp_path / "state.json"))
+
+
+def test_loader_error_message_reaches_stdout(monkeypatch, capsys, tmp_path: Path) -> None:
+    """`LoaderError` の**メッセージ**を出すこと（型名だけにしない）。
+
+    この例外は設計上、URL のクエリ文字列も応答本文もトークンも含まない
+    （`batch/loader/api.py`）。型名だけだと「4xx か 5xx か、どの口か」が分からず、
+    原因の切り分けに本番の再実行が要る。**実際に2度それが起きた。**
+    """
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise LoaderError("内部APIが失敗を返した（500 / games/ingested）")
+
+    monkeypatch.setattr(backfill, "run", boom)
+    _job_env(monkeypatch, tmp_path)
+
+    assert backfill.main(["--season", SEASON]) == 1
+    err = capsys.readouterr().err
+    assert "LoaderError" in err
+    assert "500" in err and "games/ingested" in err
+
+
+def test_unexpected_exception_prints_only_the_type(monkeypatch, capsys, tmp_path: Path) -> None:
+    """想定外の例外は型名のみ（本文に何が入るか保証できない。絶対ルール4）。"""
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("https://example.invalid/secret?token=abcdef")
+
+    monkeypatch.setattr(backfill, "run", boom)
+    _job_env(monkeypatch, tmp_path)
+
+    assert backfill.main(["--season", SEASON]) == 1
+    err = capsys.readouterr().err
+    assert "RuntimeError" in err
+    assert "token=abcdef" not in err
+    assert "example.invalid" not in err
 
 
 def test_dry_run_posts_nothing(tmp_path: Path) -> None:

@@ -511,3 +511,63 @@ Next.js 16.3.5 / React 19.3 / 静的出力（`output: 'export'`、`trailingSlash
 **判断が必要**（要件の改定は承認なしに行わない）。
 1. 要件 4.2 の初期JS上限を実測に合わせて改定する（総転送量 250KB の条件は維持できる）
 2. フレームワークを変える（Pages Router / Astro など）。要件7章・基本設計 2.5 の書き換えを伴う
+
+
+## 実サイトでの取得・解析の確認（2026-09-22・工程6の着手前）
+
+**スクレイパとパーサを初めて実サイトに当てた。** 工程5は合成 fixture でしか検証していなかった。
+取得はレート制限つきクライアント経由（3秒＋ジッタ）で、この日の総リクエストは20件未満。
+本文は保存していない。
+
+### robots.txt（C06 を解決）
+
+| 項目 | 内容 |
+|---|---|
+| 本文 | 283バイト / 23行 |
+| `User-agent: *` | **ない** |
+| `Disallow: /` | **6種**（SemrushBot / MJ12bot / serpstatbot / SEOkicks-Robot / dotbot / BLEXBot。いずれも SEO 解析ボット） |
+| `Crawl-delay` | **2種**（msnbot 10 / bingbot 30） |
+| 本プロダクトの UA への制限 | **なし**（`can_fetch` が True） |
+
+要件 5.1 の旧記述「SEO 解析ボット8種」は、`Disallow` の6種と `Crawl-delay` の2種を
+合算した数だった。v1.11 で「6種 + 別の2種に Crawl-delay」に修正済みで、**実測と一致した**。
+
+承認済みハッシュ（この値を GitHub Variables に設定して運用する）
+
+| 変数 | 値 |
+|---|---|
+| `SCRAPER_ROBOTS_SHA256` | `43c9d466d16528226b172fd450ff49cc2e62a36bc4fb7f50ccb196acf70975ab` |
+| `SCRAPER_TERMS_SHA256` | `e669ebe7f271d05e907b5d069fdb5acbdd46a172f5d75802529058763cb8fbc0` |
+
+**この2つは「2026-09-22 時点の本文」を指す。** 変更を検知したらジョブは中止する設計であり、
+中止が起きたときは本文を読み直して判断し、値を更新する（自動更新しない）。
+
+### パーサの結果
+
+| 対象 | 結果 |
+|---|---|
+| `parse_club_options`（2025年度の日程HTML） | 26クラブ。短縮名 → 公式TeamID |
+| `parse_schedule`（`event=2&index=0`） | 20試合 / `next_index=20`。日付・開始時刻（JST→UTC）・スコア・状態を取得 |
+| `parse_boxscore`（2025-26 の `505497`） | 選手23名 / `possessions` 72.2・74.0 / `plus_minus` 欠損0 |
+| `parse_boxscore`（2016-17 の `22`） | 選手24名 / `possessions` 69.3・72.8 / **`plus_minus` 欠損24（全件）** / `StadiumCD` の整数 `3` を文字列へ正規化 |
+
+`possessions` は4件すべて値域（50–120）の内側だった。恒等式（`pts = 2fgm×2 + 3fgm×3 + ftm`、
+得点・シュート数の選手合計＝公式合計）も通っている。
+
+### 見つかった不具合2件（C01 の追加確認）
+
+**1. `Category=2` の意味が年度で違う。** 2016-17 の `Category=2` は **PlayerID を持つ
+ヘッドコーチの行**だった（`PlayTime='DNP'`、全スタッツ0）。2025-26 の `Category=2` は
+PlayerID が空のチーム記録行である。`PlayerID` の有無で選手行を判定していたため、
+**2016-17 の全試合が `ParseError` で落ちていた**。
+
+`Category` で分岐する形に直した。1 = 選手 / 2 = 選手以外の登録行（コーチまたはチーム記録。
+**公式合計に加算しない**）/ 3 = 公式のチーム合計。この分岐は年度をまたいで成立する。
+なお `Category=1` でも `PlayTime='DNP'`（登録のみで未出場）がありうる。
+
+**2. 同名の引数で意味が違っていた。** `parse_schedule(clubs=)` は「短縮名 → 公式ID」、
+`parse_boxscore(clubs=)` は「公式ID → 内部club_id」で、向きが逆だった。実サイトでの
+確認中に取り違えて `ParseError` を出した。日程側を `clubs_by_name` に改名した。
+
+**どちらも合成 fixture では検出できなかった。** fixture は観測した構造のスナップショットで
+あり、観測していない年度の差は写らない。

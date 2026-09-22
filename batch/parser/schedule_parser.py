@@ -234,17 +234,17 @@ def _score(node: _Node, side: str) -> int | None:
     return points
 
 
-def _team(node: _Node, side: str, clubs: Mapping[str, str]) -> tuple[str, str]:
+def _team(node: _Node, side: str, clubs_by_name: Mapping[str, str]) -> tuple[str, str]:
     team = _one([child for child in node.descendants()
                  if child.has_class("team") and child.has_class(side)], "schedule team")
     name = _text(_one(_with_class(team, "team-name"), "schedule club name"))
-    if name not in clubs:
+    if name not in clubs_by_name:
         raise ParseError("schedule club is absent from season selector")
-    return name, _identifier(clubs[name])
+    return name, _identifier(clubs_by_name[name])
 
 
 def _parse_game(
-    node: _Node, game_date: str, competition: str, clubs: Mapping[str, str]
+    node: _Node, game_date: str, competition: str, clubs_by_name: Mapping[str, str]
 ) -> ScheduleGame:
     game_id = _identifier(node.attrs.get("id"))
     link = _one([child for child in _with_class(node, "data-game") if child.tag == "a"],
@@ -257,8 +257,8 @@ def _parse_game(
     if (url.scheme not in ("", "https") or url.netloc not in ("", "www.bleague.jp")
             or url.path != "/game_detail/" or keys != [game_id] or url.fragment):
         raise ParseError("schedule row and game link do not agree")
-    home_name, home_id = _team(link, "home", clubs)
-    away_name, away_id = _team(link, "away", clubs)
+    home_name, home_id = _team(link, "home", clubs_by_name)
+    away_name, away_id = _team(link, "away", clubs_by_name)
     if home_id == away_id:
         raise ValidationError("schedule teams must be different")
     home_score, away_score = _score(link, "home"), _score(link, "away")
@@ -306,10 +306,14 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 
 def parse_schedule(
-    body: str, *, year: int, event: int, clubs: Mapping[str, str],
+    body: str, *, year: int, event: int, clubs_by_name: Mapping[str, str],
     previous_date: str | None = None, index: int = 0,
 ) -> SchedulePage:
     """Parse a single page; retain `last_date` for the next request.
+
+    `clubs_by_name` は `parse_club_options()` の戻り値（**短縮名 → 公式ID**）。
+    `parse_boxscore()` の `clubs`（公式ID → 内部club_id）とは向きが違う。
+    同じ名前にしていたため、実サイトでの確認時に取り違えて失敗した。
 
     An exact duplicate within the page is emitted once. A conflicting duplicate
     rejects the entire page rather than choosing one version silently.
@@ -345,7 +349,7 @@ def parse_schedule(
             continue
         if last_date is None:
             raise ParseError("schedule game has no date heading or previous date")
-        game = _parse_game(node, last_date, competition, clubs)
+        game = _parse_game(node, last_date, competition, clubs_by_name)
         if game.game_id in games and games[game.game_id] != game:
             raise ParseError("conflicting duplicate schedule game")
         games[game.game_id] = game

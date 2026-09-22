@@ -160,6 +160,26 @@ def _hash(body: str, *, normalize_lines: bool = False) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
+_SCRIPT_OR_STYLE = re.compile(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>")
+_TAG = re.compile(r"(?s)<[^>]+>")
+
+
+def visible_text(html: str) -> str:
+    """HTML から**可視テキスト**だけを取り出す。
+
+    利用規約の変更検知に使う。全文をそのままハッシュすると、**規約の文言が
+    変わっていなくてもマークアップ側の変化で不一致になる**。実測で、同一日の
+    30分の間に全文ハッシュが変わり（連続2回の取得は完全に同一）、可視テキストに
+    時刻・スコア・トークンは含まれていなかった。したがって変わったのは
+    タグ・属性・アセット側である。
+
+    守りたいのは**規約の文言**であり、マークアップではない。全文で止め続けると
+    「毎日中止する通知」になり、本当に改定されたときに気づけなくなる。
+    """
+    body = _SCRIPT_OR_STYLE.sub(" ", html)
+    return " ".join(_TAG.sub(" ", body).split())
+
+
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     values: dict[str, object] = {}
     for key, value in pairs:
@@ -217,7 +237,8 @@ class RateLimitedClient:
         terms_body = self._request(TERMS_URL)
         return {
             "robots_sha256": _hash(robots_body, normalize_lines=True),
-            "terms_sha256": _hash(terms_body),
+            # 規約は可視テキストでハッシュする（マークアップの変化で止めない）
+            "terms_sha256": _hash(visible_text(terms_body)),
         }
 
     def verify_policy(self) -> None:
@@ -232,7 +253,7 @@ class RateLimitedClient:
         robots = self._parse_robots(robots_body)
         self._check_robots(robots, TERMS_URL)
         terms_body = self._request(TERMS_URL)
-        if _hash(terms_body) != self._terms_sha256:
+        if _hash(visible_text(terms_body)) != self._terms_sha256:
             raise PolicyError("The terms changed; review is required.")
         self._robots = robots
         self._verified_day = _utc_day(self._clock())

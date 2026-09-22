@@ -39,8 +39,12 @@ from batch.scraper.boxscore import boxscore_url
 from batch.scraper.client import PolicyError, RateLimitedClient, ScrapingStopped
 from batch.scraper.schedule import schedule_html_url, schedule_url
 
-#: 取り込むのはリーグ戦とチャンピオンシップだけ（要件 5.3）
-EVENTS = (2, 3)
+#: 取り込むのはリーグ戦とチャンピオンシップだけ（要件 5.3）。
+#: **チャンピオンシップ（3）を先に辿る。** `event=2` は「そのシーズンの日程」であり、
+#: リーグ戦だけでなく CS・オールスター・国際試合も含む（2016-17 の実データで確認）。
+#: 先に CS を確定させ、`event=2` では同じ試合IDを飛ばすことで、
+#: `competition` が REGULAR で上書きされるのを防ぎ、取得も重複しない。
+EVENTS = (3, 2)
 DEFAULT_STATE_PATH = Path("batch/.scraper-state/state.json")
 
 
@@ -51,6 +55,8 @@ class Result:
     skipped_existing: int = 0
     skipped_unfinished: int = 0
     skipped_invalid: int = 0
+    #: 日程に混ざる非リーグ戦（オールスター・国際試合）。件数を必ず表に出す
+    skipped_non_league: int = 0
     notes: list[str] = field(default_factory=list)
 
     def degrade(self, status: str, note: str) -> None:
@@ -66,7 +72,11 @@ def _season(season_id: str) -> tuple[SeasonRef, int]:
 
 
 def _schedule_pages(
-    client: RateLimitedClient, year: int, event: int, clubs_by_name: dict[str, str]
+    client: RateLimitedClient,
+    year: int,
+    event: int,
+    clubs_by_name: dict[str, str],
+    result: Result,
 ) -> Iterator[ScheduleGame]:
     """終端まで日程ページを辿る。空の `topics` と `index=null` が終端。"""
     index = 0
@@ -81,6 +91,8 @@ def _schedule_pages(
             index=index,
         )
         yield from page.games
+        # 非リーグ戦を黙って捨てない。件数を集計して出力に出す
+        result.skipped_non_league += page.skipped
         previous_date = page.last_date
         if page.next_index is None:
             return
@@ -104,8 +116,13 @@ def run(
     collected: list[tuple[ScheduleGame, int]] = []
     try:
         clubs_by_name = parse_club_options(client.get(schedule_html_url(year)))
+        seen: set[str] = set()
         for event in EVENTS:
-            for game in _schedule_pages(client, year, event, clubs_by_name):
+            for game in _schedule_pages(client, year, event, clubs_by_name, result):
+                if game.game_id in seen:
+                    # CS は `event=2` にも現れる。先に確定した PLAYOFF を保つ
+                    continue
+                seen.add(game.game_id)
                 collected.append((game, event))
     except ScrapingStopped:
         result.degrade("PARTIAL", "429/503 により日程の取得を中止した")
@@ -239,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"backfill: {result.status} 取り込み={result.ingested} 既取得={result.skipped_existing}"
         f" 未実施={result.skipped_unfinished} 不正={result.skipped_invalid}"
+        f" 非リーグ戦={result.skipped_non_league}"
     )
     for note in result.notes:
         print(f"  - {note}")

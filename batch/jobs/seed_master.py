@@ -163,7 +163,7 @@ def post(payload: dict, *, base_url: str, token: str, dry_run: bool = False) -> 
         print(f"[dry-run] POST /internal/masters {counts}")
         return
     req = urllib.request.Request(
-        f"{base_url.rstrip('/')}/internal/masters",
+        f"{base_url.rstrip('/')}/api/v1/internal/masters",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method="POST",

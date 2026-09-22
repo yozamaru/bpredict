@@ -167,7 +167,6 @@ def test_unknown_or_live_state_never_becomes_scheduled_or_finished(state):
     '{"topics":null,"index":20}', '{"topics":[{}],"index":20}',
     '{"topics":[],"index":20}',
     body("<div>dummy changed layout</div>"), body(HEADER), body(""),
-    body(HEADER, game_html(), index=None),
 ])
 def test_invalid_page_is_not_silent_empty_success(malformed):
     with pytest.raises(ParseError):
@@ -207,9 +206,14 @@ def test_invalid_previous_date_is_rejected(previous_date):
                        previous_date=previous_date)
 
 
-def test_missing_date_requires_explicit_previous_date():
-    with pytest.raises(ParseError, match="date"):
-        parse_schedule(body(game_html()), year=2026, event=2, clubs_by_name=CLUBS)
+def test_rows_without_a_date_are_skipped_not_guessed():
+    """日付が確定しない区画の行は飛ばす。**前の日付を引き継がせない。**
+
+    引き継ぐと、非リーグ戦（オールスター等）に誤った日付が付く。
+    """
+    page = parse_schedule(body(game_html()), year=2026, event=2, clubs_by_name=CLUBS)
+    assert page.games == ()
+    assert page.skipped == 1
 
 
 @pytest.mark.parametrize("clock", ["24:00", "19:60"])
@@ -234,10 +238,103 @@ def test_invalid_scores_and_status_consistency(home, away, state, error):
                        year=2026, event=2, clubs_by_name=CLUBS)
 
 
-def test_unknown_club_is_not_guessed_from_name():
-    with pytest.raises(ParseError, match="club"):
-        parse_schedule(body(HEADER, game_html(name="別の架空クラブ")),
-                       year=2026, event=2, clubs_by_name=CLUBS)
+def test_unknown_club_is_skipped_not_guessed():
+    """その年度のクラブ一覧にない相手の試合は飛ばす（名前からIDを推測しない）。
+
+    `event=2`（リーグ戦）に選抜チームや海外クラブが混ざる実データがある
+    （2016-17 の `B.BLACK` 対 `B.WHITE`、`川崎` 対 `安養KGC`）。
+    改称は選択肢側も当該年度の名称になるため、取りこぼしにはならない。
+    """
+    page = parse_schedule(body(HEADER, game_html(name="別の架空クラブ")),
+                          year=2026, event=2, clubs_by_name=CLUBS)
+    assert page.games == ()
+    assert page.skipped == 1
+
+
+def test_non_league_block_is_skipped_but_real_games_are_kept():
+    """非リーグ戦の区画を飛ばしても、同じページの実試合は取り込むこと。"""
+    special = ('<div class="champion-box box-container">'
+               '<span class="title">オールスター</span></div>')
+    page = parse_schedule(
+        body(HEADER, game_html("game-real"), special, game_html("game-star", name="B.BLACK")),
+        year=2026, event=2, clubs_by_name=CLUBS,
+    )
+    assert [game.game_id for game in page.games] == ["game-real"]
+    assert page.skipped == 1
+
+
+def stage_row(game_id: str = "game-cs-1", *, day: str = "05/13 (土)", clock: str = "16:05") -> str:
+    """ステージ名の区画の行。**日付の span が1つ余分に入る**（実データの形）。"""
+    return f"""
+    <li class="list-item" id="{game_id}"><div class="inner">
+      <a class="data-game click_schedule_report"
+         href="/game_detail/?ScheduleKey={game_id}&amp;tab=1">
+        <div class="game">
+          <span class="team home"><span class="team-name">架空ホーム</span></span>
+          <span class="point">
+            <span class="number home-score"><span>89</span></span>
+            <span class="number away-score"><span>75</span></span>
+          </span>
+          <span class="team away"><span class="team-name">架空アウェイ</span></span>
+        </div>
+        <div class="info"><div class="info-arena">
+          <span>クォーターファイナル</span><span>架空地域 | 架空会場</span>
+          <span>{day}</span><span>{clock}</span>
+        </div><div class="info-scorestate"><span>FINAL</span></div></div>
+      </a>
+    </div></li>
+    """
+
+
+STAGE_HEADING = ('<div class="champion-box box-container">'
+                 '<span class="title">B.LEAGUE CHAMPIONSHIP 2026-27</span></div>')
+
+
+def test_stage_block_takes_the_date_from_the_row():
+    """見出しがステージ名の区画では、**行の日付を使う**。
+
+    2016-17 のチャンピオンシップは `B.LEAGUE CHAMPIONSHIP 2016-17` という見出しで、
+    行の時刻欄に `05/13 (土)16:05` と日付が入っていた。見出しだけを見る実装は
+    **CS 15試合を丸ごと捨てていた**。
+    """
+    page = parse_schedule(body(STAGE_HEADING, stage_row(), index=None),
+                          year=2026, event=3, clubs_by_name=CLUBS, index=0)
+    assert page.skipped == 0
+    assert len(page.games) == 1
+    game = page.games[0]
+    # 1〜8月はシーズン開始年の翌年
+    assert game.game_date == "2027-05-13"
+    assert game.tipoff_at == "2027-05-13T07:05:00Z"
+    assert game.competition == "PLAYOFF"
+    assert (game.home_score, game.away_score) == (89, 75)
+
+
+def test_stage_block_infers_the_calendar_year_from_the_month():
+    """9〜12月は開始年、1〜8月は翌年（シーズンの並び）。"""
+    page = parse_schedule(body(STAGE_HEADING, stage_row(day="10/05 (土)"), index=None),
+                          year=2026, event=3, clubs_by_name=CLUBS, index=0)
+    assert page.games[0].game_date == "2026-10-05"
+
+
+def test_row_without_any_date_is_skipped():
+    """見出しも行も日付を持たない場合は飛ばす（推測で埋めない）。"""
+    page = parse_schedule(body(STAGE_HEADING, game_html(), index=None),
+                          year=2026, event=2, clubs_by_name=CLUBS)
+    assert page.games == ()
+    assert page.skipped == 1
+
+
+def test_terminal_page_with_games_is_accepted():
+    """`index=null` でも試合があれば最終ページとして扱うこと。
+
+    2016-17 のチャンピオンシップは 15試合 / `index=null` の単一ページで、
+    進行を必須にしていた実装は**CSを1件も取り込めなかった**。
+    """
+    page = parse_schedule(body(HEADER, game_html(), index=None), year=2026, event=3,
+                          clubs_by_name=CLUBS, index=0)
+    assert len(page.games) == 1
+    assert page.next_index is None
+    assert page.games[0].competition == "PLAYOFF"
 
 
 def test_same_official_club_on_both_sides_is_rejected():

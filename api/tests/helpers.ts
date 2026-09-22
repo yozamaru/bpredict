@@ -18,7 +18,7 @@ export async function post(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = init.token === undefined ? TOKEN : init.token;
   if (token !== null) headers.Authorization = `Bearer ${token}`;
-  const req = new Request(`https://example.invalid${path}`, {
+  const req = new Request(`https://example.invalid${BASE}${path}`, {
     method: 'POST',
     headers,
     body: typeof body === 'string' ? body : JSON.stringify(body),
@@ -39,11 +39,14 @@ export async function applyMigrations() {
 }
 
 /** GET 用。内部エンドポイントはすべて Bearer 必須。 */
+/** ベースパス。実装とテストで二重に書かない（詳細設計 3.1） */
+export const BASE = '/api/v1';
+
 export async function get(path: string, init: { token?: string | null } = {}) {
   const headers: Record<string, string> = {};
   const token = init.token === undefined ? TOKEN : init.token;
   if (token !== null) headers.Authorization = `Bearer ${token}`;
-  const req = new Request(`https://example.invalid${path}`, { method: 'GET', headers });
+  const req = new Request(`https://example.invalid${BASE}${path}`, { method: 'GET', headers });
   return worker.fetch(req, withToken(), createExecutionContext());
 }
 

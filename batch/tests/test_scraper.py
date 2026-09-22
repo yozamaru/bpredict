@@ -36,13 +36,19 @@ from batch.scraper.client import (
     TransportError,
     _NoRedirect,
     _transport,
+    visible_text,
 )
 from batch.scraper.schedule import schedule_html_url, schedule_url
 
 USER_AGENT = "BPredictTest/1.0 (+https://example.test/contact)"
 ROBOTS = "User-agent: *\nDisallow: /private/\n"
-TERMS = "<html><body>合成の利用規約</body></html>"
+TERMS = "<html><head><script>var x=1</script></head><body>合成の利用規約</body></html>"
 GAME_URL = boxscore_url("100001")
+
+
+def terms_digest() -> str:
+    """規約は**可視テキスト**でハッシュする（マークアップの変化で止めない）。"""
+    return digest(visible_text(TERMS))
 
 
 def digest(body: str) -> str:
@@ -106,7 +112,7 @@ def make_client(
     clock: Clock,
     transport: FakeTransport,
     robots: str | None = digest(ROBOTS),
-    terms: str | None = digest(TERMS),
+    terms: str | None = terms_digest(),
 ) -> RateLimitedClient:
     return RateLimitedClient(
         USER_AGENT, state_path, robots, terms,
@@ -155,7 +161,7 @@ def test_inspection_returns_hashes_and_does_not_approve(tmp_path):
     clock = Clock()
     transport = FakeTransport(clock, policy_responses())
     client = make_client(tmp_path / "state.json", clock, transport, robots=None, terms=None)
-    assert client.inspect_policy() == {"robots_sha256": digest(ROBOTS), "terms_sha256": digest(TERMS)}
+    assert client.inspect_policy() == {"robots_sha256": digest(ROBOTS), "terms_sha256": terms_digest()}
     with pytest.raises(PolicyError):
         client.get(GAME_URL)
     with pytest.raises(PolicyError):
@@ -163,7 +169,7 @@ def test_inspection_returns_hashes_and_does_not_approve(tmp_path):
     assert len(transport.calls) == 2
 
 
-@pytest.mark.parametrize("robots,terms", [(None, None), (None, digest(TERMS)), (digest(ROBOTS), None)])
+@pytest.mark.parametrize("robots,terms", [(None, None), (None, terms_digest()), (digest(ROBOTS), None)])
 def test_missing_policy_hash_never_requests(tmp_path, robots, terms):
     clock = Clock()
     transport = FakeTransport(clock, [])
@@ -175,17 +181,50 @@ def test_missing_policy_hash_never_requests(tmp_path, robots, terms):
     assert transport.calls == []
 
 
-def test_robots_line_endings_normalized_but_full_terms_are_exact(tmp_path):
+def test_robots_line_endings_are_normalized(tmp_path):
     clock = Clock()
     transport = FakeTransport(clock, [FakeResponse(ROBOTS.replace("\n", "\r\n")), FakeResponse(TERMS)])
     make_client(tmp_path / "state.json", clock, transport).verify_policy()
-    changed = FakeTransport(clock, [FakeResponse(ROBOTS), FakeResponse(TERMS + "\n")])
-    client = make_client(tmp_path / "state.json", clock, changed)
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        pytest.param(TERMS + "\n", id="末尾の改行"),
+        pytest.param(TERMS.replace("<body>", '<body class="x">'), id="属性の追加"),
+        pytest.param(TERMS.replace("var x=1", "var x=2"), id="スクリプトの変化"),
+        pytest.param(TERMS.replace("<html>", '<html><img src="/b.png?v=9">'), id="バナーの差し替え"),
+    ],
+)
+def test_terms_markup_changes_do_not_abort(tmp_path, variant):
+    """**マークアップの変化では止めない。**
+
+    全文をハッシュしていた実装は、実測で同一日の30分の間に不一致になった
+    （連続2回の取得は完全に同一で、可視テキストに動的な要素はなかった）。
+    毎回中止する門は「形骸化した通知」になり、本当に改定されたときに気づけない。
+    """
+    clock = Clock()
+    transport = FakeTransport(clock, [FakeResponse(ROBOTS), FakeResponse(variant)])
+    make_client(tmp_path / "state.json", clock, transport).verify_policy()
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        pytest.param(TERMS.replace("合成の利用規約", "改定された合成の利用規約"), id="文言の変更"),
+        pytest.param(TERMS.replace("合成の利用規約", ""), id="文言の削除"),
+    ],
+)
+def test_terms_wording_changes_abort(tmp_path, variant):
+    """**文言が変わったら止める。** これが守りたい対象である。"""
+    clock = Clock()
+    transport = FakeTransport(clock, [FakeResponse(ROBOTS), FakeResponse(variant)])
+    client = make_client(tmp_path / "state.json", clock, transport)
     with pytest.raises(PolicyError, match="terms changed"):
         client.verify_policy()
     with pytest.raises(PolicyError):
         client.get(GAME_URL)
-    assert len(changed.calls) == 2
+    assert len(transport.calls) == 2
 
 
 def test_changed_robots_stops_before_terms_or_game_request(tmp_path):

@@ -25,6 +25,11 @@ _DATE_HEADING = re.compile(
     r"([0-9]{4})[./-]([0-9]{1,2})[./-]([0-9]{1,2})(?:\([月火水木金土日]\))?\Z"
 )
 _CLOCK = re.compile(r"([0-9]{1,2}):([0-9]{2})\Z")
+#: チャンピオンシップ等の区画では、行が**日付の span を1つ余分に持つ**。
+#: 通常の区画は `[節, 県|会場, 時刻]` の3つで、ステージ区画は
+#: `[ステージ名, 県|会場, 05/13 (土), 16:05]` の4つだった（実データで確認）。
+#: 見出しがステージ名で日付を持たないため、日付はこの span から取る。
+_ROW_DATE = re.compile(r"([0-9]{1,2})/([0-9]{1,2})\s*(?:\([月火水木金土日]\))?\Z")
 _VOID_ELEMENTS = frozenset(
     {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
      "source", "track", "wbr"}
@@ -60,6 +65,8 @@ class SchedulePage:
     games: tuple[ScheduleGame, ...]
     next_index: int | None
     last_date: str | None
+    #: 取り込み対象外として飛ばした行数（オールスター・国際試合など）
+    skipped: int = 0
 
 
 @dataclass
@@ -183,12 +190,22 @@ def _previous_date(value: str | None, year: int) -> str | None:
     return _season_date(parsed, year)
 
 
-def _heading_date(node: _Node, year: int) -> str:
+def _heading_date(node: _Node, year: int) -> str | None:
+    """日付見出しを読む。**日付でない見出しは None を返す。**
+
+    `event=2`（リーグ戦）の中に、日付ではない見出しの区画が混ざる。
+    2016-17 の実データでオールスター（`B.BLACK` 対 `B.WHITE`）と国際試合
+    （`川崎` 対 `安養KGC`）がこの形で現れた。要件 5.3 は「オールスターは
+    `event=5`」としていたが、**古い年度では `event=2` に混在する**。
+
+    区画ごと飛ばすため、ここで例外にしない。ただし**前の日付を引き継がせない**
+    （引き継ぐと非リーグ戦に誤った日付が付く）。
+    """
     title = _one(_with_class(node, "title"), "schedule date heading")
     value = unicodedata.normalize("NFKC", _text(title)).replace(" ", "")
     matched = _DATE_HEADING.fullmatch(value)
     if matched is None:
-        raise ParseError("unrecognized schedule date heading")
+        return None
     try:
         parsed = date(*(int(part) for part in matched.groups()))
     except ValueError:
@@ -196,23 +213,73 @@ def _heading_date(node: _Node, year: int) -> str:
     return _season_date(parsed, year)
 
 
-def _tipoff(node: _Node, game_date: str) -> str | None:
+class _NoScheduleDate(Exception):
+    """見出しも行も日付を持たない。取り込み対象外として飛ばす。"""
+
+
+class _NotALeagueGame(Exception):
+    """その年度のクラブ一覧にないチームの試合。取り込み対象外として飛ばす。"""
+
+
+def _season_year(month: int, year: int) -> int:
+    """シーズン内の月から暦年を決める。
+
+    シーズンは9〜12月に開幕し翌年5月ごろまで続く。1〜8月は翌年である。
+    範囲の妥当性は `_season_date` が併せて検査する。
+    """
+    return year if month >= 9 else year + 1
+
+
+def _row_schedule(node: _Node, year: int, heading_date: str | None) -> tuple[str, str | None]:
+    """行から `(game_date, tipoff_at)` を決める。
+
+    通常の区画は見出しが日付で、行の時刻は `HH:MM` だけを持つ。
+    チャンピオンシップ等の区画は見出しがステージ名で、**行の時刻に日付が付く**
+    （例: `05/13 (土)16:05`）。後者では行の日付を使う。
+    """
     containers = _with_class(node, "info-arena")
-    if not containers:
-        return None
-    arena = _one(containers, "schedule time container")
-    spans = [child for child in arena.children if isinstance(child, _Node) and child.tag == "span"]
-    if len(spans) < 3:
-        return None
-    value = unicodedata.normalize("NFKC", _text(spans[-1]))
+    value = ""
+    row_date = ""
+    if containers:
+        arena = _one(containers, "schedule time container")
+        spans = [child for child in arena.children
+                 if isinstance(child, _Node) and child.tag == "span"]
+        if len(spans) >= 3:
+            value = unicodedata.normalize("NFKC", _text(spans[-1]))
+        if len(spans) >= 4:
+            # ステージ区画では日付が時刻の直前の span に入る
+            row_date = unicodedata.normalize("NFKC", _text(spans[-2]))
+
+    dated = _ROW_DATE.fullmatch(row_date) if row_date else None
+    if dated is not None:
+        month, day = (int(part) for part in dated.groups())
+        try:
+            parsed = date(_season_year(month, year), month, day)
+        except ValueError:
+            raise ValidationError("invalid schedule calendar date") from None
+        game_date = _season_date(parsed, year)
+        matched = _CLOCK.fullmatch(value) if value else None
+        if matched is None:
+            if value in ("", "-", "--:--", "未定", "調整中"):
+                return game_date, None
+            raise ParseError("unrecognized schedule tipoff time")
+        return game_date, _to_utc(game_date, int(matched[1]), int(matched[2]))
+
+    if heading_date is None:
+        # 見出しも行も日付を持たない。推測で埋めない
+        raise _NoScheduleDate(value)
     if value in ("", "-", "--:--", "未定", "調整中"):
-        return None
+        return heading_date, None
     matched = _CLOCK.fullmatch(value)
     if matched is None:
         raise ParseError("unrecognized schedule tipoff time")
+    return heading_date, _to_utc(heading_date, int(matched[1]), int(matched[2]))
+
+
+def _to_utc(game_date: str, hour: int, minute: int) -> str:
     try:
         local = datetime.combine(date.fromisoformat(game_date), datetime.min.time(), _JST)
-        local = local.replace(hour=int(matched[1]), minute=int(matched[2]))
+        local = local.replace(hour=hour, minute=minute)
     except ValueError:
         raise ValidationError("invalid schedule tipoff time") from None
     return local.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -239,12 +306,19 @@ def _team(node: _Node, side: str, clubs_by_name: Mapping[str, str]) -> tuple[str
                  if child.has_class("team") and child.has_class(side)], "schedule team")
     name = _text(_one(_with_class(team, "team-name"), "schedule club name"))
     if name not in clubs_by_name:
-        raise ParseError("schedule club is absent from season selector")
+        # クラブ選択肢はその年度のリーグ所属クラブの正本である。ここにない相手は
+        # リーグ戦のカードではない（選抜チーム・海外クラブ・下位リーグ）。
+        # **改称は選択肢側も当該年度の名称になるため、取りこぼしにはならない。**
+        raise _NotALeagueGame(name)
     return name, _identifier(clubs_by_name[name])
 
 
 def _parse_game(
-    node: _Node, game_date: str, competition: str, clubs_by_name: Mapping[str, str]
+    node: _Node,
+    heading_date: str | None,
+    year: int,
+    competition: str,
+    clubs_by_name: Mapping[str, str],
 ) -> ScheduleGame:
     game_id = _identifier(node.attrs.get("id"))
     link = _one([child for child in _with_class(node, "data-game") if child.tag == "a"],
@@ -257,6 +331,7 @@ def _parse_game(
     if (url.scheme not in ("", "https") or url.netloc not in ("", "www.bleague.jp")
             or url.path != "/game_detail/" or keys != [game_id] or url.fragment):
         raise ParseError("schedule row and game link do not agree")
+    game_date, tipoff_at = _row_schedule(link, year, heading_date)
     home_name, home_id = _team(link, "home", clubs_by_name)
     away_name, away_id = _team(link, "away", clubs_by_name)
     if home_id == away_id:
@@ -275,7 +350,7 @@ def _parse_game(
         raise ValidationError("unplayed schedule game contains scores")
     return ScheduleGame(
         game_id=game_id, competition=competition, game_date=game_date,
-        tipoff_at=_tipoff(link, game_date), home_source_id=home_id, away_source_id=away_id,
+        tipoff_at=tipoff_at, home_source_id=home_id, away_source_id=away_id,
         home_name=home_name, away_name=away_name, home_score=home_score, away_score=away_score,
         status=status,
         source_url=f"{_ORIGIN}/game_detail/?{urlencode({'ScheduleKey': game_id, 'tab': 2})}",
@@ -338,21 +413,30 @@ def parse_schedule(
         if next_index is not None:
             raise ParseError("empty schedule page has a continuation index")
         return SchedulePage((), None, last_date)
-    if type(next_index) is not int or next_index <= index:
+    # **`index` が null なら、試合があっても最終ページである。**
+    # 2016-17 のチャンピオンシップは 15試合 / `index=null` の単一ページで、
+    # 進行を必須にしていた実装は**CSを1件も取り込めなかった**。
+    if next_index is not None and (type(next_index) is not int or next_index <= index):
         raise ParseError("schedule continuation index did not advance")
     document = _Document("".join(topics))
     games: dict[str, ScheduleGame] = {}
     competition = "REGULAR" if event == 2 else "PLAYOFF"
+    skipped = 0
     for node in _schedule_nodes(document.root):
         if node.has_class("champion-box"):
             last_date = _heading_date(node, year)
             continue
-        if last_date is None:
-            raise ParseError("schedule game has no date heading or previous date")
-        game = _parse_game(node, last_date, competition, clubs_by_name)
+        try:
+            game = _parse_game(node, last_date, year, competition, clubs_by_name)
+        except (_NotALeagueGame, _NoScheduleDate):
+            # その年度のクラブ一覧にない相手、または日付が決まらない行。
+            # **推測で埋めずに飛ばし、件数を返す。**
+            skipped += 1
+            continue
         if game.game_id in games and games[game.game_id] != game:
             raise ParseError("conflicting duplicate schedule game")
         games[game.game_id] = game
-    if not games:
+    if not games and skipped == 0:
+        # 行はあるのに1件も取れず、飛ばした覚えもない → 構造が変わった
         raise ParseError("nonempty schedule topics contain no game rows")
-    return SchedulePage(tuple(games.values()), next_index, last_date)
+    return SchedulePage(tuple(games.values()), next_index, last_date, skipped)

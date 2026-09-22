@@ -13,7 +13,12 @@ from batch.parser.errors import (
 )
 from batch.parser.extract import extract_embedded_json
 from batch.parser.normalize import integer, iso_utc, minutes, timestamp
-from batch.tests.fixtures.boxscore import boxscore_data, page
+from batch.tests.fixtures.boxscore import (
+    boxscore_data,
+    page,
+    scoring_team_record,
+    short_game,
+)
 
 CLUBS = {"101": "c-home", "102": "c-away"}
 
@@ -110,6 +115,50 @@ def test_team_total_rebounds_need_not_equal_player_sum():
 def test_team_shooting_counts_must_equal_player_sum():
     data = boxscore_data()
     data["HomeBoxscores"][-1]["PT2A"] += 1
+    with pytest.raises(ValidationError, match="合計"):
+        parse(data)
+
+
+def test_short_game_is_ingested_with_null_possessions():
+    """ポゼッションが値域外でも**試合は取り込む**（詳細設計 1.3）。
+
+    2016-17 の `1330`（川崎 26–18 A東京 / 31分）は中断・不成立の短い試合で、
+    値域外を例外にしていたため **CS の2試合が丸ごと落ちていた**。スコアは公式記録で
+    Elo に必要であり、ポゼッションは「通常の試合であれば」という前提の推定値である。
+    """
+    result = parse(short_game(boxscore_data()))
+    assert result.teams[0].stats.pts == 26
+    assert result.teams[0].possessions is None
+    assert result.game.home_score == 26
+    # 選手行は落ちない
+    assert len(result.players) == 4
+
+
+def test_possessions_within_range_is_kept():
+    """値域内は値が入ること（NULL にしすぎていないことの陰性確認）。"""
+    assert parse().teams[0].possessions == pytest.approx(65.4)
+
+
+def test_scoring_category_2_row_counts_toward_the_cross_check():
+    """得点を持つ `Category=2` 行があっても照合が通ること（詳細設計 4.4）。
+
+    2016-17 の実データにこの形があり、公式合計にはその2点が入っている。
+    照合の分母から外していたため、7試合が「合計が一致しない」として丸ごと落ちた。
+    """
+    result = parse(scoring_team_record(boxscore_data()))
+    home = result.teams[0]
+    # チーム統計は公式合計（Cat=3）のまま
+    assert home.stats.pts == 82
+    # `Category=2` は選手として保存しない（ヘッドコーチ行も同じ区分にある）
+    assert all(p.player_id != "demo-coach" for p in result.players)
+    # したがって選手合計はチーム合計より2点少ない。公式記録がそう言っている
+    assert sum(p.stats.pts for p in result.players if p.club_id == home.club_id) == 80
+
+
+def test_scoring_category_2_row_still_catches_a_real_mismatch():
+    """分母に含めても、本当の不一致は検出できること（緩めすぎていないこと）。"""
+    data = scoring_team_record(boxscore_data())
+    data["HomeBoxscores"][-1]["PT2A"] += 1          # 公式合計だけをずらす
     with pytest.raises(ValidationError, match="合計"):
         parse(data)
 

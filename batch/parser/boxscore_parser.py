@@ -45,7 +45,8 @@ def _side(
         raise ParseError("ボックススコアが配列でない")
     players: list[PlayerStats] = []
     totals: list[Counts] = []
-    team_records = 0
+    #: `Category=2`（選手以外の登録行）。照合の分母に使い、件数もこれで数える
+    others: list[Counts] = []
     seen: set[str] = set()
     for raw_row in raw_rows:
         row = object_row(raw_row)
@@ -63,7 +64,10 @@ def _side(
         # 2 の意味は年度で違い、2016-17 はヘッドコーチの行（PlayerID を持ち
         # PlayTime は DNP、全スタッツ0）、2025-26 は選手に付かないチーム記録
         # （PlayerID が空で、リバウンド等に値が入る）だった。どちらも
-        # 選手ではなく、公式合計にも加算しない。
+        # 選手ではないため `player_game_stats` には保存しない。
+        #
+        # **ただし得点を持つ `Category=2` 行が実在し、公式合計にはその得点が入る。**
+        # 照合の分母には含める（詳細設計 4.4）。含めないと2016-17 の7試合が落ちた。
         category = required_integer(required(row, "Category"), maximum=3)
         if category == 1:
             if player_id in (None, ""):
@@ -91,14 +95,14 @@ def _side(
                 raise ParseError("公式合計行に PlayerID がある")
             totals.append(_counts(row, player=False))
         else:  # category == 2
-            team_records += 1
-            _counts(row, player=False)  # 値域は検証するが、公式合計へ加算しない
+            # 公式合計へ加算はしないが、照合の分母には入れる
+            others.append(_counts(row, player=False))
     if len(totals) != 1 or not players:
         raise ParseError("公式合計行の欠落または重複")
     total = totals[0]
     if total.pts != score:
         raise ValidationError("ボックススコア合計と試合得点が一致しない")
-    validate_scoring_total(total, players)
+    validate_scoring_total(total, players, others)
     return players, TeamStats(game_id, club_id, is_home, total, possessions(total))
 
 

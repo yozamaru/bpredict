@@ -58,6 +58,14 @@ class Result:
     #: 日程に混ざる非リーグ戦（オールスター・国際試合）。件数を必ず表に出す
     skipped_non_league: int = 0
     notes: list[str] = field(default_factory=list)
+    #: スキップした試合の (game_id, 例外の型名, 自前メッセージ)。
+    #: **件数だけでは調査ができない**（詳細設計 4.4）。2016-17 で9試合が落ちたとき、
+    #: どれがなぜ落ちたかを知るために実サイトへ約80件の再取得が必要になった。
+    skipped: list[tuple[str, str, str]] = field(default_factory=list)
+
+    def skip(self, game_id: str, error: Exception) -> None:
+        """例外オブジェクトは残さない。型名と自前メッセージだけにする（絶対ルール4）。"""
+        self.skipped.append((game_id, type(error).__name__, str(error)))
 
     def degrade(self, status: str, note: str) -> None:
         self.status = status
@@ -154,16 +162,19 @@ def run(
         except ScrapingStopped:
             result.degrade("PARTIAL", "429/503 により取得区間を中止した")
             break
-        except ValidationError:
+        except ValidationError as error:
             # 値域・恒等式の違反は当該試合をスキップする（異常値を Elo に流さない）
             result.skipped_invalid += 1
+            result.skip(game.game_id, error)
             tracker.success()
             continue
-        except DataUnavailable:
+        except DataUnavailable as error:
             result.skipped_unfinished += 1
+            result.skip(game.game_id, error)
             tracker.success()
             continue
-        except ParseError:
+        except ParseError as error:
+            result.skip(game.game_id, error)
             try:
                 tracker.failure()
             except ParseErrorStreak:
@@ -260,6 +271,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     for note in result.notes:
         print(f"  - {note}")
+    # **スキップした試合は1行1件で出す。** 件数だけでは、どの試合がなぜ落ちたかを
+    # 調べるために実サイトへ再取得することになる（詳細設計 4.4）
+    for game_id, kind, message in result.skipped:
+        print(f"  skip {game_id} {kind} {message}")
     # PARTIAL を exit 0 で終えない（失敗通知に乗らず放置される。基本設計 4.3）
     return 1 if result.status != "SUCCESS" else 0
 

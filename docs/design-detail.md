@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.16** |
+| 版数 | **1.17** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -2088,6 +2088,26 @@ def backfill(season_id: str):
 1シーズンあたりの所要時間は Phase 0（P0-4）で実測する。1試合あたり2〜4ページなら1シーズン50〜100分、10シーズンで実質10日かかる。**1日1シーズンに限る**（D1 書込10万行/日の枠もある）。
 
 再開可能にしないと、55分経過時点で 429 を食らった際に翌日また全ページを取り直すことになり、相手サイトへの負荷を二重にかける。
+
+#### ワークフロー（`.github/workflows/backfill.yml`）
+
+**手動実行のみとし、`schedule` を置かない。** 定期実行を足すと「1日1シーズン」という制限が自動で破られる。この制限は相手サイトへの負荷と D1 書込枠の両方に効いている。
+
+| 項目 | 値 | 理由 |
+|---|---|---|
+| トリガ | `workflow_dispatch` のみ（`season` / `limit` / `dry_run`） | 上記 |
+| 実行ブランチ | `github.ref == 'refs/heads/main'` | 別ブランチのコードで本番 D1 へ書かない |
+| `permissions` | `contents: read` | スナップショットをコミットしない（絶対ルール4） |
+| `concurrency` | `d1-write` / `cancel-in-progress: false` | `daily-ingest` と重なると `revision` の採番が競合する（4.1） |
+| `timeout-minutes` | 300 | 1シーズン50〜100分の見積りに対する余裕 |
+
+**未設定のときは skip ではなく fail にする。** `API_BASE_URL` / `INGEST_TOKEN` / `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` のいずれかが空なら `::error::` を出して落とす。`parser-canary` は定期実行なので警告つき skip が正しいが、backfill は手動実行であり、黙って通り過ぎるよりその場で気づける方がよい。空の User-Agent や規約ハッシュ未確認で取得すると絶対ルール6を破る。
+
+**`seed_master` を先に流す。** `club_source_ids` が入っていないと全試合がクラブ解決に失敗して落ちる。`ON CONFLICT` で冪等なので毎回流してよい（8.1 の工程4）。
+
+**`inputs.*` を `run:` の本文に展開しない。** 展開はシェルに解釈される前に置換されるため、値がそのままコマンドとして走る余地が残る。`env:` に渡してシェル変数として参照する（`test_inputs_are_not_interpolated_into_run` が全ワークフローに対して検査する）。
+
+**スクレイパの状態は `actions/cache` で実行間に引き継ぐ。** 日次リクエスト上限3,000と429/503後の停止は状態ファイル（`SCRAPER_STATE_PATH`）が持つ。`parser-canary` と同じキー空間を共有し、両者の合計で上限を守る。取得区間が 429 で中止された場合も `if: always()` で保存する。
 
 ---
 

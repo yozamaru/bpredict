@@ -152,3 +152,66 @@ def test_dependabot_covers_pip_and_actions():
     assert "package-ecosystem: pip" in body
     assert "package-ecosystem: github-actions" in body
     assert body.count("interval: weekly") >= 2
+
+
+def test_backfill_is_manual_only_and_serialized():
+    """backfill は手動実行のみ・D1 書き込みの直列化・300分（詳細設計 4.1 / 4.8）。
+
+    `schedule` を足すと1日1シーズンという制限（相手サイトへの負荷と D1 書込枠の
+    両方）が自動実行で破られる。`concurrency: d1-write` がないと `daily-ingest`
+    と重なって `revision` の採番が競合する。
+    """
+    path = WORKFLOW_DIR / "backfill.yml"
+    body = path.read_text(encoding="utf-8")
+    stripped = without_comments(path)
+    assert "workflow_dispatch:" in stripped
+    assert "schedule:" not in stripped, "backfill に定期実行を足さない"
+    assert re.search(r"^\s+group: d1-write$", body, re.MULTILINE)
+    assert re.search(r"^\s+cancel-in-progress: false$", body, re.MULTILINE), \
+        "走行中を殺すと ingestion_logs が RUNNING のまま残る"
+    assert "timeout-minutes: 300" in body
+
+
+def test_backfill_gate_is_default_branch_literal():
+    """別ブランチのコードで本番 D1 へ書かない。分岐はリテラルで書く。"""
+    body = (WORKFLOW_DIR / "backfill.yml").read_text(encoding="utf-8")
+    gate = re.search(r"^\s+if: (.+)$", body, re.MULTILINE)
+    assert gate and gate[1].strip() == "github.ref == 'refs/heads/main'"
+
+
+def test_backfill_fails_when_unconfigured():
+    """未設定のまま通信しない。**skip ではなく fail** にする（絶対ルール6）。
+
+    手動実行なので、黙って通り過ぎるよりその場で気づける方がよい。空の
+    User-Agent や規約ハッシュ未設定で取得すると作法を破る。
+    """
+    body = (WORKFLOW_DIR / "backfill.yml").read_text(encoding="utf-8")
+    assert "::error::" in body
+    for name in ("API_BASE_URL", "INGEST_TOKEN", "SCRAPER_USER_AGENT",
+                 "SCRAPER_ROBOTS_SHA256", "SCRAPER_TERMS_SHA256"):
+        assert name in body, f"backfill.yml: {name} の確認がない"
+
+
+def test_backfill_seeds_masters_before_ingesting():
+    """マスタ投入が backfill より前にあること（詳細設計 8.1）。
+
+    `club_source_ids` がないと全試合がクラブ解決に失敗して落ちる。
+    `seed_master` は冪等（ON CONFLICT）なので毎回流してよい。
+    """
+    body = (WORKFLOW_DIR / "backfill.yml").read_text(encoding="utf-8")
+    assert body.index("batch.jobs.seed_master") < body.index("batch.jobs.backfill")
+
+
+@pytest.mark.parametrize("path", workflows(), ids=lambda p: p.name)
+def test_inputs_are_not_interpolated_into_run(path):
+    """`inputs.*` を `run:` の本文へ直接展開しない。
+
+    展開はシェルに解釈される前に置換されるため、値がそのままコマンドとして
+    走る余地が残る。`env:` 経由で渡し、シェル変数として参照する。
+    """
+    body = path.read_text(encoding="utf-8")
+    blocks = re.findall(r"^\s+run: \|?\s*\n((?:[ \t]{10,}.*\n)+)", body, re.MULTILINE)
+    blocks += re.findall(r"^\s+run: (?!\|)(.+)$", body, re.MULTILINE)
+    assert blocks, f"{path.name}: run が1つも見つからない（検査が空振りしている）"
+    for block in blocks:
+        assert "inputs." not in block, f"{path.name}: run の中で inputs を展開している"

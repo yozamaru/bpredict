@@ -1,2 +1,13 @@
-# 工程5のスクレイパ・パーサはPython標準ライブラリのみを使う。
-# 外部の実行時依存が必要になった工程で、審査後にバージョンを固定して追加する。
+# バッチの実行時依存。**バージョンは `==` で固定する**（CLAUDE.md「依存を追加するとき」）。
+#
+# 開発・CI 用（ruff / mypy / pytest）は batch/requirements-dev.txt にある。
+#
+# pandas  — 技術スタック表（CLAUDE.md）に明記。スナップショットの読み込みと
+#           特徴量生成のメモリ内結合に使う。BSD-3-Clause
+# pyarrow — pandas の Parquet エンジン。Parquet は列指向のバイナリ形式であり
+#           自前実装の対象にならない。Apache-2.0
+#
+# どちらも GitHub Actions 上でのみ動く。Workers / Pages のバンドルには入らず、
+# 無料枠（Workers CPU・Pages ファイル数・D1）には影響しない。
+pandas==3.0.6
+pyarrow==25.0.1

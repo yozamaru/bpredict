@@ -42,8 +42,11 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: batch/requirements-dev.txt
-      - run: pip install -r batch/requirements-dev.txt
+          cache-dependency-path: |
+            batch/requirements.txt
+            batch/requirements-dev.txt
+      # 実行時依存（pandas / pyarrow）もテストに必要。特徴量生成の入力が Parquet のため
+      - run: pip install -r batch/requirements.txt -r batch/requirements-dev.txt
       - name: ruff
         run: ruff check batch
       - name: mypy

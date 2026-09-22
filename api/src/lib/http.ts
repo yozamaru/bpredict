@@ -24,6 +24,24 @@ export function ok(c: Context, data: unknown, meta: Record<string, unknown> = {}
   return c.json({ data, meta: { generatedAt: new Date().toISOString(), ...meta } }, 200, NO_STORE);
 }
 
+/**
+ * 公開エンドポイント用。**キャッシュ方針を明示的に受け取る。**
+ *
+ * 既定を `no-store` にしてあるのは内部エンドポイントのためであり、公開側で
+ * 指定を忘れるとキャッシュが効かず D1 に直撃する。`ok()` と分けることで、
+ * 方針を書かずに公開できないようにする（詳細設計 3.5）。
+ */
+export function okCached(
+  c: Context,
+  data: unknown,
+  cacheControl: string,
+  meta: Record<string, unknown> = {},
+) {
+  return c.json({ data, meta: { generatedAt: new Date().toISOString(), ...meta } }, 200, {
+    'Cache-Control': cacheControl,
+  });
+}
+
 export function fail(c: Context, code: ErrorCode, message: string) {
   return c.json({ error: { code, message } }, CODES[code], NO_STORE);
 }

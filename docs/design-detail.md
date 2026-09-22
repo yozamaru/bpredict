@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.22** |
+| 版数 | **1.23** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** / **v1.22: `games` の `UNIQUE (season_id, game_date, home_club_id, away_club_id)` を外した（同じ日・同じカードで行われる CS の決着戦が実在し、取り込みが 500 で止まっていた）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** / **v1.22: `games` の `UNIQUE (season_id, game_date, home_club_id, away_club_id)` を外した（同じ日・同じカードで行われる CS の決着戦が実在し、取り込みが 500 で止まっていた）** / **v1.23: 工程10a（公開API の `/games/:gameId` と `/accuracy`）を実装した。形状が文書にない4本と `/health` の `quota` は保留** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -1410,6 +1410,28 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 ```
 
 `bucketContext` は「68%と予想した試合は42試合中29試合が的中」という表示の根拠になる。**外れた試合でもこれを返す。**
+
+#### 実装の状況（工程10a）
+
+**応答形状が本文書に書かれているものだけを実装した。** `/games/:gameId` と `/accuracy` の
+2本である。`/games?date=` / `/results?date=` / `/teams` / `/teams/:slug` は
+**形状の記述がなく、推測で埋めない**（CLAUDE.md「勝手な仕様補完をしない」）。
+`/health` は `quota` の出所が未確定のため保留する（下記）。
+
+`api/src/routes/public/` に置き、**認証を付けない**。誰でも読める事実データと予測であり、
+主要導線の静的JSON にも認証はない。守るのは書き込み側であって読み取り側ではない。
+代わりに (a) 入力の値域を境界で弾き、(b) キャッシュを効かせ、(c) WAF のレートリミットを
+`/api/v1/*` に当てる（3.5）。
+
+**キャッシュ方針を指定しないと公開できない形にした。** 既定が `no-store` の `ok()` とは別に
+`okCached(c, data, cacheControl)` を置き、公開ルートはそちらを使う。指定を忘れると
+キャッシュが効かず D1 に直撃するため、忘れられる余地を消す。
+
+**`/health` の `quota` が未確定。** 7.5 は「Workers リクエスト数、D1 rows_read 積算、
+キャッシュヒット率、前回バッチ所要時間」を出すと定めるが、**Workers のリクエスト数と
+キャッシュヒット率を数える先がない**（KV も Durable Objects も従量課金で、絶対ルール5に
+触れる）。`ingestion_logs.d1_rows_read` から出せるものだけを返すのか、別の計測手段を置くのかを
+決めてから実装する。受け入れ基準 A-10 の検証手段でもあるため、埋め方を推測で決めない。
 
 #### GET /accuracy
 
@@ -3037,7 +3059,7 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る。**完了した** — `batch/features/`（`dataset` / `base` / `team_strength` / `schedule_ctx` / `player` / `builder`）と採用16キー、`db/seeds/test/`（架空8クラブ × 2シーズン / 224試合の決定論的シード）、`scripts/rebuild_snapshot.py`。batch のテストは 404 件で、リーク検証10件・スナップショット9件・特徴量10件を含む |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |
-| 10 | 公開API（動的クエリ） | `/games?date=` `/accuracy` が応答する |
+| 10 | 公開API（動的クエリ） | `/games?date=` `/accuracy` が応答する。**10a 完了** — 形状が文書にある `/games/:gameId` と `/accuracy` を実装。残り4本は応答形状が未定義、`/health` は `quota` の出所が未確定（3.3）|
 | 11a | **デザインシステムと画面の骨組み。** トークン（6.1）とコントラストの CI 検証、テーマ切替、マークアップ規約（5.2）に沿った主要コンポーネント、各画面の骨組み。データは**合成データ**を使う | `/` が 375px で横スクロールなく表示され、ライト/ダークが切り替わって再訪時も保持される。トークンのコントラスト検証と `out/` のファイル数検査（18,000以下）が CI で通る |
 | 11b | 画面を実データへ結線する（今日の予測・試合詳細・結果） | 予測と結果が表示される |
 | 12 | Margin/Total モデル | 予想スコアが出る。勝率と矛盾しない |

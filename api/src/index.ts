@@ -17,6 +17,8 @@ import { masters } from './routes/internal/masters';
 import { metrics, models } from './routes/internal/models';
 import { ops } from './routes/internal/ops';
 import { predictions } from './routes/internal/predictions';
+import { accuracy } from './routes/public/accuracy';
+import { games } from './routes/public/games';
 
 export type Env = {
   DB: D1Database;
@@ -59,6 +61,15 @@ app.route('/internal/finalize', finalize);
 app.route('/internal/models', models);             // POST / と GET /active /:version/artifact
 app.route('/internal/metrics', metrics);           // GET /internal/metrics/active
 app.route('/internal', ops);                       // /evaluate /summary /log /games/ingested
+
+// **公開エンドポイントに認証を付けない。** 誰でも読める事実データと予測であり、
+// 認証を付けると静的配信との整合が崩れる（主要導線は Pages の静的JSONで、
+// そちらにも認証はない）。守るのは書き込み側であって読み取り側ではない。
+//
+// 代わりに (a) 入力の値域を境界で弾き、(b) キャッシュを効かせ、(c) WAF の
+// レートリミットを `/api/v1/*` に当てる（詳細設計 3.5）。
+app.route('/', accuracy);
+app.route('/', games);
 
 app.notFound((c) => fail(c, 'NOT_FOUND', '該当するエンドポイントがない'));
 

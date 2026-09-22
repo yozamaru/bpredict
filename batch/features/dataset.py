@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -79,15 +80,37 @@ def export_sqlite(connection: sqlite3.Connection) -> Dataset:
     return Dataset(tables=tables)
 
 
-def write_snapshot(dataset: Dataset, directory: Path) -> dict[str, object]:
-    """Parquet と MANIFEST を書き出す。D1 へ書いたのと同じデータから呼ぶ。"""
+def write_snapshot(
+    dataset: Dataset,
+    directory: Path,
+    *,
+    tables: Sequence[str] | None = None,
+) -> dict[str, object]:
+    """Parquet と MANIFEST を書き出す。D1 へ書いたのと同じデータから呼ぶ。
+
+    `tables` を渡すと**そのテーブルだけを書き直す**（`daily_ingest` は
+    ファクトを書いた後に `team_ratings` だけを上書きする。基本設計 2.2）。
+    スナップショットはリポジトリにコミットするため、変わっていないファイルを
+    毎回書き換えると差分が無意味に膨らむ。
+
+    **MANIFEST は必ずディスクの現物から作り直す。** 書き直さなかったテーブルの
+    エントリを前回の MANIFEST から引き写すと、ファイルが別経路で変わったときに
+    MANIFEST だけが正しく見え、`verify_snapshot()` が検知できなくなる。
+    """
     directory.mkdir(parents=True, exist_ok=True)
+    targets = SNAPSHOT_TABLES if tables is None else tuple(tables)
+    unknown = sorted(set(targets) - set(SNAPSHOT_TABLES))
+    if unknown:
+        raise SnapshotError(f"スナップショットの構成にないテーブル: {unknown}")
+    for name in targets:
+        dataset.table(name).to_parquet(directory / f"{name}.parquet", index=False)
+
     files: dict[str, dict[str, object]] = {}
     for name in SNAPSHOT_TABLES:
-        frame = dataset.table(name)
         path = directory / f"{name}.parquet"
-        frame.to_parquet(path, index=False)
-        files[name] = {"rows": len(frame), "sha256": _digest(path)}
+        if not path.exists():
+            raise SnapshotError(f"{name}.parquet がない（部分書き出しの前提が崩れている）")
+        files[name] = {"rows": len(pd.read_parquet(path)), "sha256": _digest(path)}
     manifest: dict[str, object] = {
         "version": 1,
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),

@@ -1,0 +1,119 @@
+# 過去シーズンの一括取得（詳細設計 4.8、実装順序の工程6）。
+#
+# **手動実行のみ。** 1日1シーズンに限る（D1 書込10万行/日の枠があり、1シーズン
+# 約26,500行。相手サイトへの負荷も1シーズン50〜100分ぶんになる）。
+#
+# **再開可能である。** `GET /internal/games/ingested` で取得済みIDを引き、
+# 429 で中断しても翌日に取り直さない。相手サイトへの二重負荷を避けるため。
+#
+# 書き込みは `POST /internal/*`（Workers 経由）に一本化する。D1 REST API は
+# 叩かない（CLAUDE.md 絶対ルール3）。スナップショットの書き出しはここで行わない
+# ため `permissions: contents: read` のままにする（絶対ルール4）。
+name: backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'seasons.csv の id（例: 2016-17-B1）。1回の実行で1シーズン'
+        required: true
+        type: string
+      limit:
+        description: '取り込む試合数の上限。確認用。空なら全件'
+        required: false
+        type: string
+      dry_run:
+        description: '取得はするが D1 には書かない'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# D1 へ書き込むジョブの同時実行を禁止する（詳細設計 4.1）。
+# **走行中を殺さない。** 殺されたジョブは `batch()` の途中で止まり
+# `ingestion_logs` が RUNNING のまま残る。
+concurrency:
+  group: d1-write
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    # 手動実行も既定ブランチだけに限る。別ブランチのコードで本番 D1 へ書かない。
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+      SCRAPER_USER_AGENT: ${{ vars.SCRAPER_USER_AGENT }}
+      SCRAPER_ROBOTS_SHA256: ${{ vars.SCRAPER_ROBOTS_SHA256 }}
+      SCRAPER_TERMS_SHA256: ${{ vars.SCRAPER_TERMS_SHA256 }}
+      SCRAPER_STATE_PATH: batch/.scraper-state/state.json
+    steps:
+      - uses: actions/checkout@v7
+
+      # 未設定のまま走らせない。空の User-Agent やハッシュ未設定で通信すると
+      # スクレイピングの作法（絶対ルール6）を破る。**skip ではなく fail にする。**
+      # 手動実行なので、黙って通り過ぎるよりその場で気づける方がよい。
+      - name: 設定の確認
+        shell: bash
+        run: |
+          missing=()
+          for name in API_BASE_URL INGEST_TOKEN SCRAPER_USER_AGENT \
+                      SCRAPER_ROBOTS_SHA256 SCRAPER_TERMS_SHA256; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::未設定: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r batch/requirements.txt
+
+      - id: state-date
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      # 日次リクエスト上限3,000と429/503後の停止を実行間で引き継ぐ。
+      # 復元できなくても続行する（状態ファイルがなければ当日の枠は未消費として
+      # 扱われる。カナリアと同じキー空間を共有し、合計で上限を守る）。
+      - id: state-restore
+        uses: actions/cache/restore@v6
+        with:
+          path: batch/.scraper-state/state.json
+          key: scraper-state-v1-${{ runner.os }}-${{ steps.state-date.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            scraper-state-v1-${{ runner.os }}-${{ steps.state-date.outputs.day }}-
+
+      # マスタが入っていないと `club_source_ids` でクラブを解決できず全試合が
+      # 落ちる。冪等（ON CONFLICT）なので毎回流してよい（詳細設計 8.1 の工程4）。
+      - name: マスタの投入（冪等）
+        run: python -m batch.jobs.seed_master
+
+      # inputs を `run:` に直接展開しない。シェルに解釈される前に env へ渡す
+      # （展開だと `season` の値がそのままコマンドとして走る余地が残る）。
+      - name: backfill
+        env:
+          SEASON: ${{ inputs.season }}
+          LIMIT: ${{ inputs.limit }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--season "$SEASON")
+          [[ -n "$LIMIT" ]] && args+=(--limit "$LIMIT")
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          python -m batch.jobs.backfill "${args[@]}"
+
+      # 取得区間が 429 で中止されても、消費した件数と停止状態は必ず残す。
+      - id: state-save-date
+        if: always() && steps.state-restore.outcome == 'success' && hashFiles('batch/.scraper-state/state.json') != ''
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - if: always() && steps.state-save-date.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: batch/.scraper-state/state.json
+          key: scraper-state-v1-${{ runner.os }}-${{ steps.state-save-date.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}

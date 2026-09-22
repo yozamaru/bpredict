@@ -49,6 +49,13 @@ export function CalibrationChart({ points }: { points: CalibrationPoint[] }) {
           <text x={2} y={pad + 4}>
             100%
           </text>
+          {/* 軸は日本語で書く（ui-implementation スキル） */}
+          <text x={size / 2} y={size - 2} textAnchor="middle">
+            予想した勝率
+          </text>
+          <text x={8} y={size / 2} textAnchor="middle" transform={`rotate(-90 8 ${size / 2})`}>
+            実際に勝った割合
+          </text>
         </g>
       </svg>
       <figcaption className="mt-1 text-[11px] leading-relaxed text-text-3">

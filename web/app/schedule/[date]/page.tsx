@@ -32,7 +32,7 @@ export default async function Page({ params }: { params: Promise<{ date: string 
         ) : (
           <EmptyState
             message={`${Number(month)}月${Number(day)}日に予定されている試合はありません。`}
-            action={{ href: '/schedule/2026-09-22/', label: '前の試合日を見る' }}
+            action={{ href: '/schedule/2026-09-22/', label: '次の試合は 9月22日（火）19:05 です' }}
           />
         )}
       </div>

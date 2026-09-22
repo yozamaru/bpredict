@@ -6,7 +6,7 @@ import type { AccuracyView, GameView } from '@/lib/view';
 /** 試合1件は article。対戦名を見出しにする（視覚的に隠してよい。詳細設計 5.2） */
 export function GameCard({ game, accuracy }: { game: GameView; accuracy: AccuracyView }) {
   return (
-    <article className="rounded-2xl border border-border bg-surface p-4 shadow-[0_1px_2px_rgba(15,22,34,0.04)]">
+    <article className="card-shadow rounded-2xl border border-border bg-surface p-4">
       <h2 className="sr-only">
         {game.home.name} 対 {game.away.name}
       </h2>

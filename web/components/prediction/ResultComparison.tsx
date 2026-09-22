@@ -9,8 +9,16 @@ export type ResultView = {
   homeWinProb: number;
   predHomeScore: number;
   predAwayScore: number;
+  /**
+   * 判定と誤差は**サーバが出した値**を使う（ui-implementation スキル）。
+   * 的中の判定は `is_final = 1` の行に対する照合結果（`prediction_results`）であり、
+   * 画面でスコアから計算し直すと、中止・延期（VOID）の扱いが画面側の実装に漏れる。
+   */
+  isCorrect: boolean;
+  /** 得点差の誤差 */
+  scoreError: number;
   /** その確率帯の通算成績。外れた試合でも必ず出す（要件 8.3） */
-  bucket: { label: string; n: number; correct: number };
+  bucket: { label: string; n: number; correct: number; rate: number };
 };
 
 /**
@@ -20,13 +28,6 @@ export type ResultView = {
 export function ResultComparison({ result }: { result: ResultView }) {
   const { home, away } = percentPair(result.homeWinProb);
   const homeWon = result.homeScore > result.awayScore;
-  const predictedHomeWin = result.homeWinProb >= 0.5;
-  const correct = homeWon === predictedHomeWin;
-  const scoreError =
-    Math.abs(
-      result.homeScore - result.awayScore - (result.predHomeScore - result.predAwayScore),
-    );
-  const rate = result.bucket.correct / result.bucket.n;
 
   return (
     <article className="rounded-2xl border border-border bg-surface p-4">
@@ -52,8 +53,8 @@ export function ResultComparison({ result }: { result: ResultView }) {
         <div className="py-1">
           <dt className="text-text-2">判定</dt>
           <dd className="mt-0.5 leading-relaxed">
-            {correct
-              ? `予測どおりでした（得点差の誤差 ${scoreError}点）`
+            {result.isCorrect
+              ? `予測どおりでした（得点差の誤差 ${result.scoreError}点）`
               : `この試合は予測を外しました。ホーム${home}%と予想しましたが、${homeWon ? 'ホーム' : 'アウェイ'}が勝ちました。`}
           </dd>
         </div>
@@ -61,7 +62,7 @@ export function ResultComparison({ result }: { result: ResultView }) {
           <dt className="text-text-2">この予測の位置づけ</dt>
           <dd className="mt-0.5 leading-relaxed">
             {result.bucket.label}と予想した試合は、これまで{result.bucket.n}試合中
-            {result.bucket.correct}試合（{(rate * 100).toFixed(1)}%）が的中しています。
+            {result.bucket.correct}試合（{(result.bucket.rate * 100).toFixed(1)}%）が的中しています。
           </dd>
         </div>
       </dl>

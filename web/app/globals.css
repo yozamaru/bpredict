@@ -48,8 +48,7 @@
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
   /* システムフォントスタック。Web フォントは数字用1ウェイトのみ許す（基本設計 6.2） */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN',
-    'Noto Sans JP', Meiryo, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
 }
 
 @layer base {
@@ -69,6 +68,15 @@
     /* 桁を揃える。数値が主役の画面であるため全体に効かせる（要件 8.1） */
     font-variant-numeric: tabular-nums;
     -webkit-text-size-adjust: 100%;
+  }
+
+  /* ライトでは境界線 + 淡い影、ダークでは境界線のみ（基本設計 6.3） */
+  .card-shadow {
+    box-shadow: 0 1px 2px rgb(15 22 34 / 4%);
+  }
+
+  :root[data-theme='dark'] .card-shadow {
+    box-shadow: none;
   }
 
   /* --accent の上に --accent のリングが乗ると消えるため、トークンで分ける */

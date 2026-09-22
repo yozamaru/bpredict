@@ -23,6 +23,8 @@ import re
 import urllib.error
 import urllib.request
 
+from batch.loader.api import INTERNAL_USER_AGENT
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEED_DIR = REPO_ROOT / "db" / "seeds" / "master"
 
@@ -165,7 +167,12 @@ def post(payload: dict, *, base_url: str, token: str, dry_run: bool = False) -> 
     req = urllib.request.Request(
         f"{base_url.rstrip('/')}/api/v1/internal/masters",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            # urllib の既定 UA は Cloudflare に 403 で弾かれる（batch/loader/api.py）
+            "User-Agent": INTERNAL_USER_AGENT,
+        },
         method="POST",
     )
     try:

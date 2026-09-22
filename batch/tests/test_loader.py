@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from batch.loader.api import (
+    INTERNAL_USER_AGENT,
     MAX_ATTEMPTS,
     InternalApi,
     LoaderError,
@@ -62,6 +63,72 @@ def test_post_sends_bearer_and_json() -> None:
     assert headers["Content-Type"] == "application/json"
     assert body is not None
     assert json.loads(body) == {"games": [{"id": "g1"}]}
+
+
+def test_every_request_sends_an_identifying_user_agent() -> None:
+    """**UA を省略しない。** urllib の既定（`Python-urllib/3.12`）は Cloudflare が
+    403 で弾く。403 は Worker が返す値ではないため、アプリのログから原因が分からない。
+
+    GitHub Actions からの `POST /internal/masters` が 403 で失敗して判明した
+    （2026-09-23）。同じ宛先に `curl` で送ると 401 になり、差は UA だけだった。
+    """
+    client, transport = api([ok_body(), ok_body()])
+    client.post("games", {"games": []})
+    client.get("games/ingested", {"seasonId": "2016-17-B1"})
+
+    assert len(transport.calls) == 2
+    for _, _, _, headers in transport.calls:
+        agent = headers.get("User-Agent")
+        assert agent, "User-Agent を送っていない（urllib の既定が使われる）"
+        assert agent == INTERNAL_USER_AGENT
+        assert not agent.lower().startswith("python-urllib")
+
+
+def test_internal_user_agent_is_not_the_scraper_one() -> None:
+    """公式サイト向けの UA と共用しない。
+
+    `SCRAPER_USER_AGENT` は識別名と連絡先URLを必須とする運営者の値（絶対ルール6）で、
+    こちらは自分の API に対する自分のクライアントの名乗りである。共用すると、
+    公式サイト向けの値を変えたときに内部通信まで変わる。
+    """
+    assert "SCRAPER" not in INTERNAL_USER_AGENT
+    assert INTERNAL_USER_AGENT.strip() == INTERNAL_USER_AGENT
+    # ASCII の印字可能文字だけ（HTTP ヘッダに載る）
+    assert all(32 <= ord(c) < 127 for c in INTERNAL_USER_AGENT)
+
+
+def test_seed_master_sends_the_same_user_agent(monkeypatch) -> None:
+    """`seed_master` は `InternalApi` を使わず urllib を直に叩くため、別に検査する。
+
+    ここを漏らすと、マスタ投入だけが 403 で落ちる（実際にそうなった）。
+    """
+    import urllib.request
+
+    from batch.jobs import seed_master
+
+    captured: list[urllib.request.Request] = []
+
+    class _Response:
+        def read(self) -> bytes:
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+    def fake_urlopen(request, timeout=None):
+        captured.append(request)
+        return _Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    seed_master.post({"clubs": []}, base_url="http://127.0.0.1:8787", token="t")
+
+    assert len(captured) == 1
+    agent = captured[0].get_header("User-agent")
+    assert agent == INTERNAL_USER_AGENT
+    assert not str(agent).lower().startswith("python-urllib")
 
 
 def test_retries_transient_failures_then_succeeds() -> None:

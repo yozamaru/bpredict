@@ -9,13 +9,16 @@ compatibility_flags = ["nodejs_compat"]
 # D1_DATABASE_ID は機密ではない（操作には API トークンが別途必要）ため直書きしてよい。
 # `d1_databases` の必須フィールドは環境変数注入が効かない（基本設計 7.4）。
 #
-# database_id は `wrangler d1 create bpredict --location apac` で実物を作った時点で
-# 置き換える。`--local` のマイグレーションと `wrangler dev` はこの値を参照しないため、
+# 2026-09-22 に `wrangler d1 create bpredict --location apac` で作成した実物。
+# `--local` のマイグレーションと `wrangler dev` はこの値を参照しないため、
 # ローカル開発は実物が無くても動く。
+#
+# binding は `DB` のままにする（`wrangler d1 create` の出力は `bpredict` を
+# 提案するが、コードは `env.DB` を参照している）。
 [[d1_databases]]
 binding = "DB"
 database_name = "bpredict"
-database_id = "00000000-0000-0000-0000-000000000000"   # TODO: 実物を作ったら差し替える
+database_id = "6af3adc9-3f7f-4b10-b374-efde48e1339a"
 migrations_dir = "../db/migrations"
 
 # freeze は毎時。外部アクセスを必要としない純粋な D1 操作であり、

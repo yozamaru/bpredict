@@ -175,6 +175,96 @@ describe('レーティングの洗い替え', () => {
   });
 });
 
+describe('会場の履歴の洗い替え', () => {
+  /** 会場を1つ作る。`venue_revisions` は FK で `venues` を参照する。 */
+  async function seedVenue(id: string, name = '架空アリーナ') {
+    await env.DB.prepare('INSERT INTO venues (id,name) VALUES (?,?)').bind(id, name).run();
+    return id;
+  }
+
+  it('対象期間を DELETE してから INSERT する（差分更新しない）', async () => {
+    const venueId = await seedVenue('v-rev-1');
+    const rev = (validFrom: string, validTo: string, name: string, capacity: number | null) => ({
+      venueId, validFrom, validTo, name, capacity,
+    });
+    await post('/internal/venue-revisions', {
+      fromDate: '2016-09-22', toDate: '9999-12-31',
+      revisions: [
+        rev('2016-09-22', '2019-06-30', '旧名アリーナ', 5000),
+        rev('2019-07-01', '9999-12-31', '新名アリーナ', 5200),
+      ],
+    });
+    expect(await count('SELECT COUNT(*) AS n FROM venue_revisions')).toBe(2);
+
+    // 同じ期間を1行で洗い替える
+    const res = await post('/internal/venue-revisions', {
+      fromDate: '2016-09-22', toDate: '9999-12-31',
+      revisions: [rev('2016-09-22', '9999-12-31', '統合名アリーナ', 5100)],
+    });
+    expect(res.status).toBe(200);
+    expect(await count('SELECT COUNT(*) AS n FROM venue_revisions')).toBe(1);
+    const row = await env.DB.prepare('SELECT name, capacity FROM venue_revisions')
+      .first<{ name: string; capacity: number }>();
+    expect(row?.name).toBe('統合名アリーナ');
+    expect(row?.capacity).toBe(5100);
+  });
+
+  it('capacity は NULL を受ける（手入力 CSV に行がない会場）', async () => {
+    const venueId = await seedVenue('v-rev-2');
+    const res = await post('/internal/venue-revisions', {
+      fromDate: '2016-09-22', toDate: '9999-12-31',
+      revisions: [{ venueId, validFrom: '2016-09-22', validTo: '9999-12-31',
+                    name: '架空アリーナ', capacity: null }],
+    });
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare('SELECT capacity FROM venue_revisions')
+      .first<{ capacity: number | null }>();
+    expect(row?.capacity).toBeNull();
+  });
+
+  it('期間外の validFrom が混ざっていたら 400', async () => {
+    const venueId = await seedVenue('v-rev-3');
+    const res = await post('/internal/venue-revisions', {
+      fromDate: '2016-09-22', toDate: '2020-12-31',
+      revisions: [{ venueId, validFrom: '2021-01-01', validTo: '9999-12-31',
+                    name: '架空アリーナ', capacity: null }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('validFrom が validTo より後なら 400', async () => {
+    const venueId = await seedVenue('v-rev-4');
+    const res = await post('/internal/venue-revisions', {
+      fromDate: '2016-09-22', toDate: '9999-12-31',
+      revisions: [{ venueId, validFrom: '2020-01-01', validTo: '2019-01-01',
+                    name: '架空アリーナ', capacity: null }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('(venueId, validFrom) が重複していたら 400（主キー違反の前に弾く）', async () => {
+    const venueId = await seedVenue('v-rev-5');
+    const res = await post('/internal/venue-revisions', {
+      fromDate: '2016-09-22', toDate: '9999-12-31',
+      revisions: [
+        { venueId, validFrom: '2016-09-22', validTo: '2019-06-30', name: 'A', capacity: null },
+        { venueId, validFrom: '2016-09-22', validTo: '9999-12-31', name: 'B', capacity: null },
+      ],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('未知のキーを受け付けない（汎用の書き込み口にしない）', async () => {
+    const venueId = await seedVenue('v-rev-6');
+    const res = await post('/internal/venue-revisions', {
+      fromDate: '2016-09-22', toDate: '9999-12-31',
+      revisions: [{ venueId, validFrom: '2016-09-22', validTo: '9999-12-31',
+                    name: 'A', capacity: null, table: 'clubs' }],
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('backfill の再開判定', () => {
   it('取り込み済みの試合IDを返す', async () => {
     const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });

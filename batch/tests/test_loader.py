@@ -150,7 +150,7 @@ def test_limits_follow_the_documented_formula() -> None:
     [
         ("player_predictions", 31, 120),
         ("player_game_stats", 24, 160),
-        ("games", 24, 160),
+        ("games", 25, 160),   # 0009 で venue_name_at_game を追加（上限は 160 のまま）
         ("team_game_stats", 22, 160),
         ("predictions", 19, 200),
         ("team_games", 10, 400),

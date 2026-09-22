@@ -50,13 +50,17 @@ def _leading_keyword(statement: str) -> str:
 
 
 def ddl_statements(script: str) -> list[str]:
-    """CREATE 文だけを返す。
+    """スキーマを作る文（CREATE / ALTER）だけを返す。
 
     設計文書には説明用の UPDATE 例が、マイグレーションには先頭のコメントヘッダがある。
     どちらも素朴な前方一致では取りこぼすため、最初の実体行で判定する。
+
+    **ALTER も含める。** 追記のみの規約（CLAUDE.md）のもとでは列の追加は
+    `ALTER TABLE ADD COLUMN` になり、これを落とすとマイグレーション側のスキーマが
+    文書より1列少ない状態で比較され、検査が空振りする。
     """
     return [s for s in split_statements(script)
-            if _leading_keyword(s).startswith("CREATE ")]
+            if _leading_keyword(s).startswith(("CREATE ", "ALTER "))]
 
 
 @pytest.fixture

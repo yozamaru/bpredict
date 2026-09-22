@@ -1,0 +1,20 @@
+-- games に「その試合時点の会場名」を足す
+-- 出典: docs/design-detail.md 1.2 / 1.3 / 4.9。**このファイルは適用後に編集しない。**
+-- 変更は新しい番号のファイルを追加して行う（CLAUDE.md「マイグレーションは追記のみ」）。
+--
+-- なぜ列を足すのか。
+--   `venue_revisions.name`（会場の名称履歴）の入力は、試合ごとの `StadiumNameJ` だけである。
+--   `venues.name` は初出の名称で固定する設計であり（過去試合の会場表示が遡って変わらない
+--   ようにするため、upsert の更新対象から `name` を外している）、`games` にも当時の名称の
+--   列がなかったため、**3つ組（venue_id / game_date / 当時の名称）が取り込みの瞬間にしか
+--   存在せず、後から名称履歴を再構築できなかった**。
+--
+--   この列があることで `venue_revisions` は `team_ratings`（Elo）と同じ
+--   「全期間を再計算して洗い替える派生テーブル」になり、取り込み順序に依存しなくなる。
+--
+-- バッチサイズは変わらない。`games` は24→25列だが floor(100/25) = 4 で、
+-- 1リクエスト上限は 160 のまま（docs/design-detail.md 3.4）。
+--
+-- NULL を許す。過去に取り込んだ試合には値がなく、`build_venue_revisions` は
+-- NULL の試合を区間の判定に使わない（0 と欠損を区別するのと同じ理由）。
+ALTER TABLE games ADD COLUMN venue_name_at_game TEXT;

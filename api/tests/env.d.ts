@@ -6,6 +6,10 @@
 // 認証は `c.env` を `Record<string, string | undefined>` として読むので、
 // 型に現れていなくても動く。
 /// <reference types="@cloudflare/vitest-pool-workers/types" />
+// `?raw` インポートと `import.meta.glob` の型。**新しい依存は増えない**
+// （vite は vitest の依存として既に入っている）。テストで実装のソースを
+// 走査するために使う（`@types/node` を足さないための措置）。
+/// <reference types="vite/client" />
 
 declare namespace Cloudflare {
   interface Env {

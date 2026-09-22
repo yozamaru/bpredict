@@ -64,6 +64,14 @@ def ddl_column_counts() -> dict[str, int]:
                 continue
             cols += 1
         out[table] = cols
+
+    # **ALTER TABLE ADD COLUMN も数える。** 追記のみの規約（CLAUDE.md）のもとでは
+    # 列の追加は必ず ALTER になる。落とすと定数側が正しくても「DDL と食い違う」と
+    # 出るか、逆に古い列数のまま通ってしまう。
+    stripped = "\n".join(re.sub(r"--.*$", "", line) for line in sql.splitlines())
+    for table in re.findall(r"(?i)ALTER TABLE\s+(\w+)\s+ADD COLUMN\b", stripped):
+        assert table in out, f"ALTER の対象テーブルが DDL にない: {table}"
+        out[table] += 1
     return out
 
 

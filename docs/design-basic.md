@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.18** |
+| 版数 | **1.19** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`）を追加した** / **v1.18: 工程6の Elo と `recompute_ratings` を実装し、スナップショットの部分書き出しを設計に入れた** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映 / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（学習スナップショット、モデル構成、静的生成範囲、Next.js 16、ルーティング、CI） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、絶対ルール3の射程限定と内部GET、`team_ratings` スナップショット、列数の検算、freeze の親子同時実行） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`）を追加した** / **v1.18: 工程6の Elo と `recompute_ratings` を実装し、スナップショットの部分書き出しを設計に入れた** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** |
 | 上位文書 | `docs/requirements.md` |
 | 下位文書 | `docs/design-detail.md` |
 
@@ -409,10 +409,10 @@ ISR を使わない。`generateStaticParams` は**直近5シーズンの範囲�
 | 分類 | テーブル | 性質 |
 |---|---|---|
 | マスタ（恒久） | `clubs` `players` `venues` `seasons` | 不変の識別子 |
-| マスタ（断面） | `club_seasons` `player_seasons` `venue_revisions` | 年度で変わる属性 |
+| マスタ（断面） | `club_seasons` `player_seasons` | 年度で変わる属性 |
 | 名寄せ | `club_source_ids` `venue_source_keys` | 公式サイトIDとの対応 |
 | ファクト | `games` `team_games` `team_game_stats` `player_game_stats` `game_entries` | 試合ごとに増える |
-| 派生 | `team_ratings` | バッチが生成 |
+| 派生 | `team_ratings` `venue_revisions` | バッチが生成。全期間を再計算して洗い替える |
 | 予測 | `predictions` `player_predictions` `prediction_reasons` | 予測の記録 |
 | 評価 | `model_versions` `prediction_results` `accuracy_summary` | 精度の記録 |
 | 運用 | `ingestion_logs` | ジョブ実行履歴 |
@@ -492,6 +492,8 @@ D1 への書き込みは Workers 経由に一本化されているため、マ�
 **公式サイトに収容人数がない。** 座標もない。座標は `/arena_detail/` の住所を国土地理院でジオコーディングして**1回だけ解決し CSV に固定する**（実行時に外部サービスへ依存しない）。収容人数は**手入力**で、2026-27 の26クラブのメイン会場から埋め、代替会場は NULL のまま進める。NULL は設計が既に許容している（`spectator_restricted` は NULL となり通常のホームアドバンテージを使うが、**観客制限期間は期間指定で強制的に 1** なのでコロナ期には影響しない）。
 
 **入場者数の最大値を収容人数とみなす自動化を行わない。** 未来の試合から値を作ることになりデータリークの禁止に触れ、観客制限期間では判定が循環する。
+
+**当時の会場名は `games.venue_name_at_game` に事実として保存し、`venue_revisions` はそこからの派生にする。** `venues.name` は初出の名称で固定するため（過去試合の会場表示が遡って変わらないようにするため）、試合行に当時の名称を残さないと**名称履歴を作る入力が取り込みの瞬間にしか存在せず、後から再構築できない**。列を1つ足すことで `venue_revisions` は `team_ratings` と同じ「全期間を再計算して洗い替える派生テーブル」になり、取り込み順序に依存しなくなる（詳細設計 1.2 / 4.9）。
 
 #### 日程変更と結果訂正
 

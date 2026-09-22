@@ -105,6 +105,9 @@ def games_payload(
                 "homeClubId": home,
                 "awayClubId": away,
                 "venueId": game.venue_id,
+                # その試合時点の会場名。`venue_revisions.name` の唯一の入力（詳細設計 1.2）。
+                # `venues` の upsert は `name` を更新しないため、ここに残さないと履歴が作れない
+                "venueNameAtGame": game.venue_name,
                 "seriesGameNo": series_game_no,
                 "status": game.status,
                 "homeScore": game.home_score,

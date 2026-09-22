@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.18** |
+| 版数 | **1.19** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -168,8 +168,23 @@ NULL のときに失うもの: `spectator_restricted` が NULL（= 通常のホ�
 
 | 列 | 作り方 |
 |---|---|
-| `name` | **取り込みが自動で作る。** 出典は `StadiumNameJ`（その試合時点の名称）。会場ごとに、名称が変わった最初の試合の `game_date` を `valid_from` とし、直前の行の `valid_to` をその前日にする |
+| `name` | **`games.venue_name_at_game` から全期間を再計算する派生値。** 出典は `StadiumNameJ`（その試合時点の名称）。会場ごとに、名称が変わった最初の試合の `game_date` を `valid_from` とし、直前の行の `valid_to` をその前日にする |
 | `capacity` | **手入力。** `db/seeds/master/venue_revisions.csv` に `venue_id` / `valid_from` / `capacity` / 出典URL を持ち、`(venue_id, valid_from)` で突き合わせる |
+
+**当時の名称は `games.venue_name_at_game` に事実として保存する。** これがないと名称履歴を作れない
+（v1.18 まで、この列がないまま「取り込みが自動で作る」と書いていた）。`venues.name` は初出の
+名称で固定され（更新対象から除外。3.4）、`games` にも当時の名称の列がなかったため、
+**3つ組（`venue_id` / `game_date` / 当時の名称）が取り込みの瞬間にしか存在せず、後から
+再構築できなかった**。
+
+**列を1つ足すことで、`venue_revisions` は `team_ratings`（Elo）と同じ「派生テーブル。
+全期間を再計算して洗い替える」型になる。** 取り込み順序に依存せず、何度流しても同じ結果に
+なる。バッチサイズは `games` が24→25列でも `floor(100/25)=4` で **160 のまま変わらない**
+（3.4 の表）。
+
+**`venue_name_at_game` は導出値ではない。** サイトが試合ごとに返している事実であり、
+`venue_revisions` はそこからの導出である。向きを逆にすると（`venue_revisions` から
+当時の名称を引く）、その `venue_revisions` を作るための入力が存在しないという循環になる。
 
 **名称を手入力にしない。** 日本のアリーナは命名権で頻繁に改称し、11シーズン分を手で追うと必ず抜ける。
 `StadiumNameJ` は取り込みで必ず通るレスポンスに含まれ、当時の名称が入っている（4.4）。
@@ -207,6 +222,8 @@ CREATE TABLE games (
   home_club_id     TEXT NOT NULL REFERENCES clubs(id),
   away_club_id     TEXT NOT NULL REFERENCES clubs(id),
   venue_id         TEXT REFERENCES venues(id),
+  venue_name_at_game TEXT,                   -- その試合時点の会場名（StadiumNameJ）。
+                                              -- venue_revisions.name の唯一の入力（1.2）
   is_primary_venue INTEGER NOT NULL DEFAULT 1 CHECK (is_primary_venue IN (0,1)),
   series_game_no   INTEGER,
   status           TEXT NOT NULL
@@ -1396,6 +1413,7 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 |---|---|---|---|
 | **POST** | **`/internal/masters`** | `INGEST_TOKEN` | マスタの投入（`seasons` / `clubs` / `club_source_ids`） |
 | POST | `/internal/games` `/internal/stats` `/internal/entries` `/internal/ratings` | `INGEST_TOKEN` | ファクトの取り込み |
+| **POST** | **`/internal/venue-revisions`** | `INGEST_TOKEN` | 会場の名称・収容人数の履歴（派生。期間 DELETE + INSERT） |
 | POST | `/internal/predictions` | `INGEST_TOKEN` | 予測の追記（親子をまとめて受ける） |
 | POST | `/internal/finalize` | `FINALIZE_TOKEN`（破壊的操作のため分離） | freeze |
 | POST | `/internal/evaluate` `/internal/summary` `/internal/log` | `INGEST_TOKEN` | 照合・集計・ログ |
@@ -1456,9 +1474,41 @@ v1.16 まで、この口が設計に書かれていなかった。
 名前付きの配列にし、配列ごとに Zod スキーマを持つ。行数上限は各テーブルの
 `max_rows_per_request` で個別に検査する。
 
-`venue_revisions`（名称履歴）と `player_seasons` はこの口では受けない。前者は
-シーズンをまたいだ集計が必要で1試合の取り込みでは決められず（U-10 の解決に従い
-別の工程で作る）、後者は登録区分とポジションが未決（C03）で推測で埋めないためである。
+`venue_revisions`（名称・収容人数の履歴）と `player_seasons` はこの口では受けない。
+前者はシーズンをまたいだ集計が必要で1試合の取り込みでは決められないため
+**`POST /internal/venue-revisions` で別に受ける**（下記）。後者は登録区分とポジションが
+未決（C03）で推測で埋めないためである。
+
+**その代わり、この口は `venueNameAtGame`（その試合時点の会場名）を受ける。** これが
+`venue_revisions.name` の唯一の入力であり（1.2）、`venues` の upsert で `name` を
+更新対象から外している以上、試合行に残さないと履歴を作る手段がなくなる。
+
+#### `POST /internal/venue-revisions`
+
+**`team_ratings` と同じ「派生テーブルの期間洗い替え」型にする。** 差分更新をせず、
+`valid_from BETWEEN ? AND ?` を DELETE してから INSERT する。単一 `batch()` に入れる。
+
+```jsonc
+// POST /internal/venue-revisions
+{
+  "fromDate": "2016-09-22",
+  "toDate": "9999-12-31",
+  "revisions": [
+    { "venueId": "3", "validFrom": "2016-09-22", "validTo": "2019-06-30",
+      "name": "<当時の名称>", "capacity": 5000 },
+    { "venueId": "3", "validFrom": "2019-07-01", "validTo": "9999-12-31",
+      "name": "<改称後の名称>", "capacity": 5000 }
+  ]
+}
+```
+
+**同じ `venue_id` を2リクエストに分けない。** `/internal/ratings` と同じ理由で、
+期間 DELETE が前のリクエストの行を消す。`venue_revisions` は全会場でも数百行に収まる
+ため（会場は11シーズンで数百、改称は会場あたり数件）、1リクエストで送れる。
+上限は 5列 → `floor(100/5) × 40 = 800` 行（3.4 の表）。
+
+**`capacity` は NULL のまま送ってよい。** 手入力 CSV に行がない会場は NULL であり、
+設計はこれを許容している（1.2）。
 
 #### 内部 GET を置く理由と射程
 
@@ -1540,7 +1590,7 @@ max_rows_per_request = floor(100 / 列数) × 40
 |---|---|---|---|---|
 | `player_predictions` | 31 | 3 | **120** | **167（上限の3.3倍）** |
 | `player_game_stats` | 24 | 4 | **160** | 125 |
-| `games` | 24 | 4 | **160** | 125 |
+| `games` | **25** | 4 | **160** | 125 |
 | `team_game_stats` | 22 | 4 | **160** | 125 |
 | `model_versions` | 25 | 4 | **160** | —（1行ずつ登録） |
 | `predictions` | 19 | 5 | **200** | 100 |
@@ -2122,6 +2172,40 @@ def backfill(season_id: str):
 **`inputs.*` を `run:` の本文に展開しない。** 展開はシェルに解釈される前に置換されるため、値がそのままコマンドとして走る余地が残る。`env:` に渡してシェル変数として参照する（`test_inputs_are_not_interpolated_into_run` が全ワークフローに対して検査する）。
 
 **スクレイパの状態は `actions/cache` で実行間に引き継ぐ。** 日次リクエスト上限3,000と429/503後の停止は状態ファイル（`SCRAPER_STATE_PATH`）が持つ。`parser-canary` と同じキー空間を共有し、両者の合計で上限を守る。取得区間が 429 で中止された場合も `if: always()` で保存する。
+
+### 4.9 会場の履歴の構築（`batch/jobs/build_venue_revisions.py`）
+
+```
+python -m batch.jobs.build_venue_revisions [--dry-run]
+```
+
+**入力はスナップショットの `games` と、手入力の CSV 1本。** D1 を入力として読まない
+（絶対ルール3）。`team_ratings` と同じく**全期間を再計算して洗い替える**。
+
+| 入力 | 使う列 |
+|---|---|
+| `games`（スナップショット） | `venue_id` / `game_date` / `venue_name_at_game` |
+| `db/seeds/master/venue_revisions.csv`（手入力） | `venue_id` / `valid_from` / `capacity` / `source` |
+
+**名称の区間の作り方。** 会場ごとに `game_date` 昇順で並べ、名称が前の行と変わった時点で
+新しい区間を開く。`valid_from` はその試合の `game_date`、直前の区間の `valid_to` は
+その前日。最後の区間の `valid_to` は `9999-12-31`。
+
+**`venue_name_at_game` が NULL の試合は区間の判定に使わない**（飛ばす）。0 と欠損を
+区別するのと同じ理由で、欠損を「名称が変わった」と読まない。会場の全試合で NULL なら
+その会場の行を作らない（`venues.name` へのフォールバックが効く）。
+
+**次の3つは自動で解決せず、止めて報告する。**
+
+| 事象 | 扱い |
+|---|---|
+| CSV の `(venue_id, valid_from)` が、名称から作った区間のどれにも一致しない | **エラーで中止。** 収容人数だけのために名称区間を勝手に分割しない。CSV の `valid_from` を区間の開始日に合わせるのは運営者の判断である |
+| **同一シーズン内で名称が変わった** | **報告する（ジョブは継続）。** 命名権の変更はシーズン境界で起きるのが通例であり、シーズン内の変更は表記ゆれ（全角・半角、「市立」の有無）の疑いがある。名寄せの規則を推測で作らない |
+| 区間が1つもない会場 | 表示は `venues.name` にフォールバックし、**フォールバックした会場を出力とログに残す**（1.2） |
+
+**`venues.name`（現在の表示名）は、このジョブでも更新しない。** 初出の名称で固定する
+（3.4 の upsert が `name` を更新対象から外している）。画面に出すのは
+`venue_revisions.name` であり、`venues.name` はフォールバック専用である。
 
 ---
 
@@ -2789,10 +2873,16 @@ python scripts/rebuild_snapshot.py --database /tmp/bpredict.sqlite
 # 7. 全期間のレーティング洗い替え（入力はスナップショット。D1 へは複製を送る）
 python -m batch.jobs.recompute_ratings --full
 
-# 8. 初回学習
+# 8. 会場の履歴（名称は自動、収容人数は手入力の CSV。4.9）
+#    まず --dry-run で区間を見て、db/seeds/master/venue_revisions.csv に
+#    収容人数の行を足してから本実行する
+python -m batch.jobs.build_venue_revisions --dry-run
+python -m batch.jobs.build_venue_revisions
+
+# 9. 初回学習
 python -m batch.jobs.train --initial
 
-# 9. Web デプロイ（Pages は Git 連携で自動）
+# 10. Web デプロイ（Pages は Git 連携で自動）
 ```
 
 **実装順序の都合で、API デプロイが backfill より先に来る。** 書き込み経路を `/internal/*` に一本化したため、API がないと backfill が実行できない。
@@ -2849,7 +2939,7 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 4a | **Workers API の土台と `POST /internal/masters`。** Hono / Zod / vitest（Workers ランタイム）/ ESLint Flat Config / `wrangler.toml` / `batch-limits.ts` / Bearer 認証（2キー方式・定数時間比較） | Bearer なしで401、汎用テーブル指定で400、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`POST /internal/masters` がローカル D1 にマスタを投入でき、2回流しても行数が増えない |
 | 4b | 残りの `/internal/*`（`predictions` / `finalize` / `evaluate` / `summary` / `log` / `ratings` / `games` / `stats` / `entries` / `models` と GET 群）。**freeze の Cron Trigger（毎時）もここで置く** | tipoff 経過後に409、freeze が子 → 親の順で通る、`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る。**完了した** — `batch/scraper/`（HTTP・取得前確認・URL構築）と `batch/parser/`（日程・終了済みボックススコア）を**標準ライブラリのみ**で実装し、batch のテストは 371 件。取得前確認は robots / 利用規約のハッシュが未設定・不一致なら試合データを取得しない。日次3,000件と 429/503 の停止はプロセス再起動を跨いで保たれる。**実サイトの取得は `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定するまで行わない**（カナリアは警告を残してスキップする）。利用方法は [スクレイパ・パーサ](scraper-parser.md) |
-| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/`、`batch/jobs/backfill.py`、`.github/workflows/backfill.yml`、`batch/ratings/`（Elo）と `batch/jobs/recompute_ratings.py` を実装済み。**残りは `venue_revisions` の構築と、`daily_ingest` によるスナップショットの日常書き出し**）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
+| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/`、`batch/jobs/backfill.py`、`.github/workflows/backfill.yml`、`batch/ratings/`（Elo）と `batch/jobs/recompute_ratings.py` を実装済み。`batch/masters/venue_revisions.py` と `batch/jobs/build_venue_revisions.py`（会場の履歴）を実装済み。**残りは実サイトからの取り込みの実行と、`daily_ingest` によるスナップショットの日常書き出し**）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る。**完了した** — `batch/features/`（`dataset` / `base` / `team_strength` / `schedule_ctx` / `player` / `builder`）と採用16キー、`db/seeds/test/`（架空8クラブ × 2シーズン / 224試合の決定論的シード）、`scripts/rebuild_snapshot.py`。batch のテストは 404 件で、リーク検証10件・スナップショット9件・特徴量10件を含む |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |

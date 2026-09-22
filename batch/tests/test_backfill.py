@@ -207,6 +207,16 @@ def test_a_single_invalid_game_does_not_stop_the_job() -> None:
     assert result.skipped_invalid == 1
     assert result.ingested == 1
 
+    # **どの試合がなぜ落ちたかを残す**（詳細設計 4.4）。件数だけでは調査できず、
+    # 2016-17 で9試合が落ちたとき実サイトへ約80件の再取得が必要になった
+    assert len(result.skipped) == 1
+    game_id, kind, message = result.skipped[0]
+    assert game_id == "101"
+    assert kind == "ValidationError"
+    assert message
+    # 例外オブジェクトを残さない（URL や本文が混ざらない。絶対ルール4）
+    assert "http" not in message.lower()
+
 
 def test_limit_stops_after_the_requested_count() -> None:
     result, scraper, _ = run(schedule_responses("101", "102"), limit=1)

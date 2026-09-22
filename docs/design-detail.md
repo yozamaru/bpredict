@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.21** |
+| 版数 | **1.22** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** / **v1.22: `games` の `UNIQUE (season_id, game_date, home_club_id, away_club_id)` を外した（同じ日・同じカードで行われる CS の決着戦が実在し、取り込みが 500 で止まっていた）** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -240,8 +240,7 @@ CREATE TABLE games (
   fetched_at       TEXT,
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
-  CHECK (home_club_id <> away_club_id),
-  UNIQUE (season_id, game_date, home_club_id, away_club_id)  -- 重複検出用。upsertキーではない
+  CHECK (home_club_id <> away_club_id)
 );
 CREATE INDEX idx_games_date     ON games(game_date, status);
 CREATE INDEX idx_games_finished ON games(finished_at);
@@ -280,6 +279,24 @@ CREATE INDEX idx_games_away     ON games(away_club_id, game_date);
 後から分離するには backfill をやり直すことになる。
 
 **upsert キーは `id`（公式試合ID）とする。** 自然キーに `game_date` を含めると、延期で日付が変わった瞬間に別レコードとして挿入され、旧行が `SCHEDULED` のまま永久に残る。ゴースト試合の予測が的中率の分母を汚染する。
+
+**`UNIQUE (season_id, game_date, home_club_id, away_club_id)` を置かない。** v1.21 まで
+「重複検出用」として置いていたが、**実データがこの仮定を満たさない**。チャンピオンシップ
+では同じ日・同じカードで第2戦の直後に決着戦が行われる。
+
+| 試合ID | 日付 | ホーム | アウェイ | スコア |
+|---|---|---|---|---|
+| `1329` | 2017-05-20 | 727 | 706 | 通常の試合 |
+| `1330` | 2017-05-20 | 727 | 706 | **26–18** |
+| `1332` | 2017-05-21 | 703 | 728 | 通常の試合 |
+| `1333` | 2017-05-21 | 703 | 728 | **14–12** |
+
+制約違反は SQLite の例外になり、Worker が 500 を返して**取り込みがその試合で止まる**。
+2016-17 の再取り込みが `500 / games` で失敗した原因がこれだった。
+
+**重複の検出は制約ではなく取り込み側で行う。** `id` が主キーである以上、同じ試合が
+二重に入ることはない。「別IDで同じカードが入る」ことは**正常な事象**であり、
+制約で禁じてはならない。
 
 **`finished_at` は列として保持する。読み出し時に計算しない。** すべてのリーク判定クエリがこの値を通るため、`tipoff_at + 2時間` という推定式を呼び出し側に置くと、一箇所直し忘れただけでリークが復活する。取り込み時に次のとおり確定させる。
 

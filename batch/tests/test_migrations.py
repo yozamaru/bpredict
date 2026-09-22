@@ -148,6 +148,64 @@ def test_migrations_match_design_doc():
         assert from_doc[key] == from_migrations[key], f"{key[0]} {key[1]} が一致しない"
 
 
+def test_same_day_same_matchup_games_can_coexist(db):
+    """同じ日・同じカードの試合を2件入れられること（詳細設計 1.3）。
+
+    チャンピオンシップでは第2戦の直後に決着戦が行われる。v1.21 まで置いていた
+    `UNIQUE (season_id, game_date, home_club_id, away_club_id)` はこれを禁じており、
+    **2016-17 の CS 2試合が `500 / games` で取り込めなかった**。
+
+        1329  2017-05-20  727 vs 706  通常の試合
+        1330  2017-05-20  727 vs 706  26-18    ← 同じ自然キー
+    """
+    seed_minimal(db)
+    row = db.execute(
+        "SELECT season_id, league, competition, game_date, tipoff_at,"
+        " home_club_id, away_club_id FROM games WHERE id = ?", (SEED_GAME,)
+    ).fetchone()
+    db.execute(
+        "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
+        " home_club_id, away_club_id, status) VALUES (?,?,?,?,?,?,?,?,'FINISHED')",
+        ("tiebreak", *row),
+    )
+    assert db.execute(
+        "SELECT COUNT(*) FROM games WHERE game_date = ? AND home_club_id = ?",
+        (row[3], row[5]),
+    ).fetchone()[0] == 2
+
+
+def test_rebuild_keeps_foreign_keys_intact(db):
+    """テーブル再作成後も子テーブルからの参照が解決すること（0010）。
+
+    `DROP TABLE` を含む変更であり、参照が切れていないことを機械的に確かめる。
+    """
+    seed_minimal(db)
+    seed_team_games(db)
+    assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    joined = db.execute(
+        "SELECT COUNT(*) FROM team_games t JOIN games g ON g.id = t.game_id"
+    ).fetchone()[0]
+    assert joined == db.execute("SELECT COUNT(*) FROM team_games").fetchone()[0] > 0
+
+
+def test_games_has_no_natural_key_unique_index(db):
+    """自然キーの UNIQUE が残っていないこと。
+
+    再作成を取りこぼすと、同じ症状（500 / games）が静かに戻る。
+    """
+    indexes = db.execute("PRAGMA index_list('games')").fetchall()
+    unique_cols = []
+    for row in indexes:
+        name, unique = row[1], row[2]
+        if not unique:
+            continue
+        cols = [c[2] for c in db.execute(f"PRAGMA index_info('{name}')").fetchall()]
+        unique_cols.append(sorted(cols))
+    assert ["away_club_id", "game_date", "home_club_id", "season_id"] not in [
+        sorted(c) for c in unique_cols
+    ], f"自然キーの UNIQUE が残っている: {unique_cols}"
+
+
 # --- 確定予測の凍結（詳細設計 1.8） -----------------------------------------------
 
 

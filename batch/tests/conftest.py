@@ -58,9 +58,16 @@ def ddl_statements(script: str) -> list[str]:
     **ALTER も含める。** 追記のみの規約（CLAUDE.md）のもとでは列の追加は
     `ALTER TABLE ADD COLUMN` になり、これを落とすとマイグレーション側のスキーマが
     文書より1列少ない状態で比較され、検査が空振りする。
+
+    **`DROP` と `PRAGMA` も含める。** SQLite は UNIQUE 制約を単体で削除できないため、
+    制約を外す変更は「新テーブル作成 → コピー → DROP → RENAME」になる（0010）。
+    `DROP` を落とすと RENAME が「同名のテーブルが既にある」で失敗し、スキーマを
+    再現できない。`PRAGMA` は FK を一時的に外すために要る。
+
+    `INSERT`（データのコピー）は含めない。ここで作るのはスキーマだけである。
     """
     return [s for s in split_statements(script)
-            if _leading_keyword(s).startswith(("CREATE ", "ALTER "))]
+            if _leading_keyword(s).startswith(("CREATE ", "ALTER ", "DROP ", "PRAGMA "))]
 
 
 @pytest.fixture

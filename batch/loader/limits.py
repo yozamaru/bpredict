@@ -23,9 +23,16 @@ STATEMENTS_BUDGET = 40
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "db" / "migrations"
 
 _TABLE = re.compile(r"CREATE TABLE (\w+)\s*\((.*?)\n\);", re.DOTALL)
-#: 追記のみの規約（CLAUDE.md）のもとでは、列の追加は ALTER になる。
-#: これを数えないと上限が古い列数で算出され、バインドパラメータ上限を静かに超える。
-_ADD_COLUMN = re.compile(r"(?i)ALTER TABLE\s+(\w+)\s+ADD COLUMN\b")
+#: `CREATE TABLE` の後にスキーマを動かす文。**出現順に適用する。**
+#: 追記のみの規約（CLAUDE.md）では、列の追加は ALTER、制約の削除は
+#: 「新テーブル → DROP → RENAME」になる（0010）。落とすと上限が古い列数で
+#: 算出されるか、作業用テーブルが最終スキーマに残る。
+#: **種類ごとにまとめて適用しない** — 同じファイル内で順序が逆になると結果が変わる。
+_MUTATION = re.compile(
+    r"(?i)ALTER TABLE\s+(?P<added>\w+)\s+ADD COLUMN\b"
+    r"|DROP TABLE\s+(?:IF EXISTS\s+)?(?P<dropped>\w+)"
+    r"|ALTER TABLE\s+(?P<renamed>\w+)\s+RENAME TO\s+(?P<target>\w+)"
+)
 
 
 class LimitError(KeyError):
@@ -58,14 +65,26 @@ def _column_counts() -> dict[str, int]:
                 else:
                     current += character
             counts[name] = columns
-    # ALTER は CREATE より後のファイルに来るため、全ファイルを読んだ後に足す
+
+    # **CREATE 以外も順に畳む。** 追記のみの規約（CLAUDE.md）のもとでは、
+    # 列の追加は ALTER になり、制約の削除は「新テーブル → DROP → RENAME」になる。
+    # 落とすと上限が古い列数で算出されるか、作業用テーブルが残る。
     for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
         body = path.read_text(encoding="utf-8")
         stripped = "\n".join(re.sub(r"--.*$", "", line) for line in body.splitlines())
-        for name in _ADD_COLUMN.findall(stripped):
-            if name not in counts:
-                raise LimitError(f"ALTER の対象テーブルが DDL にない: {name}")
-            counts[name] += 1
+        for match in _MUTATION.finditer(stripped):
+            if match.group("added"):
+                name = match.group("added")
+                if name not in counts:
+                    raise LimitError(f"ALTER の対象テーブルが DDL にない: {name}")
+                counts[name] += 1
+            elif match.group("dropped"):
+                counts.pop(match.group("dropped"), None)
+            else:
+                source, target = match.group("renamed"), match.group("target")
+                if source not in counts:
+                    raise LimitError(f"RENAME の対象テーブルが DDL にない: {source}")
+                counts[target] = counts.pop(source)
     return counts
 
 

@@ -628,3 +628,39 @@ PlayerID が空のチーム記録行である。`PlayerID` の有無で選手行
    その年度のクラブ一覧にないチームの試合は飛ばし、**件数を出力に出す**
 
 `robots.txt` のハッシュは安定していた（`43c9d466d16528226b172fd450ff49cc2e62a36bc4fb7f50ccb196acf70975ab`）。
+
+
+## 本番での取り込み開始時に見つかった不具合（2026-09-23）
+
+GitHub Actions から `backfill`（`--limit 3 --dry-run`）を初めて流したところ、先頭の
+マスタ投入が **403** で失敗した。
+
+| 項目 | 内容 |
+|---|---|
+| 症状 | `SeedError: POST /internal/masters が 403 を返した`。20秒で失敗し、本番 D1 は0件のまま |
+| 原因 | **`urllib` の既定 User-Agent（`Python-urllib/3.12`）を Cloudflare が 403 で弾いていた。** 内部APIのクライアントが UA を送っていなかった |
+| 切り分け | 同じ宛先・同じ本文・誤トークンで UA だけを変えて実測した |
+
+| 送った User-Agent | 応答 |
+|---|---|
+| `Python-urllib/3.12` | **403**（Cloudflare が返す。Worker に届いていない） |
+| `curl/8.0` | 401 |
+| （UA なし） | 401 |
+| `Mozilla/5.0` | 401 |
+| `python-requests/2.31` | 401 |
+| `bpredict-batch/1.0 (+https://github.com/yozamaru/bpredict)` | 401 |
+
+**弾かれるのは `Python-urllib/*` だけだった。** 「Python 由来の UA が一律に弾かれる」
+のではない（`python-requests` は通る）。
+
+**403 は Worker のコードが返さない値である**（認証は 401、検証は 400、未知のパスは 404）。
+そのためアプリのログから原因が分からず、トークンの不一致と誤診しかけた。切り分けは
+「同じ宛先へ UA だけを変えて叩く」で行った。
+
+対処: `batch/loader/api.py` に `INTERNAL_USER_AGENT` を1か所で定義し、`InternalApi` と
+`seed_master` の両方で送る。3種のミューテーション（両方から UA を外す／UA を urllib の
+既定にする）でテストが落ちることを確認した。
+
+**合成テストでは検出できなかった。** テストの transport は実際の HTTP を通らないため、
+Cloudflare の手前での拒否は写らない。**本番の宛先に対して1回投げるまで分からない**種類の
+欠陥である。

@@ -17,6 +17,19 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+#: 内部APIへ送る User-Agent。**省略できない。**
+#:
+#: urllib の既定は `Python-urllib/3.12` で、**Cloudflare がこれを 403 で弾く**
+#: （2026-09-23 に GitHub Actions からの `POST /internal/masters` が 403 で失敗して
+#: 判明した。`curl` や `Mozilla/5.0` は Worker に到達して 401 を返すため、
+#: 差は UA だけだった）。403 は Worker のコードが返す値ではないため、
+#: アプリ側のログからは原因が分からない。
+#:
+#: これは**自分の API に対する自分のクライアントの名乗り**であり、公式サイトへ送る
+#: `SCRAPER_USER_AGENT`（識別名と連絡先URLを必須とする。絶対ルール6）とは別物である。
+#: 両者を共用しない — 公式サイト向けの値を変えたときに内部通信まで変わる。
+INTERNAL_USER_AGENT = "bpredict-batch/1.0 (+https://github.com/yozamaru/bpredict)"
+
 #: D1 書き込み失敗は3回まで再試行する（基本設計 4.3）
 MAX_ATTEMPTS = 3
 RETRY_WAIT_SECONDS = 2.0
@@ -104,7 +117,10 @@ class InternalApi:
         payload: Mapping[str, object] | None = None,
     ) -> object:
         body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode()
-        headers = {"Authorization": f"Bearer {self._token}"}
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "User-Agent": INTERNAL_USER_AGENT,
+        }
         if body is not None:
             headers["Content-Type"] = "application/json"
         url = self._url(path, query)

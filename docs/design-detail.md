@@ -1414,6 +1414,32 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 
 **`club_seasons` と会場マスタはこの口では受けない。** どちらも backfill が試合データから作る（1.2 / 4.4）。ここで受けられるようにすると、事前に列挙できないはずのものを手で入れる経路が残る。
 
+#### `POST /internal/games` は、試合データから導かれるマスタも受ける
+
+**backfill が試合データから作るマスタ（`players` / `club_seasons` / `venues` /
+`venue_source_keys`）を D1 へ書く口が必要である。** D1 への書き込みは Workers 経由に
+一本化されており（絶対ルール3）、これらに口がないと backfill が実装できない。
+v1.16 まで、この口が設計に書かれていなかった。
+
+**専用のエンドポイントを増やさず、`POST /internal/games` の本文に任意の配列として足す。**
+理由は2つある。
+
+1. **FK の順序と原子性。** `player_game_stats` は `players` を、`games` は `venues` を
+   参照する。別リクエストに分けると、途中で失敗したときに「試合はあるが会場がない」
+   状態が残る。同一 `batch()` に **`venues` → `venue_source_keys` → `players` →
+   `club_seasons` → `games` → `team_games`** の順で入れれば、FK 順を守ったまま原子性が保てる
+2. **出所が同じ。** これらはすべて同じ試合レスポンスから抜き出した値である
+   （`StadiumCD` / `StadiumNameJ` / `PlayerID` / `PlayerNameJ` / `TeamNameJ`）。
+   別の口にすると、同じ1回の取得結果が2つのリクエストに分かれる
+
+**テーブル名を引数に取る汎用の口にはしない**（`POST /internal/masters` と同じ理由）。
+名前付きの配列にし、配列ごとに Zod スキーマを持つ。行数上限は各テーブルの
+`max_rows_per_request` で個別に検査する。
+
+`venue_revisions`（名称履歴）と `player_seasons` はこの口では受けない。前者は
+シーズンをまたいだ集計が必要で1試合の取り込みでは決められず（U-10 の解決に従い
+別の工程で作る）、後者は登録区分とポジションが未決（C03）で推測で埋めないためである。
+
 #### 内部 GET を置く理由と射程
 
 バッチは**入力データ**としては D1 を読まない（`batch/snapshot/*.parquet` のみ）。しかし運用上、D1 の現在値が要る場面が4つある — backfill の再開判定、照合対象の取得、モデル artifact の読み出し、現行モデルの識別。これらを `/internal/*` の GET に集約することで、**D1 REST API の直叩きを作らない**という方針を保ったまま実装できる。

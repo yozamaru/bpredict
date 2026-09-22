@@ -192,3 +192,112 @@ describe('backfill の再開判定', () => {
     expect((await get('/internal/games/ingested?seasonId=x', { token: null })).status).toBe(401);
   });
 });
+
+describe('POST /internal/games（試合データから導かれるマスタ）', () => {
+  // backfill は会場・選手・年度断面を同じ試合レスポンスから作る（詳細設計 3.4）。
+  // FK の順序で同一 batch() に入るため、1リクエストで完結する。
+  it('会場・選手・club_seasons を試合と同じ本文で受け、FK 順で入る', async () => {
+    await resetAll();
+    const seed = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'SCHEDULED' });
+    const body = {
+      venues: [{ id: 'v-new', name: '架空アリーナ', prefecture: '東京都' }],
+      venueSourceKeys: [{ sourceCode: 'v-new', venueId: 'v-new' }],
+      players: [{ id: 'p-new', name: '架空 選手', heightCm: 190 }],
+      clubSeasons: [
+        {
+          clubId: seed.homeId,
+          seasonId: seed.seasonId,
+          name: '架空クラブ',
+          shortName: '架空',
+          league: 'B1',
+          primaryVenueId: 'v-new',
+        },
+      ],
+      games: [
+        {
+          id: `${seed.gameId}-m`,
+          seasonId: seed.seasonId,
+          league: 'B1',
+          competition: 'REGULAR',
+          // シードの試合と同一カード・同一日にすると
+          // UNIQUE (season_id, game_date, home_club_id, away_club_id) に当たる
+          gameDate: '2026-09-23',
+          tipoffAt: '2026-09-23T10:05:00Z',
+          homeClubId: seed.homeId,
+          awayClubId: seed.awayId,
+          venueId: 'v-new',
+          status: 'SCHEDULED',
+        },
+      ],
+    };
+    const first = await post('/internal/games', body);
+    expect(first.status).toBe(200);
+    const payload = await first.json<{ data: { applied: Record<string, number> } }>();
+    expect(payload.data.applied).toMatchObject({
+      venues: 1,
+      venueSourceKeys: 1,
+      players: 1,
+      clubSeasons: 1,
+      games: 1,
+    });
+
+    // 会場が先に入っているため、試合の FK が成立する
+    const venue = await env.DB.prepare('SELECT name FROM venues WHERE id = ?').bind('v-new').first();
+    expect(venue).toMatchObject({ name: '架空アリーナ' });
+    const game = await env.DB.prepare('SELECT venue_id FROM games WHERE id = ?')
+      .bind(`${seed.gameId}-m`)
+      .first();
+    expect(game).toMatchObject({ venue_id: 'v-new' });
+
+    // 2回流しても増えない（冪等）
+    expect((await post('/internal/games', body)).status).toBe(200);
+    const counts = await env.DB.prepare(
+      'SELECT (SELECT COUNT(*) FROM venues WHERE id = ?) AS v,' +
+        ' (SELECT COUNT(*) FROM players WHERE id = ?) AS p',
+    )
+      .bind('v-new', 'p-new')
+      .first<{ v: number; p: number }>();
+    expect(counts).toMatchObject({ v: 1, p: 1 });
+  });
+
+  it('会場の名称は上書きしない（当時の名称で現在の表示名を壊さない）', async () => {
+    await resetAll();
+    const seed = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'SCHEDULED' });
+    const base = {
+      games: [
+        {
+          id: `${seed.gameId}-n`,
+          seasonId: seed.seasonId,
+          league: 'B1',
+          competition: 'REGULAR',
+          gameDate: '2026-09-24',
+          tipoffAt: '2026-09-24T10:05:00Z',
+          homeClubId: seed.homeId,
+          awayClubId: seed.awayId,
+          venueId: 'v-keep',
+          status: 'SCHEDULED',
+        },
+      ],
+    };
+    await post('/internal/games', {
+      ...base,
+      venues: [{ id: 'v-keep', name: '現在の名称', prefecture: '東京都' }],
+    });
+    await post('/internal/games', {
+      ...base,
+      venues: [{ id: 'v-keep', name: '当時の名称', prefecture: '大阪府' }],
+    });
+    const venue = await env.DB.prepare('SELECT name, prefecture FROM venues WHERE id = ?')
+      .bind('v-keep')
+      .first();
+    expect(venue).toMatchObject({ name: '現在の名称', prefecture: '大阪府' });
+  });
+
+  it('知らない配列名を受け付けない', async () => {
+    const response = await post('/internal/games', {
+      games: [],
+      venueRevisions: [{ venueId: 'v', validFrom: '2016-09-01', name: 'x' }],
+    });
+    expect(response.status).toBe(400);
+  });
+});

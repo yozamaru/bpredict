@@ -40,6 +40,7 @@ app.use('/internal/games/*', ingest);
 app.use('/internal/stats', ingest);
 app.use('/internal/entries', ingest);
 app.use('/internal/ratings', ingest);
+app.use('/internal/venue-revisions', ingest);
 app.use('/internal/predictions', ingest);
 app.use('/internal/predictions/*', ingest);
 app.use('/internal/evaluate', ingest);

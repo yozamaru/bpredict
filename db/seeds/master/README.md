@@ -45,3 +45,29 @@ python -m batch.jobs.seed_master --dry-run   # 検証と件数表示のみ。送
 ```
 
 `test_seed_master.py` は CSV を実際のスキーマ（`db/migrations/*.sql`）に適用し、**公式IDがすべて `club_id` に解決すること**を確認する。これが工程2の完了条件である。
+
+## `venue_revisions.csv` — 会場の収容人数（手入力）
+
+**公式サイトに収容人数がない**（Phase 0 で確認）。`venue_revisions` の名称は
+`games.venue_name_at_game` から自動で作られるが、収容人数だけは手入力になる
+（詳細設計 1.2 / 4.9）。
+
+| 列 | 内容 |
+|---|---|
+| `venue_id` | 公式の会場ID（`StadiumCD`）。`venues.id` と同じ |
+| `valid_from` | **名称区間の開始日に一致させる。** 一致しない行があるとジョブが中止する |
+| `capacity` | **「B.LEAGUE 開催時の観客席数」** に定義を固定する（建物の最大収容と混ぜない）。空欄は NULL（未確認） |
+| `source` | 行ごとの出典URL。空欄にしない |
+
+**書き方の手順。**
+
+1. backfill を流し、スナップショットを作る（`scripts/rebuild_snapshot.py`）
+2. `python -m batch.jobs.build_venue_revisions --dry-run` を実行し、出力された
+   区間の `venue_id` と `valid_from` を見る
+3. 2026-27 の26クラブのメイン会場について、開始日を区間に合わせて行を足す。
+   代替会場は空欄のまま進めてよい（設計が NULL を許容している）
+4. 再実行する。`valid_from` が区間に当たらない行があれば中止するので、そこで直す
+
+**「入場者数の最大値を収容人数とみなす」自動化をしない。** 未来の試合から値を作ることに
+なりデータリークの禁止に触れ、観客制限期間では最大値そのものが抑制されていて判定が
+循環する（要件 5.3）。

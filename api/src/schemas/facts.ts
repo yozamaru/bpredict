@@ -26,6 +26,9 @@ export const gameSchema = z
     homeClubId: ID,
     awayClubId: ID,
     venueId: ID.nullable().optional(),
+    // その試合時点の会場名。`venue_revisions.name` の唯一の入力（詳細設計 1.2）。
+    // `venues` の upsert は `name` を更新しないため、ここに残さないと履歴が作れない
+    venueNameAtGame: z.string().min(1).max(200).nullable().optional(),
     isPrimaryVenue: zeroOne.optional(),
     seriesGameNo: int(1, 10).nullable().optional(),
     status: z.enum(STATUSES),
@@ -197,6 +200,43 @@ export const ratingSchema = z
  * Elo は差分更新せず対象期間を再計算して洗い替える（CLAUDE.md 冪等性）。
  * 期間の DELETE と INSERT は単一 `batch()` に入れる。
  */
+/**
+ * 会場の名称・収容人数の履歴（詳細設計 4.9）。
+ *
+ * **`team_ratings` と同じ「派生テーブルの期間洗い替え」型。** 差分更新をせず、
+ * `valid_from BETWEEN ? AND ?` を DELETE してから INSERT する。
+ */
+export const venueRevisionSchema = z
+  .object({
+    venueId: ID,
+    validFrom: DATE,
+    validTo: DATE,
+    name: z.string().min(1).max(200),
+    // 手入力 CSV に行がない会場は NULL。設計はこれを許容する（詳細設計 1.2）
+    capacity: int(0, 200000).nullable().optional(),
+  })
+  .strict()
+  .refine((r) => r.validFrom <= r.validTo, { message: 'validFrom が validTo より後' });
+
+export const venueRevisionsBody = z
+  .object({
+    fromDate: DATE,
+    toDate: DATE,
+    revisions: z.array(venueRevisionSchema),
+  })
+  .strict()
+  .refine((b) => b.fromDate <= b.toDate, { message: 'fromDate が toDate より後' })
+  .refine(
+    (b) => b.revisions.every((r) => b.fromDate <= r.validFrom && r.validFrom <= b.toDate),
+    { message: 'revisions に期間外の validFrom がある' },
+  )
+  .refine(
+    (b) =>
+      new Set(b.revisions.map((r) => `${r.venueId}\u0000${r.validFrom}`)).size ===
+      b.revisions.length,
+    { message: '(venueId, validFrom) が重複している' },
+  );
+
 export const ratingsBody = z
   .object({ fromDate: DATE, toDate: DATE, ratings: z.array(ratingSchema) })
   .strict()

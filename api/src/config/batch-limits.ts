@@ -37,7 +37,7 @@ export const COLUMN_COUNTS = {
   player_seasons: 8,
   venue_revisions: 5,
   venue_source_keys: 2,
-  games: 24,
+  games: 25,
   team_games: 10,
   team_game_stats: 22,
   player_game_stats: 24,

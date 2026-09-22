@@ -60,6 +60,50 @@ def test_migration_filenames_are_ordered_and_unique():
     assert numbers == list(range(1, len(numbers) + 1)), f"連番でない: {numbers}"
 
 
+#: テーブル定義の末尾に置かれる制約（列定義ではない）
+_TABLE_CONSTRAINTS = ("CHECK", "UNIQUE", "PRIMARY KEY", "FOREIGN KEY", "CONSTRAINT")
+
+
+def _split_top_level(body: str) -> list[str]:
+    """括弧の深さ0のカンマで分割する。`CHECK (a IN ('x','y'))` を壊さない。"""
+    parts, buf, depth = [], "", 0
+    for char in body:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            parts.append(buf.strip())
+            buf = ""
+            continue
+        buf += char
+    if buf.strip():
+        parts.append(buf.strip())
+    return parts
+
+
+def _table_shape(sql: str) -> tuple[frozenset[str], tuple[str, ...]]:
+    """CREATE TABLE を「列定義の集合」と「テーブル制約の並び」に分ける。
+
+    **列の順序は比較しない。** `ALTER TABLE ADD COLUMN` で足した列は、SQLite が
+    列定義の末尾に置き直すため、文書の DDL と位置が必ず食い違う。位置を一致させる
+    ために文書側の列を末尾へ動かすと、ALTER を足すたびに文書の可読性が落ちていく。
+    列順は挙動に影響しない（INSERT は必ず列名を明示し、`SELECT *` の読み出しも
+    列名で引く）ため、不変条件にしない。
+
+    **CHECK / UNIQUE などのテーブル制約は並びまで比較する。** こちらは意味を持ち、
+    ALTER で位置が動くこともない。
+    """
+    body = sql[sql.index("(") + 1 : sql.rindex(")")]
+    columns, constraints = set(), []
+    for part in _split_top_level(body):
+        if part.upper().startswith(_TABLE_CONSTRAINTS):
+            constraints.append(part)
+        else:
+            columns.add(part)
+    return frozenset(columns), tuple(constraints)
+
+
 def test_migrations_match_design_doc():
     """マイグレーションのスキーマが詳細設計1章のDDLと一致すること。
 
@@ -73,22 +117,35 @@ def test_migrations_match_design_doc():
     blocks = re.findall(r"```sql\n(.*?)```", section, re.DOTALL)
     assert blocks, "詳細設計1章に sql ブロックが見つからない"
 
-    def schema(scripts: list[str]) -> list[tuple[str, str, str]]:
+    def schema(scripts: list[str]) -> dict[tuple[str, str], object]:
         con = sqlite3.connect(":memory:")
         for script in scripts:
             for statement in ddl_statements(script):
                 con.execute(statement)
         rows = con.execute(
             "SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL"
-            " ORDER BY type, name"
         ).fetchall()
         con.close()
-        norm = lambda s: re.sub(r"\s+", " ", re.sub(r"--[^\n]*", "", s)).strip()
-        return [(t, n, norm(s)) for t, n, s in rows]
+
+        def norm(value: str) -> str:
+            return re.sub(r"\s+", " ", re.sub(r"--[^\n]*", "", value)).strip()
+
+        out: dict[tuple[str, str], object] = {}
+        for kind, name, sql in rows:
+            normalized = norm(sql)
+            out[(kind, name)] = (
+                _table_shape(normalized) if kind == "table" else normalized
+            )
+        return out
 
     from_doc = schema(blocks)
     from_migrations = schema([p.read_text(encoding="utf-8") for p in migration_files()])
-    assert from_doc == from_migrations
+    assert set(from_doc) == set(from_migrations), (
+        f"オブジェクトの集合が違う: 文書のみ={sorted(set(from_doc) - set(from_migrations))}"
+        f" / マイグレーションのみ={sorted(set(from_migrations) - set(from_doc))}"
+    )
+    for key in sorted(from_doc):
+        assert from_doc[key] == from_migrations[key], f"{key[0]} {key[1]} が一致しない"
 
 
 # --- 確定予測の凍結（詳細設計 1.8） -----------------------------------------------

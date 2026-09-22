@@ -32,6 +32,19 @@ TIPOFF_HOURS_JST = (14, 15, 17, 19)
 PLAYERS_PER_CLUB = 10
 ELO_START = 1500.0
 
+#: 1会場だけ2シーズン目に改称する。会場の名称履歴（`venue_revisions`）の構築を
+#: 検証するため（詳細設計 4.9）。命名権の変更はシーズン境界で起きるのが通例。
+RENAMED_VENUE = "v01"
+RENAMED_FROM_SEASON = "2025-26-B1"
+
+
+def venue_name_at(venue_id: str, season_id: str) -> str:
+    """その試合時点の会場名（サイトの `StadiumNameJ` に相当）。"""
+    base = f"架空アリーナ{venue_id[1:]}"
+    if venue_id == RENAMED_VENUE and season_id >= RENAMED_FROM_SEASON:
+        return f"{base}（改称後）"
+    return base
+
 
 @dataclass(frozen=True)
 class Game:
@@ -218,12 +231,13 @@ def seed_test_database(connection: sqlite3.Connection) -> None:
         cursor.execute(
             "INSERT INTO games (id, season_id, league, competition, game_date, tipoff_at,"
             " finished_at, finished_at_is_estimated, home_club_id, away_club_id, venue_id,"
-            " is_primary_venue, series_game_no, status, home_score, away_score, attendance,"
-            " spectator_restricted, source_url, fetched_at)"
-            " VALUES (?, ?, 'B1', 'REGULAR', ?, ?, ?, 0, ?, ?, ?, 1, ?, 'FINISHED', ?, ?, ?, 0,"
-            " NULL, ?)",
+            " venue_name_at_game, is_primary_venue, series_game_no, status, home_score,"
+            " away_score, attendance, spectator_restricted, source_url, fetched_at)"
+            " VALUES (?, ?, 'B1', 'REGULAR', ?, ?, ?, 0, ?, ?, ?, ?, 1, ?, 'FINISHED', ?, ?, ?,"
+            " 0, NULL, ?)",
             (game.id, game.season_id, game.game_date, _utc(game.tipoff_at),
              _utc(finished), game.home, game.away, game.venue_id,
+             venue_name_at(game.venue_id, game.season_id),
              game.series_game_no, game.home_score, game.away_score, game.attendance,
              _utc(finished)),
         )

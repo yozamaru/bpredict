@@ -11,7 +11,13 @@ import { Hono } from 'hono';
 import { maxRowsPerRequest, MAX_QUERIES_PER_REQUEST, type TableName } from '../../config/batch-limits';
 import { fail, failValidation, ok, readJson } from '../../lib/http';
 import { insertStatements, upsertStatements, type Row } from '../../lib/sql';
-import { entriesBody, gamesBody, ratingsBody, statsBody } from '../../schemas/facts';
+import {
+  entriesBody,
+  gamesBody,
+  ratingsBody,
+  statsBody,
+  venueRevisionsBody,
+} from '../../schemas/facts';
 
 export type Env = { DB: D1Database };
 
@@ -28,7 +34,8 @@ function overLimit(entries: Array<[TableName, number]>): string | null {
 
 const GAME_COLS = [
   'id', 'season_id', 'league', 'competition', 'game_date', 'tipoff_at', 'finished_at',
-  'finished_at_is_estimated', 'home_club_id', 'away_club_id', 'venue_id', 'is_primary_venue',
+  'finished_at_is_estimated', 'home_club_id', 'away_club_id', 'venue_id', 'venue_name_at_game',
+  'is_primary_venue',
   'series_game_no', 'status', 'rescheduled_to', 'home_score', 'away_score', 'attendance',
   'spectator_restricted', 'result_revision', 'source_url', 'fetched_at',
 ] as const;
@@ -74,6 +81,7 @@ facts.post('/games', async (c) => {
   const gameRows: Row[] = games.map((g) => [
     g.id, g.seasonId, g.league, g.competition, g.gameDate, g.tipoffAt, g.finishedAt ?? null,
     g.finishedAtIsEstimated ?? 0, g.homeClubId, g.awayClubId, g.venueId ?? null,
+    g.venueNameAtGame ?? null,
     g.isPrimaryVenue ?? 1, g.seriesGameNo ?? null, g.status, g.rescheduledTo ?? null,
     g.homeScore ?? null, g.awayScore ?? null, g.attendance ?? null,
     g.spectatorRestricted ?? null, g.resultRevision ?? 0, g.sourceUrl ?? null, g.fetchedAt ?? null,
@@ -261,6 +269,44 @@ facts.post('/ratings', async (c) => {
   await c.env.DB.batch(stmts);
   return ok(c, {
     applied: { ratings: ratings.length },
+    statements: stmts.length,
+    window: { fromDate, toDate },
+  });
+});
+
+const VENUE_REVISION_COLS = ['venue_id', 'valid_from', 'valid_to', 'name', 'capacity'] as const;
+
+/**
+ * 会場の名称・収容人数の履歴（詳細設計 4.9）。
+ *
+ * **`team_ratings` と同じ扱い。** 差分更新をせず、期間を DELETE してから INSERT する。
+ * 名称履歴は `games.venue_name_at_game` からの派生であり、全期間を再計算して洗い替える。
+ */
+facts.post('/venue-revisions', async (c) => {
+  const json = await readJson(c);
+  if (!json.ok) return fail(c, 'BAD_REQUEST', 'JSON として解釈できない');
+  const parsed = venueRevisionsBody.safeParse(json.value);
+  if (!parsed.success) return failValidation(c, parsed.error.issues);
+  const { fromDate, toDate, revisions } = parsed.data;
+
+  const over = overLimit([['venue_revisions', revisions.length]]);
+  if (over) return fail(c, 'BAD_REQUEST', over);
+
+  const rows: Row[] = revisions.map((r) => [
+    r.venueId, r.validFrom, r.validTo, r.name, r.capacity ?? null,
+  ]);
+
+  const stmts = [
+    c.env.DB.prepare('DELETE FROM venue_revisions WHERE valid_from BETWEEN ? AND ?')
+      .bind(fromDate, toDate),
+    ...insertStatements(c.env.DB, 'venue_revisions', VENUE_REVISION_COLS, rows),
+  ];
+  if (stmts.length > MAX_QUERIES_PER_REQUEST) {
+    return fail(c, 'BAD_REQUEST', `文数が上限を超えている: ${stmts.length}`);
+  }
+  await c.env.DB.batch(stmts);
+  return ok(c, {
+    applied: { venueRevisions: revisions.length },
     statements: stmts.length,
     window: { fromDate, toDate },
   });

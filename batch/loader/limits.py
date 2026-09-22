@@ -23,6 +23,9 @@ STATEMENTS_BUDGET = 40
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "db" / "migrations"
 
 _TABLE = re.compile(r"CREATE TABLE (\w+)\s*\((.*?)\n\);", re.DOTALL)
+#: 追記のみの規約（CLAUDE.md）のもとでは、列の追加は ALTER になる。
+#: これを数えないと上限が古い列数で算出され、バインドパラメータ上限を静かに超える。
+_ADD_COLUMN = re.compile(r"(?i)ALTER TABLE\s+(\w+)\s+ADD COLUMN\b")
 
 
 class LimitError(KeyError):
@@ -55,6 +58,14 @@ def _column_counts() -> dict[str, int]:
                 else:
                     current += character
             counts[name] = columns
+    # ALTER は CREATE より後のファイルに来るため、全ファイルを読んだ後に足す
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        body = path.read_text(encoding="utf-8")
+        stripped = "\n".join(re.sub(r"--.*$", "", line) for line in body.splitlines())
+        for name in _ADD_COLUMN.findall(stripped):
+            if name not in counts:
+                raise LimitError(f"ALTER の対象テーブルが DDL にない: {name}")
+            counts[name] += 1
     return counts
 
 

@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.17** |
+| 版数 | **1.18** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -1139,6 +1139,20 @@ Bリーグは NBA よりロスター変動が大きいため、NBA 標準の 0.7
 **B.ONE / B2 の Elo は存在しない。** 取得対象はトップリーグ（PREMIER と前身の B1）のみであり（要件 5.4）、下位リーグの試合を取り込まないため Elo も計算されない。旧版が書いていた「B.ONE 時代の Elo があればリーグ間オフセットを推定して平行移動する」という分岐は**永久に発火しないため削除した**。
 
 2026-27 で該当するのは `718` 神戸（B1 在籍は 2017-18 のみ、以後8シーズン不在）と `716` 信州（2シーズン不在）である。**B.PREMIER の構成は昇降格の結果ではない**ため、この状態が実際に発生する（`verification/RESULTS.md`）。
+
+#### 実装（`batch/ratings/elo.py` / `batch/jobs/recompute_ratings.py`）
+
+**計算は常に全期間を replay する。** `--from-date` が絞るのは D1 への書き込み範囲だけである。途中から始めると開始状態を保存済みの値から拾うことになり、丸め差が世代を追って蓄積する。8,000試合の replay は数十ミリ秒で終わるため、部分再計算に価値がない。
+
+**書き出しの順序を守る**（基本設計 2.2）。`recompute()` → `team_ratings.parquet` → `/internal/ratings`。特徴量が読むのはスナップショット側で、D1 側は公開APIの表示用の複製である。
+
+**`/internal/ratings` へ送るとき、同じ `as_of_date` を2リクエストに分けない。** この口は `as_of_date BETWEEN ? AND ?` を DELETE してから INSERT するため、1つの日付が2リクエストに跨ると、後のリクエストの DELETE が前のリクエストで入れた行を消す。1日の行数は最大 13試合 × 2 = 26 で、上限480に対して十分小さい。
+
+**`off_rating` / `def_rating` / `pace` は NULL のままにする。** これらを使う特徴量（`ortg_diff` ほか）は検証区分であり、集計窓（当季通算か移動平均か、減衰を入れるか）が本文書で定義されていない。工程8で採否を判断するときに決める。決め打ちで埋めると「実装しながら決めた値」が1つ増える。
+
+**データ上の最初のシーズンは、全クラブがリーグ平均（1500）から始まる。** 「昇格」は**前季にトップリーグの実績がないこと**を指すのであって、手元にデータがないことを指さない。ここで昇格扱い（1400）にすると、Elo は零和であるためリーグ平均が 1400 に固定され、以後シーズン間回帰が毎年 1500 方向へ引っ張る系統誤差になる。
+
+**`PROMOTED_ELO_INITIAL` は他のパラメータと同じく探索対象である。** 本節が定めるのは「1400前後」という水準であって厳密な値ではない。`batch/ratings/params.py` に初期値 1400 を置き、工程8の walk-forward で `K` / `HOME_ADVANTAGE` / `SEASON_REGRESSION` と併せて探索する。
 
 **チーム別ホームアドバンテージ**: 素朴な推定は過学習する。1チームあたりのホーム試合は年約30試合で、ホーム勝率の標準誤差は約9ポイント、見かけの差の大半はノイズである。階層モデル（部分プーリング）にする。
 
@@ -2766,13 +2780,19 @@ python -m batch.jobs.seed_master
 # 5. 過去データ取り込み（1日1シーズン。再開可能）
 python -m batch.jobs.backfill --season 2016-17-B1
 
-# 6. 全期間のレーティング洗い替え
+# 6. スナップショットの用意（recompute_ratings の入力。D1 を入力にはしない）
+#    初回は D1 から作る。日常の書き出しは daily_ingest が行う（基本設計 2.2）
+wrangler d1 export bpredict --remote --output /tmp/bpredict.sql
+sqlite3 /tmp/bpredict.sqlite < /tmp/bpredict.sql
+python scripts/rebuild_snapshot.py --database /tmp/bpredict.sqlite
+
+# 7. 全期間のレーティング洗い替え（入力はスナップショット。D1 へは複製を送る）
 python -m batch.jobs.recompute_ratings --full
 
-# 7. 初回学習
+# 8. 初回学習
 python -m batch.jobs.train --initial
 
-# 8. Web デプロイ（Pages は Git 連携で自動）
+# 9. Web デプロイ（Pages は Git 連携で自動）
 ```
 
 **実装順序の都合で、API デプロイが backfill より先に来る。** 書き込み経路を `/internal/*` に一本化したため、API がないと backfill が実行できない。
@@ -2829,7 +2849,7 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 4a | **Workers API の土台と `POST /internal/masters`。** Hono / Zod / vitest（Workers ランタイム）/ ESLint Flat Config / `wrangler.toml` / `batch-limits.ts` / Bearer 認証（2キー方式・定数時間比較） | Bearer なしで401、汎用テーブル指定で400、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`POST /internal/masters` がローカル D1 にマスタを投入でき、2回流しても行数が増えない |
 | 4b | 残りの `/internal/*`（`predictions` / `finalize` / `evaluate` / `summary` / `log` / `ratings` / `games` / `stats` / `entries` / `models` と GET 群）。**freeze の Cron Trigger（毎時）もここで置く** | tipoff 経過後に409、freeze が子 → 親の順で通る、`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る。**完了した** — `batch/scraper/`（HTTP・取得前確認・URL構築）と `batch/parser/`（日程・終了済みボックススコア）を**標準ライブラリのみ**で実装し、batch のテストは 371 件。取得前確認は robots / 利用規約のハッシュが未設定・不一致なら試合データを取得しない。日次3,000件と 429/503 の停止はプロセス再起動を跨いで保たれる。**実サイトの取得は `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定するまで行わない**（カナリアは警告を残してスキップする）。利用方法は [スクレイパ・パーサ](scraper-parser.md) |
-| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/` と `batch/jobs/backfill.py` を実装し、合成応答でテスト済み。`recompute_ratings` とスナップショット書き出しジョブ、`venue_revisions` の構築は未実装）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
+| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/`、`batch/jobs/backfill.py`、`.github/workflows/backfill.yml`、`batch/ratings/`（Elo）と `batch/jobs/recompute_ratings.py` を実装済み。**残りは `venue_revisions` の構築と、`daily_ingest` によるスナップショットの日常書き出し**）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る。**完了した** — `batch/features/`（`dataset` / `base` / `team_strength` / `schedule_ctx` / `player` / `builder`）と採用16キー、`db/seeds/test/`（架空8クラブ × 2シーズン / 224試合の決定論的シード）、`scripts/rebuild_snapshot.py`。batch のテストは 404 件で、リーク検証10件・スナップショット9件・特徴量10件を含む |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |

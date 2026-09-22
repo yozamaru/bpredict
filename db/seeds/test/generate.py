@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
-import math
 import random
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
+
+from batch.ratings.elo import DEFAULT_PARAMS, rating_change
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -279,14 +280,12 @@ def seed_test_database(connection: sqlite3.Connection) -> None:
                      _utc(finished)),
                 )
 
-        # Elo の更新（詳細設計 2.5 の式。ホームアドバンテージは 70）
-        expected = 1 / (1 + 10 ** ((elo[game.away] - elo[game.home] - 70) / 400))
-        actual = 1.0 if game.home_score > game.away_score else 0.0
-        margin = abs(game.home_score - game.away_score)
-        multiplier = math.log(margin + 1) * (
-            2.2 / (0.001 * abs(elo[game.home] - elo[game.away]) + 2.2)
+        # Elo の更新。**式は本番実装（`batch/ratings/elo.py`）を呼ぶ。**
+        # シードに式を写すと、探索でパラメータを変えたときに片方だけ古くなる。
+        change = rating_change(
+            elo[game.home], elo[game.away], game.home_score, game.away_score,
+            home_advantage=DEFAULT_PARAMS.home_advantage, params=DEFAULT_PARAMS,
         )
-        change = 20 * multiplier * (actual - expected)
         elo[game.home] += change
         elo[game.away] -= change
         games_played[game.home] += 1

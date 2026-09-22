@@ -60,6 +60,24 @@ def ddl_statements(script: str) -> list[str]:
 
 
 @pytest.fixture
+def seeded_db() -> Iterator[sqlite3.Connection]:
+    """架空8クラブ × 2シーズンの決定論的シードを入れた DB（詳細設計 6.8）。
+
+    特徴量とリーク検証で使う。実在の選手名・クラブ名を含まない。
+    """
+    from db.seeds.test.generate import seed_test_database
+
+    con = sqlite3.connect(":memory:")
+    con.execute("PRAGMA foreign_keys = ON")
+    apply_migrations(con)
+    seed_test_database(con)
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+@pytest.fixture
 def db() -> Iterator[sqlite3.Connection]:
     """マイグレーションを適用した in-memory DB。外部キーは有効にする。"""
     con = sqlite3.connect(":memory:")

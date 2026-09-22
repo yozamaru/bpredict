@@ -65,13 +65,27 @@ def ddl_column_counts() -> dict[str, int]:
             cols += 1
         out[table] = cols
 
-    # **ALTER TABLE ADD COLUMN も数える。** 追記のみの規約（CLAUDE.md）のもとでは
-    # 列の追加は必ず ALTER になる。落とすと定数側が正しくても「DDL と食い違う」と
-    # 出るか、逆に古い列数のまま通ってしまう。
+    # **CREATE の後にスキーマを動かす文も、出現順に畳む。** 追記のみの規約
+    # （CLAUDE.md）では、列の追加は ALTER、制約の削除は「新テーブル → DROP →
+    # RENAME」になる（0010）。落とすと定数側が正しくても「DDL と食い違う」と出るか、
+    # 作業用テーブルが最終スキーマに残ったまま比較される。
     stripped = "\n".join(re.sub(r"--.*$", "", line) for line in sql.splitlines())
-    for table in re.findall(r"(?i)ALTER TABLE\s+(\w+)\s+ADD COLUMN\b", stripped):
-        assert table in out, f"ALTER の対象テーブルが DDL にない: {table}"
-        out[table] += 1
+    mutation = re.compile(
+        r"(?i)ALTER TABLE\s+(?P<added>\w+)\s+ADD COLUMN\b"
+        r"|DROP TABLE\s+(?:IF EXISTS\s+)?(?P<dropped>\w+)"
+        r"|ALTER TABLE\s+(?P<renamed>\w+)\s+RENAME TO\s+(?P<target>\w+)"
+    )
+    for match in mutation.finditer(stripped):
+        if match.group("added"):
+            table = match.group("added")
+            assert table in out, f"ALTER の対象テーブルが DDL にない: {table}"
+            out[table] += 1
+        elif match.group("dropped"):
+            out.pop(match.group("dropped"), None)
+        else:
+            source, target = match.group("renamed"), match.group("target")
+            assert source in out, f"RENAME の対象テーブルが DDL にない: {source}"
+            out[target] = out.pop(source)
     return out
 
 

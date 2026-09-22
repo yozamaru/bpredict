@@ -13,6 +13,7 @@
 | `0007_ops.sql` | 運用（ジョブ実行履歴） | 1テーブル + 1インデックス |
 | `0008_freeze_triggers.sql` | 確定予測の凍結トリガ | 12トリガ |
 | `0009_venue_name_at_game.sql` | `games` に当時の会場名を追加 | 1列 |
+| `0010_games_drop_natural_key_unique.sql` | `games` の自然キー UNIQUE を外す（テーブル再作成） | 1テーブル + 4インデックス |
 
 合計 24テーブル / 18インデックス / 13トリガ。`games` は25列。
 

@@ -125,8 +125,21 @@ ops.post('/log', async (c) => {
 ops.get('/games/ingested', async (c) => {
   const seasonId = c.req.query('seasonId');
   if (!seasonId) return fail(c, 'BAD_REQUEST', 'seasonId が必要');
+  // **「試合行がある」ではなく「スタッツまで入っている」を取り込み済みとする。**
+  //
+  // backfill は1試合につき `POST /internal/games` と `POST /internal/stats` を
+  // 続けて投げる。その間で失敗すると（D1 の書き込み枠の枯渇、一時的な 5xx）、
+  // 試合行だけが残る。取り込み済みの判定を試合行の有無で行うと、再開時に
+  // **その試合が「済み」と見なされ、スタッツが永久に欠ける**。
+  //
+  // スタッツの書き込みは単一 `batch()` で原子的なので、1行でもあれば揃っている。
+  // 未実施の試合（`daily_ingest` が先に入れる `SCHEDULED`）はスタッツを持たない
+  // ため「未取り込み」と出るが、backfill 側が `status` を見て飛ばすので害はない。
   const rows = await c.env.DB.prepare(
-    'SELECT id FROM games WHERE season_id = ? ORDER BY id',
+    `SELECT g.id FROM games g
+      WHERE g.season_id = ?
+        AND EXISTS (SELECT 1 FROM team_game_stats s WHERE s.game_id = g.id)
+      ORDER BY g.id`,
   )
     .bind(seasonId)
     .all<{ id: string }>();

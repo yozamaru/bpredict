@@ -266,12 +266,41 @@ describe('会場の履歴の洗い替え', () => {
 });
 
 describe('backfill の再開判定', () => {
-  it('取り込み済みの試合IDを返す', async () => {
-    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
-    const res = await get(`/internal/games/ingested?seasonId=${s.seasonId}`);
+  /** 当該試合のチームスタッツを入れる（= 取り込みが完了した状態にする）。 */
+  async function seedTeamStats(gameId: string, clubIds: string[]) {
+    await env.DB.batch(clubIds.map((clubId, index) => env.DB.prepare(
+      `INSERT INTO team_game_stats (game_id, club_id, game_date, is_home, pts, fetched_at)
+       VALUES (?,?,?,?,?,?)`,
+    ).bind(gameId, clubId, '2026-09-22', index === 0 ? 1 : 0, 80, '2026-09-22T12:00:00Z')));
+  }
+
+  async function ingestedIds(seasonId: string): Promise<string[]> {
+    const res = await get(`/internal/games/ingested?seasonId=${seasonId}`);
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { count: number; gameIds: string[] } }>();
-    expect(body.data.gameIds).toEqual([s.gameId]);
+    return body.data.gameIds;
+  }
+
+  it('スタッツまで入った試合を取り込み済みとして返す', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await seedTeamStats(s.gameId, [s.homeId, s.awayId]);
+    expect(await ingestedIds(s.seasonId)).toEqual([s.gameId]);
+  });
+
+  it('試合行だけでスタッツがない試合を「済み」と見なさない', async () => {
+    // **これが穴だった。** backfill は1試合につき games と stats を続けて投げる。
+    // その間で失敗すると（書き込み枠の枯渇、一時的な 5xx）試合行だけが残る。
+    // 試合行の有無で判定すると、再開時にその試合が飛ばされ、**スタッツが
+    // 永久に欠ける**。しかも件数にも `不正` にも出ないので気づけない。
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    expect(await ingestedIds(s.seasonId)).toEqual([]);
+  });
+
+  it('スタッツが入った時点で取り込み済みに変わる', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    expect(await ingestedIds(s.seasonId)).toEqual([]);
+    await seedTeamStats(s.gameId, [s.homeId, s.awayId]);
+    expect(await ingestedIds(s.seasonId)).toEqual([s.gameId]);
   });
 
   it('seasonId がなければ 400', async () => {

@@ -81,7 +81,10 @@ class FakeScraper:
         self.requested: list[str] = []
         self.verified = 0
 
-    def verify_policy(self) -> None:
+    def verify_policy(self, terms_reporter: object = None) -> None:
+        # 本物と同じ引数を取る。引数を落とした偽物にすると、実装側が渡すように
+        # なったときにテストだけが古い形で通ってしまう
+        self.terms_reporter = terms_reporter
         self.verified += 1
 
     def get(self, url: str) -> str:

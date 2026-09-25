@@ -1,0 +1,70 @@
+{
+  "note": "利用規約ページの節ごとのハッシュ。関門が止まったとき、どの節が変わったかを指すために使う。サイトの文言は保存しない（要件 4.5.2）。承認は運営者が GitHub Variables の SCRAPER_TERMS_SHA256 を更新して行う。",
+  "visibleTextSha256": "e170b628f78e92073130db045062d5ac32b637a4416fb8bba83238b1d9b57685",
+  "sections": [
+    {
+      "index": 0,
+      "sha256": "05e7dd5fb853cc0bdea4a997c7619688dd5345ad934f58f52c42b74694323ec1"
+    },
+    {
+      "index": 1,
+      "sha256": "9370fa1a47536d1e61a718244ad34aa5edae7306b45a5d4289a80864ff2bded0"
+    },
+    {
+      "index": 2,
+      "sha256": "a7b08fdb4d97217c4b064d5d89aabe0795d2265a1300e7324b95ebc173b659bc"
+    },
+    {
+      "index": 3,
+      "sha256": "142838ba18692a757b30e74c4aa59d71eb7cd7fd9c512673a8a987ae980840dc"
+    },
+    {
+      "index": 4,
+      "sha256": "beb94933155eb9564bf14b5380a77a32f921fcb1e245abf6aab40a371611d66b"
+    },
+    {
+      "index": 5,
+      "sha256": "54f616044e25d624fa4400dc2c35824088cbbe665fc9ff7c58ade253b3889134"
+    },
+    {
+      "index": 6,
+      "sha256": "d01730b7a46f7e45519d69819d3c4d8f4a2edd0b874426294f14b21651cc5d42"
+    },
+    {
+      "index": 7,
+      "sha256": "bf4c9fb0920195a1ac08dae0f90c7672d238208ee3917bc363e827bf623c9618"
+    },
+    {
+      "index": 8,
+      "sha256": "451d1784af5257c952d62f735d21228bde02f30dd15bd9189720d97a2e1bd058"
+    },
+    {
+      "index": 9,
+      "sha256": "11249f00e9b5a1e1eb84c2469119e2ef5f46f50e695d51835fa77ecea2e5bcf3"
+    },
+    {
+      "index": 10,
+      "sha256": "943fabeaffe7ade1b0f5f51bda749f67e083084ea3b8ad57fd59c41aa764e525"
+    },
+    {
+      "index": 11,
+      "sha256": "21627a0d3e0351d2427b8d588852078d3fc9ad7a3c57aa83705caee46dfae2dc"
+    },
+    {
+      "index": 12,
+      "sha256": "8cc413abd0380f4e1dbc87b8de43fc16fdf3b343869a012da9afa37fe5401cc3"
+    },
+    {
+      "index": 13,
+      "sha256": "d0418dc1026a5bb51b32ff31acf9b110f83c9d87c7e378c218a91bac214ebb29"
+    },
+    {
+      "index": 14,
+      "sha256": "c737f8c6ccfe62f2c5359a23f2e2c28235001ee84d7bbbaaefca38846cbffa1e"
+    },
+    {
+      "index": 15,
+      "sha256": "d1b22b1dcd798833fcde7a446f4a703078cb8cd89424827a1eeabedab65700a3"
+    }
+  ]
+}

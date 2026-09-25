@@ -32,6 +32,9 @@ from urllib.robotparser import RobotFileParser
 ORIGIN = "https://www.bleague.jp"
 ROBOTS_URL = f"{ORIGIN}/robots.txt"
 TERMS_URL = f"{ORIGIN}/site/"
+#: `verify_policy` が規約の不一致時に本文を渡す先。報告のためだけに使う
+type TermsReporter = Callable[[str], None]
+
 MAX_REQUESTS_PER_DAY = 3_000
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 30.0
@@ -241,8 +244,28 @@ class RateLimitedClient:
             "terms_sha256": _hash(visible_text(terms_body)),
         }
 
-    def verify_policy(self) -> None:
-        """Check approved hashes before allowing requests to game data."""
+    def terms_body(self) -> str:
+        """Return the terms HTML without approving access to game data.
+
+        Used to build or report the section fingerprint. It grants nothing: the
+        approved-hash check in `verify_policy` still gates game data.
+        """
+        self._robots = None
+        self._verified_day = None
+        robots = self._parse_robots(self._request(ROBOTS_URL))
+        self._check_robots(robots, TERMS_URL)
+        return self._request(TERMS_URL)
+
+    def verify_policy(self, terms_reporter: TermsReporter | None = None) -> None:
+        """Check approved hashes before allowing requests to game data.
+
+        `terms_reporter` is called with the terms HTML when its hash no longer
+        matches, before the error is raised. It exists so the caller can report
+        which section changed without a second request.
+
+        The body is handed to the caller in memory only. It is never written to
+        disk and never placed in the exception, which reaches public logs.
+        """
         self._robots = None
         self._verified_day = None
         if self._robots_sha256 is None or self._terms_sha256 is None:
@@ -254,6 +277,8 @@ class RateLimitedClient:
         self._check_robots(robots, TERMS_URL)
         terms_body = self._request(TERMS_URL)
         if _hash(visible_text(terms_body)) != self._terms_sha256:
+            if terms_reporter is not None:
+                terms_reporter(terms_body)
             raise PolicyError("The terms changed; review is required.")
         self._robots = robots
         self._verified_day = _utc_day(self._clock())

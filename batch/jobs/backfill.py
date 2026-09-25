@@ -35,6 +35,7 @@ from batch.parser.errors import (
     ValidationError,
 )
 from batch.parser.schedule_parser import ScheduleGame, parse_club_options, parse_schedule
+from batch.parser.terms import report_terms_change
 from batch.scraper.boxscore import boxscore_url
 from batch.scraper.client import PolicyError, RateLimitedClient, ScrapingStopped
 from batch.scraper.schedule import schedule_html_url, schedule_url
@@ -118,8 +119,12 @@ def run(
     club_ids = {row.source_id: row.club_id for row in load_club_source_ids()}
     result = Result()
 
-    # 取得前確認。変更があればここで止める（CLAUDE.md 絶対ルール6）
-    client.verify_policy()
+    # 取得前確認。変更があればここで止める（CLAUDE.md 絶対ルール6）。
+    # 規約が変わった場合は**どの節が変わったか**を出す。関門が「形骸化した通知」に
+    # ならないよう、確認の手間を下げる（詳細設計 4.3）
+    client.verify_policy(
+        terms_reporter=report_terms_change(os.environ.get("SCRAPER_TERMS_SHA256", "")),
+    )
 
     collected: list[tuple[ScheduleGame, int]] = []
     try:

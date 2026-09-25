@@ -1,0 +1,59 @@
+{
+  "files": {
+    "club_seasons": {
+      "rows": 72,
+      "sha256": "62187892fd5e2f1b6ba79e1610777aaf71caf70eeb6baf2ed515ddbca10857ec"
+    },
+    "clubs": {
+      "rows": 30,
+      "sha256": "1beff60f848c2cf0372df795fc98feca44cee842a0b1f703260bacdb3c501567"
+    },
+    "game_entries": {
+      "rows": 0,
+      "sha256": "2ceb98590ca5c3866d05585d12387a466da506cd4d79ade81d193cdad1c08c9f"
+    },
+    "games": {
+      "rows": 1874,
+      "sha256": "c0777fbaf0d47af3dc9b255dac0fba948fa95ebc63685859700d185920583750"
+    },
+    "player_game_stats": {
+      "rows": 43272,
+      "sha256": "c17a413a5a924de921244ffc2d4f19d4d75c5c3216e8c81cefaf28eb854275f8"
+    },
+    "player_seasons": {
+      "rows": 0,
+      "sha256": "c3a3ec7d304a9b542e6b28d84c6a14c3f63310b05c2b031baf5dc2bdef3cee6a"
+    },
+    "players": {
+      "rows": 453,
+      "sha256": "5ac2ec2390247ade984e67a7888718c719ab927f92919a53b53196f1cde7186c"
+    },
+    "seasons": {
+      "rows": 11,
+      "sha256": "4a83badec894df8977e3e3ff553db9241a76592b589817b4a1dbf436de4a89d2"
+    },
+    "team_game_stats": {
+      "rows": 3748,
+      "sha256": "488a7af00a5926e5092e49db4a80c8f5bd426ff2a7d14effeea719c6ae3da196"
+    },
+    "team_games": {
+      "rows": 3748,
+      "sha256": "6bbea25ab6b0e849c527ab8f4c0c8b9aa270e0c466ed0aebf50efd59cd6d8722"
+    },
+    "team_ratings": {
+      "rows": 3740,
+      "sha256": "c91af304359ea9edd69c90a04ebe8bdbe1c70048623622161bd441a7b0608a9e"
+    },
+    "venue_revisions": {
+      "rows": 0,
+      "sha256": "c48a0851a371a88f3be31a649518fafa81474614dca5b74e9691720aa87e862a"
+    },
+    "venues": {
+      "rows": 88,
+      "sha256": "7be9da57cfe8607249260487e09d9bd7b52276dcb53c1cda11d1badbad2cdf71"
+    }
+  },
+  "generated_at": "2026-09-25T14:05:12Z",
+  "max_finished_at": "2019-12-25T12:48:00Z",
+  "version": 1
+}

@@ -19,6 +19,8 @@ import { ops } from './routes/internal/ops';
 import { predictions } from './routes/internal/predictions';
 import { accuracy } from './routes/public/accuracy';
 import { games } from './routes/public/games';
+import { schedule } from './routes/public/schedule';
+import { teams } from './routes/public/teams';
 
 export type Env = {
   DB: D1Database;
@@ -72,6 +74,8 @@ app.route('/internal', ops);                       // /evaluate /summary /log
 // レートリミットを `/api/v1/*` に当てる（詳細設計 3.5）。
 app.route('/', accuracy);
 app.route('/', games);
+app.route('/', schedule);   // /games?date= と /results?date=
+app.route('/', teams);      // /teams と /teams/:slug
 
 app.notFound((c) => fail(c, 'NOT_FOUND', '該当するエンドポイントがない'));
 

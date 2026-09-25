@@ -5,6 +5,11 @@
 export type GameStatus = 'SCHEDULED' | 'FINISHED' | 'POSTPONED' | 'CANCELLED';
 
 export type Club = {
+  /**
+   * `/teams/[slug]` の識別子。**改称があっても変わらない**（詳細設計 1.1）。
+   * 表示名は年度で変わるが slug は恒久であり、API の応答にも含まれる（詳細設計 3.3）。
+   */
+  slug: string;
   /** 表示名。その年度の名称（club_seasons.name 相当） */
   name: string;
   /** 圧縮表示用の短縮名（club_seasons.short_name 相当） */

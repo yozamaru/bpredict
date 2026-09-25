@@ -1,9 +1,11 @@
 import { GameCard } from '@/components/prediction/GameCard';
 import { GameCardCompact } from '@/components/prediction/GameCardCompact';
 import { StaleBanner } from '@/components/prediction/StaleBanner';
+import Link from 'next/link';
 import {
   SAMPLE_ACCURACY,
   SAMPLE_DATE_LABEL,
+  SAMPLE_DAY,
   SAMPLE_GAMES,
   SAMPLE_STALE,
 } from '@/lib/fixtures/today';
@@ -32,6 +34,27 @@ export default function Page() {
       </p>
 
       <h2 className="mt-5 text-[19px] font-extrabold">{SAMPLE_DATE_LABEL}の試合</h2>
+
+      {/* **日付別へ辿れるようにする**（基本設計 5.1 の `/ ─→ /schedule/[date]`）。
+          導線がないと、URL を手で打つ以外に他の日を見る方法がない */}
+      <nav aria-label="日付の移動" className="mt-3 flex items-stretch gap-2">
+        {SAMPLE_DAY.previous && (
+          <Link
+            href={`/schedule/${SAMPLE_DAY.previous}/`}
+            className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-border text-[13px] font-bold"
+          >
+            ← 前日
+          </Link>
+        )}
+        {SAMPLE_DAY.next && (
+          <Link
+            href={`/schedule/${SAMPLE_DAY.next}/`}
+            className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-border text-[13px] font-bold"
+          >
+            {SAMPLE_DAY.nextLabel} →
+          </Link>
+        )}
+      </nav>
 
       {featured ? (
         <>

@@ -5,6 +5,20 @@ import type { AccuracyView, Club, GameView } from '@/lib/view';
 
 export const SAMPLE_DATE_LABEL = '9月22日（火）';
 
+/**
+ * 当日の日付と、前後の日付。**`/` から日付別へ辿れるようにする**
+ * （基本設計 5.1 の `/ ─→ /schedule/[date]`）。
+ *
+ * 11b では静的JSON が持つ日付から導く。**「いま」から計算しない** —
+ * 静的配信では「いま」を知らず、時刻で変わる表示はキャッシュと噛み合わない。
+ */
+export const SAMPLE_DAY = {
+  date: '2026-09-22',
+  previous: null as string | null,
+  next: '2026-09-23',
+  nextLabel: '9月23日（水）',
+};
+
 export const SAMPLE_ACCURACY: AccuracyView = { rate: 0.682, n: 312 };
 
 export const SAMPLE_GAMES: GameView[] = [
@@ -12,8 +26,8 @@ export const SAMPLE_GAMES: GameView[] = [
     gameId: 'demo-1',
     tipoffLabel: '19:05',
     status: 'SCHEDULED',
-    home: { name: '架空アルファーズ', shortName: '架空A' },
-    away: { name: '架空ブルズ', shortName: '架空B' },
+    home: { slug: 'demo-alphas', name: '架空アルファーズ', shortName: '架空A' },
+    away: { slug: 'demo-bulls', name: '架空ブルズ', shortName: '架空B' },
     homeWinProb: 0.68,
     predHomeScore: 84,
     predAwayScore: 78,
@@ -25,8 +39,8 @@ export const SAMPLE_GAMES: GameView[] = [
     gameId: 'demo-2',
     tipoffLabel: '17:05',
     status: 'SCHEDULED',
-    home: { name: '架空キャッツ', shortName: '架空C' },
-    away: { name: '架空ドルフィンズ', shortName: '架空D' },
+    home: { slug: 'demo-cats', name: '架空キャッツ', shortName: '架空C' },
+    away: { slug: 'demo-dolphins', name: '架空ドルフィンズ', shortName: '架空D' },
     homeWinProb: 0.55,
     predHomeScore: 81,
     predAwayScore: 80,
@@ -38,8 +52,8 @@ export const SAMPLE_GAMES: GameView[] = [
     gameId: 'demo-3',
     tipoffLabel: '14:05',
     status: 'SCHEDULED',
-    home: { name: '架空イーグルス', shortName: '架空E' },
-    away: { name: '架空フォックス', shortName: '架空F' },
+    home: { slug: 'demo-eagles', name: '架空イーグルス', shortName: '架空E' },
+    away: { slug: 'demo-foxes', name: '架空フォックス', shortName: '架空F' },
     homeWinProb: 0.31,
     predHomeScore: 75,
     predAwayScore: 83,
@@ -71,8 +85,8 @@ export const SAMPLE_PENDING_GAMES: {
   {
     gameId: 'demo-pending',
     tipoffLabel: '19:05',
-    home: { name: '架空ゴールズ', shortName: '架空G' },
-    away: { name: '架空ホークス', shortName: '架空H' },
+    home: { slug: 'demo-gulls', name: '架空ゴールズ', shortName: '架空G' },
+    away: { slug: 'demo-hawks', name: '架空ホークス', shortName: '架空H' },
   },
 ];
 
@@ -93,8 +107,10 @@ export const SAMPLE_FULL_DAY: GameView[] = Array.from({ length: 13 }, (_, index)
     gameId: `demo-full-${index + 1}`,
     tipoffLabel: hours[index % hours.length] ?? null,
     status: 'SCHEDULED' as const,
-    home: { name: `架空${homeLetter}クラブ`, shortName: `架空${homeLetter}` },
-    away: { name: `架空${awayLetter}クラブ`, shortName: `架空${awayLetter}` },
+    // **リンク先が無い slug を作らない。** 13試合ぶんのクラブ別ページは
+    // 生成していないため、既にある slug を使い回す（11a は合成データ）
+    home: { slug: 'demo-alphas', name: `架空${homeLetter}クラブ`, shortName: `架空${homeLetter}` },
+    away: { slug: 'demo-bulls', name: `架空${awayLetter}クラブ`, shortName: `架空${awayLetter}` },
     homeWinProb: probs[index] ?? 0.5,
     predHomeScore: 78 + (index % 5) * 3,
     predAwayScore: 75 + ((index + 2) % 6) * 3,

@@ -155,10 +155,20 @@ def test_explicit_postponed_cancelled_states(state, expected):
     assert page.games[0].status == expected
 
 
-@pytest.mark.parametrize("state", ["LIVE", "3Q", "", "unknown", "見どころ LIVE"])
+@pytest.mark.parametrize("state", ["LIVE", "3Q", "unknown", "見どころ LIVE"])
 def test_unknown_or_live_state_never_becomes_scheduled_or_finished(state):
     with pytest.raises(ParseError, match="state"):
         parse_schedule(body(HEADER, game_html(state=state)), year=2026, event=2, clubs_by_name=CLUBS)
+
+
+def test_empty_state_with_a_score_is_rejected():
+    """状態が空でも**得点が入っていれば飛ばさない**。
+
+    ここを飛ばすと、終了した試合が静かに取り込まれなくなる。
+    """
+    with pytest.raises(ParseError, match="state"):
+        parse_schedule(body(HEADER, game_html(state="", home="80", away="79")),
+                       year=2026, event=2, clubs_by_name=CLUBS)
 
 
 @pytest.mark.parametrize("malformed", [
@@ -356,3 +366,135 @@ def test_structural_or_identifier_drift_is_rejected(old, new):
     with pytest.raises(ParseError):
         parse_schedule(body(HEADER, game_html().replace(old, new)),
                        year=2026, event=2, clubs_by_name=CLUBS)
+
+
+def no_outcome_stage_row(game_id: str = "game-cs-3", *, state: str = "") -> str:
+    """結果が何も書かれていない行。**得点欄そのものが無く、状態欄が空**（実データの形）。
+
+    可視の「試合中止」は行の操作ボタン（`.data-link .btn.disabled`）にあり、
+    状態欄ではない。ボタンは放送・導線の状態なので状態の出典にしない。
+    """
+    return f"""
+    <li class="list-item" id="{game_id}"><div class="inner">
+      <div class="data-game">
+        <div class="game">
+          <span class="team home"><span class="team-name">架空ホーム</span></span>
+          <span class="point"></span>
+          <span class="team away"><span class="team-name">架空アウェイ</span></span>
+        </div>
+        <div class="info"><div class="info-arena">
+          <span>クォーターファイナル</span><span>架空地域 | 架空会場</span>
+          <span>04/29 (月)</span><span>15:05</span>
+        </div><div class="info-scorestate">{state}</div></div>
+      </div>
+      <div class="data-link"><span class="btn disabled">試合中止</span></div>
+    </div></li>
+    """
+
+
+def cancelled_stage_row(game_id: str = "game-cs-3", *, state: str = "試合中止") -> str:
+    """中止の行。**`.data-game` が `<a>` ではなく `<div>` で、href がない**（実データの形）。
+
+    2018-19 の CS で、2勝0敗で不要になったクォーターファイナル第3戦3試合がこの形だった。
+    """
+    return f"""
+    <li class="list-item" id="{game_id}"><div class="inner">
+      <div class="data-game click_schedule_highlights btn disabled">
+        <div class="game">
+          <span class="team home"><span class="team-name">架空ホーム</span></span>
+          <span class="point">
+            <span class="number home-score"><span></span></span>
+            <span class="number away-score"><span></span></span>
+          </span>
+          <span class="team away"><span class="team-name">架空アウェイ</span></span>
+        </div>
+        <div class="info"><div class="info-arena">
+          <span>クォーターファイナル</span><span>架空地域 | 架空会場</span>
+          <span>04/29 (月)</span><span>15:05</span>
+        </div><div class="info-scorestate"><span>{state}</span></div></div>
+      </div>
+    </div></li>
+    """
+
+
+def test_cancelled_row_without_a_link_is_parsed():
+    """リンクのない中止の行を取り込むこと。
+
+    `<a>` を必須にしていた実装は、この行1つで**ページ全体を `ParseError` で落とし**、
+    2018-19 の CS が丸ごと取り込めなかった（同じ `event=3` のページに載っているため）。
+    """
+    page = parse_schedule(body(STAGE_HEADING, cancelled_stage_row(), index=None),
+                          year=2026, event=3, clubs_by_name=CLUBS, index=0)
+    assert page.skipped == 0
+    assert len(page.games) == 1
+    game = page.games[0]
+    assert game.status == "CANCELLED"
+    assert (game.home_score, game.away_score) == (None, None)
+    assert game.game_date == "2027-04-29"
+    assert game.competition == "PLAYOFF"
+
+
+def test_cancelled_row_does_not_stop_the_rest_of_the_page():
+    """同じページの実試合を落とさないこと（落ちていたのがこの経路）。"""
+    page = parse_schedule(
+        body(STAGE_HEADING, cancelled_stage_row(), stage_row("game-cs-2"), index=None),
+        year=2026, event=3, clubs_by_name=CLUBS, index=0,
+    )
+    assert {game.game_id for game in page.games} == {"game-cs-3", "game-cs-2"}
+
+
+@pytest.mark.parametrize("state", ["FINAL", "見どころ"])
+def test_row_without_a_link_is_rejected_unless_cancelled_or_postponed(state):
+    """**リンクなしを無条件に許さない。**
+
+    許すと「行のIDと試合詳細のIDが一致すること」の確認が静かに消える。
+    リンクが落ちてよいのは試合詳細を持たない中止・延期に限る。
+    """
+    with pytest.raises(ParseError, match="not a link"):
+        parse_schedule(body(STAGE_HEADING, cancelled_stage_row(state=state), index=None),
+                       year=2026, event=3, clubs_by_name=CLUBS, index=0)
+
+
+def test_postponed_row_without_a_link_is_parsed():
+    page = parse_schedule(body(STAGE_HEADING, cancelled_stage_row(state="試合延期"), index=None),
+                          year=2026, event=3, clubs_by_name=CLUBS, index=0)
+    assert page.games[0].status == "POSTPONED"
+
+
+def test_row_with_no_server_rendered_outcome_is_skipped():
+    """状態欄も得点欄も空の行は、状態を推測せずに飛ばして数えること。
+
+    2018-19 の CS に4件あった（2勝0敗で不要になった第3戦）。状態は `<script>` の
+    `ScheduleState` から JS が描き、**`"2"` が中止か延期かの対応は公開されていない**。
+    `<a>` を必須にしていた実装はこの行でページごと落ち、CS が丸ごと取り込めなかった。
+    """
+    page = parse_schedule(body(STAGE_HEADING, no_outcome_stage_row(), index=None),
+                          year=2026, event=3, clubs_by_name=CLUBS, index=0)
+    assert page.games == ()
+    assert page.unresolved == 1
+    assert page.skipped == 0, "非リーグ戦と混ぜない"
+
+
+def test_script_only_state_is_not_read_as_the_state():
+    """状態欄が `<script>` だけの行を、JS の本文を状態として読まないこと。
+
+    `<script>` を除外しないと状態が「`schedule_contexts[...] = {}; ...`」になり、
+    未知の状態として**ページごと落ちる**（2018-19 のセミファイナル第3戦で実在した）。
+    """
+    script = ('<script>schedule_contexts[x] = {};'
+              'schedule_contexts[x].Game = { "ScheduleState": "2" };</script>')
+    page = parse_schedule(
+        body(STAGE_HEADING, no_outcome_stage_row(state=script), index=None),
+        year=2026, event=3, clubs_by_name=CLUBS, index=0,
+    )
+    assert page.games == ()
+    assert page.unresolved == 1
+
+
+def test_unresolved_row_does_not_stop_the_rest_of_the_page():
+    page = parse_schedule(
+        body(STAGE_HEADING, no_outcome_stage_row(), stage_row("game-cs-2"), index=None),
+        year=2026, event=3, clubs_by_name=CLUBS, index=0,
+    )
+    assert [game.game_id for game in page.games] == ["game-cs-2"]
+    assert page.unresolved == 1

@@ -9,5 +9,17 @@
 #
 # どちらも GitHub Actions 上でのみ動く。Workers / Pages のバンドルには入らず、
 # 無料枠（Workers CPU・Pages ファイル数・D1）には影響しない。
+# lightgbm — 勝敗・得点・個人スタッツのモデル（要件 6.1 / 6.8）。**GBDT は自前実装の
+#            対象にならない**ため入れる。MIT
+#            macOS で手元実行するには `brew install libomp` が必要（CI の Linux は不要）
+# scipy    — `brentq`（整合化。要件 6.8.5）と統計関数。lightgbm も要求する。BSD-3-Clause
+# numpy    — 上記2つが要求する。指標の計算にも使う。BSD-3-Clause
+#
+# **scikit-learn は入れない。** 必要なのは重み付きロジスティック回帰1本
+# （ベースライン2段目・3段目）で、IRLS で30行に収まる。CLAUDE.md「依存を追加する
+# とき」の1番目に照らして自前で持つ（`batch/model/baselines.py`）。
 pandas==3.0.6
 pyarrow==25.0.1
+lightgbm==4.7.0
+scipy==1.18.1
+numpy==2.5.3

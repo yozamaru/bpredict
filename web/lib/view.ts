@@ -124,3 +124,21 @@ export function derive(
     efgPct: show(fga, PCT_THRESHOLD.fg, fga > 0 ? (fgm + 0.5 * fg3m) / fga : 0),
   };
 }
+
+/**
+ * 状態バッジの種類。**該当しなければ null で、何も出さない。**
+ *
+ * 「確定」は**試合開始をもって凍結された予測**を指す（CLAUDE.md 用語、要件 3.3）。
+ * 開始前の予測は試合当日の再推論で変わりうるため、**開始前に「確定」と出しては
+ * ならない**。出場者が公式に確定していても、それは「暫定が外れた」だけであって
+ * 予測が凍結されたわけではない。
+ *
+ * 11a の実装は `isProvisional ? '暫定' : '確定'` になっており、**出場者が確定した
+ * 開始前の試合に「確定」を出していた**。ユーザーは「もう変わらない」と読むため、
+ * 用語の定義と食い違う。
+ */
+export function statusBadgeKind(game: GameView): 'provisional' | 'final' | null {
+  if (game.isFinal) return 'final';
+  if (game.isProvisional) return 'provisional';
+  return null;
+}

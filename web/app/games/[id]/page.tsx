@@ -10,20 +10,42 @@ import {
   SAMPLE_REASONS,
   SAMPLE_REASON_SUMMARY,
 } from '@/lib/fixtures/game';
-import { SAMPLE_GAMES } from '@/lib/fixtures/today';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { NO_PREDICTION } from '@/lib/messages';
+import { statusBadgeKind } from '@/lib/view';
+import { SAMPLE_GAMES, SAMPLE_PENDING_GAMES } from '@/lib/fixtures/today';
 
 export const dynamic = 'force-static';
 
 // 静的生成の範囲は直近5シーズンに限る（要件 8.2）。11a は合成データの3件だけ。
 export function generateStaticParams() {
-  return SAMPLE_GAMES.map((game) => ({ id: game.gameId }));
+  return [...SAMPLE_GAMES, ...SAMPLE_PENDING_GAMES].map((game) => ({ id: game.gameId }));
 }
 
 // Next.js 16 では params が Promise（CLAUDE.md）
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const game = SAMPLE_GAMES.find((candidate) => candidate.gameId === id);
-  if (!game) notFound();
+  if (!game) {
+    // **「試合がない」と「予測がまだない」を混ぜない。** 前者は 404、
+    // 後者は試合の情報を出したうえで空状態を添える（要件 8.5）
+    const pending = SAMPLE_PENDING_GAMES.find((candidate) => candidate.gameId === id);
+    if (!pending) notFound();
+    return (
+      <>
+        <h2 className="mt-5 text-[19px] font-extrabold">
+          {pending.home.name} <span className="text-text-2">対</span> {pending.away.name}
+        </h2>
+        <p className="mt-1 text-[11px] font-bold tracking-wider text-text-2">
+          B.PREMIER{pending.tipoffLabel ? ` ${pending.tipoffLabel}` : ' 時刻未定'}
+        </p>
+        <div className="mt-4">
+          <EmptyState message={NO_PREDICTION} />
+        </div>
+      </>
+    );
+  }
+  const kind = statusBadgeKind(game);
 
   return (
     <>
@@ -33,7 +55,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-text-2">
         <span>B.PREMIER{game.tipoffLabel ? ` ${game.tipoffLabel}` : ' 時刻未定'}</span>
         {game.isEarlySeason && <StatusBadge kind="early" />}
-        <StatusBadge kind={game.isProvisional ? 'provisional' : 'final'} />
+        {/* 開始前に「確定」を出さない（lib/view.ts の statusBadgeKind） */}
+        {kind && <StatusBadge kind={kind} />}
       </p>
 
       <div className="mt-4 rounded-2xl border border-border bg-surface p-4">

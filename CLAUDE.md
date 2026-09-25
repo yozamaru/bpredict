@@ -404,6 +404,7 @@ max_rows_per_request = floor(100 / 列数) × 40
 | `web/out/` | `next build` |
 | `package-lock.json` | `npm install`（`npm ci` は変更しない） |
 | `api/worker-configuration.d.ts` | `wrangler types`。**`.dev.vars` を読むため環境依存になる。コミットしない**（`npm run typecheck` が先に生成する） |
+| `web/AGENTS.md` / `web/CLAUDE.md` | **`next dev` / `next build` が毎回生成する**（Next.js 16 の `agentRules`）。中身は「この版の Next.js は訓練データと違う。`node_modules/next/dist/docs/` を読め」という注意書きで、**削除しても再生成される**。コミットして出自をここに残す。**このプロジェクトの規約ではない** — 規約はリポジトリ直下の `CLAUDE.md` と `AGENTS.md` である |
 
 ### 依存を追加するとき
 

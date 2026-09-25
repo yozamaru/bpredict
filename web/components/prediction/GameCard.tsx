@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { ProbabilityBar } from '@/components/prediction/ProbabilityBar';
 import { StatusBadge } from '@/components/prediction/StatusBadge';
-import type { AccuracyView, GameView } from '@/lib/view';
+import { statusBadgeKind, type AccuracyView, type GameView } from '@/lib/view';
 
 /** 試合1件は article。対戦名を見出しにする（視覚的に隠してよい。詳細設計 5.2） */
 export function GameCard({ game, accuracy }: { game: GameView; accuracy: AccuracyView }) {
+  const kind = statusBadgeKind(game);
+
   return (
     <article className="card-shadow rounded-2xl border border-border bg-surface p-4">
       <h2 className="sr-only">
@@ -14,7 +16,8 @@ export function GameCard({ game, accuracy }: { game: GameView; accuracy: Accurac
         <span>B.PREMIER{game.tipoffLabel ? ` ${game.tipoffLabel}` : ' 時刻未定'}</span>
         <span className="flex gap-1">
           {game.isEarlySeason && <StatusBadge kind="early" />}
-          <StatusBadge kind={game.isFinal ? 'final' : game.isProvisional ? 'provisional' : 'final'} />
+          {/* 開始前に「確定」を出さない。該当しなければ何も出さない（lib/view.ts） */}
+          {kind && <StatusBadge kind={kind} />}
         </span>
       </div>
 

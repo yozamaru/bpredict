@@ -1,7 +1,7 @@
 // **表示確認用の合成データ。** 実サイトから取得した値ではなく、クラブ名も架空である。
 // 工程11a はデザインシステムと画面の骨組みだけを扱い、実データへの結線は 11b。
 // 静的JSON のスキーマ（U-09）はここで決めない（詳細設計 9章）。
-import type { AccuracyView, GameView } from '@/lib/view';
+import type { AccuracyView, Club, GameView } from '@/lib/view';
 
 export const SAMPLE_DATE_LABEL = '9月22日（火）';
 
@@ -54,3 +54,24 @@ export const SAMPLE_STALE: { stale: boolean; generatedAtLabel: string } = {
   stale: false,
   generatedAtLabel: '9月22日 6:02',
 };
+
+/**
+ * **予測がまだ生成されていない試合**（要件 8.5 の空状態）。
+ *
+ * 予測は試合前日の朝に出るため、日程に載っているのに予測がない試合が実在する。
+ * 「試合そのものがない（404）」と「試合はあるが予測がない」を混ぜないため、
+ * 別の一覧として持つ。11b では API の `prediction` が null の応答がこれに当たる。
+ */
+export const SAMPLE_PENDING_GAMES: {
+  gameId: string;
+  tipoffLabel: string | null;
+  home: Club;
+  away: Club;
+}[] = [
+  {
+    gameId: 'demo-pending',
+    tipoffLabel: '19:05',
+    home: { name: '架空ゴールズ', shortName: '架空G' },
+    away: { name: '架空ホークス', shortName: '架空H' },
+  },
+];

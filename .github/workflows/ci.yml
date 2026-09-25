@@ -144,6 +144,13 @@ jobs:
           n=$(find out -type f | wc -l)
           echo "out/ のファイル数: $n"
           test "$n" -le 18000
+      # 静的JSON の窓から出たファイルの削除漏れを機械で捕まえる（詳細設計 3.7）。
+      # **残すとファイル数が単調に増え、古い予測が配信され続ける**
+      - name: public/data/ のファイル数が 50 以下であること
+        run: |
+          n=$(find public/data -type f 2>/dev/null | wc -l)
+          echo "public/data/ のファイル数: $n"
+          test "$n" -le 50
       # 初期JS の予算（gzip 180KB 以下。要件 4.2）。ライブラリを1つ足すと一気に超える
       - run: npm run test:budget
       # 内部リンクに実体があること。**静的出力では `generateStaticParams` への

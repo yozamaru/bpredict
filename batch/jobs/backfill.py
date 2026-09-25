@@ -37,7 +37,14 @@ from batch.parser.errors import (
 from batch.parser.schedule_parser import ScheduleGame, parse_club_options, parse_schedule
 from batch.parser.terms import report_terms_change
 from batch.scraper.boxscore import boxscore_url
-from batch.scraper.client import PolicyError, RateLimitedClient, ScrapingStopped
+from batch.scraper.client import (
+    PolicyError,
+    RateLimitedClient,
+    ResponseError,
+    ScraperError,
+    ScrapingStopped,
+    TransportError,
+)
 from batch.scraper.schedule import schedule_html_url, schedule_url
 
 #: 取り込むのはリーグ戦とチャンピオンシップだけ（要件 5.3）。
@@ -185,12 +192,29 @@ def run(
             result.skip(game.game_id, error)
             tracker.success()
             continue
+        except (ResponseError, TransportError) as error:
+            # **1試合の取得失敗でシーズンを落とさない**（基本設計 4.3「個別試合の
+            # 取得失敗はスキップしてジョブを継続する」）。公式サイトはたまに
+            # 非200を返す（2026-09-25 までに4回）。ここを捕まえていなかったため、
+            # 300試合目で1回起きればその日の枠ごと失われる状態だった。
+            #
+            # **連続3件は中止する。** 4.3 は取得失敗に上限を定めていないが、
+            # 非200が続くのは遮断の疑いであり、500回叩き続けるのは絶対ルール6に反する。
+            # パース失敗と同じ `tracker` を使う（種類を問わず連続3件で止める）。
+            result.skipped_invalid += 1
+            result.skip(game.game_id, error)
+            try:
+                tracker.failure()
+            except ParseErrorStreak:
+                result.degrade("PARTIAL", "取得・パースの失敗が連続3件。中止した")
+                break
+            continue
         except ParseError as error:
             result.skip(game.game_id, error)
             try:
                 tracker.failure()
             except ParseErrorStreak:
-                result.degrade("PARTIAL", "パース失敗が連続3件。構造変更の可能性")
+                result.degrade("PARTIAL", "取得・パースの失敗が連続3件。中止した")
                 break
             result.skipped_invalid += 1
             continue
@@ -271,6 +295,12 @@ def main(argv: list[str] | None = None) -> int:
         result = run(args.season, client=client, api=api, limit=args.limit)
     except PolicyError:
         print("backfill: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
+        return 1
+    except ScraperError as error:
+        # `ScraperError` の本文は設計上 URL・応答本文・元の通信例外を含まない
+        # （`batch/scraper/client.py`）。**型名だけにしない** — `ResponseError` が
+        # 型名だけで出ていたため、非200のステータスが分からなかった
+        print(f"backfill: 失敗（{type(error).__name__}: {error}）", file=sys.stderr)
         return 1
     except LoaderError as error:
         # **`LoaderError` のメッセージは出す。** この例外は設計上、URL のクエリ文字列も

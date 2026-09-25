@@ -451,7 +451,14 @@ class RateLimitedClient:
                         self._save_state(state)
                         raise ScrapingStopped("Scraping is stopped for this UTC day.")
                     if response.status != 200:
-                        raise ResponseError("The server returned an unsupported HTTP status.")
+                        # **ステータスは出す。** URL でも本文でも元の例外でもなく、
+                        # 数値1つである（絶対ルール4に触れない）。値を伏せていたため、
+                        # 2018-19 の取得が落ちたときに「403 なのか 500 なのか」が
+                        # 分からず、原因の切り分けに実サイトへの追加リクエストが必要になった。
+                        raise ResponseError(
+                            "The server returned an unsupported HTTP status: "
+                            f"{response.status:d}."
+                        )
                     return self._read_body(response)
             except ScraperError:
                 raise

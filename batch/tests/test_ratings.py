@@ -75,11 +75,42 @@ def test_expected_home_matches_formula():
     assert expected_home(1560.0, 1500.0, 0.0) == pytest.approx(0.58550, abs=5e-5)
 
 
-def test_home_advantage_initial_matches_60_percent_home_winrate():
-    """初期値 70 の根拠（ホーム勝率60%に対応するのは 70.5点）を数値で固定する。"""
-    assert expected_home(1500.0, 1500.0, 70.5) == pytest.approx(0.60, abs=5e-4)
-    # 探索の初期値 70 は 70.5 の近傍にある
-    assert abs(HOME_ADVANTAGE_INITIAL - 70.5) < 1.0
+def test_home_advantage_initial_matches_the_measured_home_winrate():
+    """初期値 20 の根拠を数値で固定する。
+
+    **旧版は「ホーム勝率60% → 70.5点」を固定していたが、前提が実測で外れた。**
+    リーグ戦4シーズン（n=1,829）の実測は **52.7%** で、対応するのは 18.8点
+    （`verification/RESULTS.md`）。旧グリッド `{40,55,70,85}` は実測値を1つも
+    含んでいなかった。
+    """
+    assert expected_home(1500.0, 1500.0, 18.8) == pytest.approx(0.527, abs=5e-4)
+    # 探索の初期値 20 は実測相当の近傍にある
+    assert abs(HOME_ADVANTAGE_INITIAL - 18.8) < 2.0
+    # 旧前提（60% → 70.4点）も式としては再現できる。**前提が変わっただけである**
+    assert expected_home(1500.0, 1500.0, 70.4) == pytest.approx(0.60, abs=5e-4)
+
+
+def test_search_grids_contain_their_initial_values() -> None:
+    """探索グリッドが初期値を含むこと。
+
+    **旧グリッドは実測値を含んでいなかった**（最小の40でも実測の2倍以上）。
+    含まないグリッドで探索すると「最も弱い値」が常に選ばれるだけになる。
+    """
+    from batch.ratings.params import (
+        HOME_ADVANTAGE_GRID,
+        K_GRID,
+        PROMOTED_ELO_GRID,
+        PROMOTED_ELO_INITIAL,
+        SEASON_REGRESSION_GRID,
+        SEASON_REGRESSION_INITIAL,
+    )
+
+    assert K_INITIAL in K_GRID
+    assert HOME_ADVANTAGE_INITIAL in HOME_ADVANTAGE_GRID
+    assert SEASON_REGRESSION_INITIAL in SEASON_REGRESSION_GRID
+    assert PROMOTED_ELO_INITIAL in PROMOTED_ELO_GRID
+    # 実測相当（18.8点）を挟む値がグリッドにあること
+    assert min(HOME_ADVANTAGE_GRID) <= 18.8 <= max(HOME_ADVANTAGE_GRID)
 
 
 def test_rating_change_is_zero_sum_and_hand_computed():
@@ -89,7 +120,7 @@ def test_rating_change_is_zero_sum_and_hand_computed():
         elo_home, elo_away, 88, 81,
         home_advantage=HOME_ADVANTAGE_INITIAL, params=DEFAULT_PARAMS,
     )
-    expected = 1 / (1 + 10 ** ((1500.0 - 1550.0 - 70.0) / 400))
+    expected = 1 / (1 + 10 ** ((1500.0 - 1550.0 - HOME_ADVANTAGE_INITIAL) / 400))
     multiplier = math.log(8) * (2.2 / (0.001 * 50 + 2.2))
     assert change == pytest.approx(K_INITIAL * multiplier * (1.0 - expected))
     # 零和: ホームに +change、アウェイに -change を入れるので総和は不変

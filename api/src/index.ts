@@ -43,6 +43,7 @@ app.use('/internal/stats', ingest);
 app.use('/internal/entries', ingest);
 app.use('/internal/ratings', ingest);
 app.use('/internal/venue-revisions', ingest);
+app.use('/internal/venues', ingest);
 app.use('/internal/predictions', ingest);
 app.use('/internal/predictions/*', ingest);
 app.use('/internal/evaluate', ingest);
@@ -60,7 +61,8 @@ app.route('/internal/predictions', predictions);   // POST / と GET /pending
 app.route('/internal/finalize', finalize);
 app.route('/internal/models', models);             // POST / と GET /active /:version/artifact
 app.route('/internal/metrics', metrics);           // GET /internal/metrics/active
-app.route('/internal', ops);                       // /evaluate /summary /log /games/ingested
+app.route('/internal', ops);                       // /evaluate /summary /log
+                                                   // /games/ingested /venues
 
 // **公開エンドポイントに認証を付けない。** 誰でも読める事実データと予測であり、
 // 認証を付けると静的配信との整合が崩れる（主要導線は Pages の静的JSONで、

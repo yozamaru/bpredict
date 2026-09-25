@@ -40,6 +40,7 @@ const GETS = [
   '/internal/models/active',
   '/internal/models/some-version/artifact',
   '/internal/metrics/active',
+  '/internal/venues',
 ];
 
 describe('認証の網羅', () => {

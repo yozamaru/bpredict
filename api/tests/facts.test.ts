@@ -420,3 +420,63 @@ describe('POST /internal/games（試合データから導かれるマスタ）',
     expect(response.status).toBe(400);
   });
 });
+
+describe('座標を解決する会場の一覧（詳細設計 3.4 / 4.10）', () => {
+  /** 会場を1件入れる。座標は任意（未解決を表すため）。 */
+  async function seedVenue(
+    id: string, name: string, coords: { lat: number; lng: number } | null = null,
+  ) {
+    await env.DB.prepare(
+      'INSERT INTO venues (id, name, prefecture, lat, lng) VALUES (?,?,?,?,?)',
+    ).bind(id, name, coords ? '架空県' : null, coords?.lat ?? null, coords?.lng ?? null).run();
+  }
+
+  async function venues(query = ''): Promise<{ id: string; lat: number | null }[]> {
+    const res = await get(`/internal/venues${query}`);
+    expect(res.status).toBe(200);
+    const body = await res.json<{
+      data: { count: number; venues: { id: string; lat: number | null }[] };
+    }>();
+    expect(body.data.count).toBe(body.data.venues.length);
+    return body.data.venues;
+  }
+
+  it('既定は全件を返す（IDの昇順）', async () => {
+    await seedVenue('v2', '架空アリーナ2', { lat: 35.1, lng: 139.1 });
+    await seedVenue('v1', '架空アリーナ1');
+    expect((await venues()).map((v) => v.id)).toEqual(['v1', 'v2']);
+  });
+
+  it('missingCoordinates=1 は座標が未解決の会場だけを返す', async () => {
+    await seedVenue('v1', '架空アリーナ1');
+    await seedVenue('v2', '架空アリーナ2', { lat: 35.1, lng: 139.1 });
+    const rows = await venues('?missingCoordinates=1');
+    expect(rows.map((v) => v.id)).toEqual(['v1']);
+    expect(rows[0]?.lat).toBeNull();
+  });
+
+  it('片方だけ入っている会場も未解決として返す', async () => {
+    // 緯度だけ入って経度が NULL の行は座標として使えない。
+    // `lat IS NULL AND lng IS NULL` で絞ると、この行が永久に解決されない
+    await env.DB.prepare('INSERT INTO venues (id, name, lat) VALUES (?,?,?)')
+      .bind('v3', '架空アリーナ3', 35.1).run();
+    expect((await venues('?missingCoordinates=1')).map((v) => v.id)).toEqual(['v3']);
+  });
+
+  it('会場が1件もなくても 200 で空を返す（エラーにしない）', async () => {
+    expect(await venues()).toEqual([]);
+  });
+
+  it('missingCoordinates に 1 以外を渡したら 400', async () => {
+    // 値を黙って無視すると「絞ったつもりで全件が返る」ことに気づけない
+    for (const value of ['0', 'true', 'yes', '']) {
+      const res = await get(`/internal/venues?missingCoordinates=${value}`);
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('Bearer なしでは 401', async () => {
+    const res = await get('/internal/venues', { token: null });
+    expect(res.status).toBe(401);
+  });
+});

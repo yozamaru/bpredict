@@ -1,24 +1,22 @@
 import { notFound } from 'next/navigation';
 import { HistoryRow } from '@/components/prediction/HistoryRow';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SAMPLE_HISTORY, SAMPLE_TEAM } from '@/lib/fixtures/team';
+import { SAMPLE_HISTORY, SAMPLE_TEAMS } from '@/lib/fixtures/team';
 import { ACTIONS, OFF_SEASON } from '@/lib/messages';
 
 export const dynamic = 'force-static';
 
 // クラブの slug は運営者が決めた恒久の識別子で、**改称があっても変えない**
 // （詳細設計 1.1）。表示名は `club_seasons.name` が持つ。
-// 11a は合成データの1件だけ。実クラブの slug への差し替えは 11b。
-const SAMPLE_SLUGS = ['demo-alphas'] as const;
-
+// 11a は合成データ。実クラブの slug への差し替えは 11b。
 export function generateStaticParams() {
-  return SAMPLE_SLUGS.map((slug) => ({ slug }));
+  return Object.keys(SAMPLE_TEAMS).map((slug) => ({ slug }));
 }
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  if (!SAMPLE_SLUGS.includes(slug as (typeof SAMPLE_SLUGS)[number])) notFound();
-  const team = SAMPLE_TEAM;
+  const team = SAMPLE_TEAMS[slug];
+  if (!team) notFound();
 
   return (
     <>

@@ -146,3 +146,7 @@ jobs:
           test "$n" -le 18000
       # 初期JS の予算（gzip 180KB 以下。要件 4.2）。ライブラリを1つ足すと一気に超える
       - run: npm run test:budget
+      # 内部リンクに実体があること。**静的出力では `generateStaticParams` への
+      # 足し忘れが 404 になり、目視では気づけない**（実際に18件壊れていた）。
+      # 受け入れ基準 A-07（免責が全ページから到達可能）の一部もここで守る
+      - run: npm run test:links

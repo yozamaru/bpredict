@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProbabilityBar } from '@/components/prediction/ProbabilityBar';
 import { ReasonList } from '@/components/prediction/ReasonList';
@@ -13,19 +14,58 @@ import {
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NO_PREDICTION } from '@/lib/messages';
 import { statusBadgeKind } from '@/lib/view';
-import { SAMPLE_GAMES, SAMPLE_PENDING_GAMES } from '@/lib/fixtures/today';
+import { SAMPLE_GAMES, SAMPLE_FULL_DAY, SAMPLE_PENDING_GAMES } from '@/lib/fixtures/today';
+import { SAMPLE_HISTORY_RESULTS } from '@/lib/fixtures/team';
+import { ResultComparison } from '@/components/prediction/ResultComparison';
 
 export const dynamic = 'force-static';
 
 // 静的生成の範囲は直近5シーズンに限る（要件 8.2）。11a は合成データの3件だけ。
+// **リンク先のあるすべての試合を生成する。** 足し忘れは 404 になり、
+// 「リンクはあるのに開けない」状態を作る（`npm run test:links` が検出する）
 export function generateStaticParams() {
-  return [...SAMPLE_GAMES, ...SAMPLE_PENDING_GAMES].map((game) => ({ id: game.gameId }));
+  return [
+    ...SAMPLE_GAMES,
+    ...SAMPLE_FULL_DAY,
+    ...SAMPLE_PENDING_GAMES,
+    ...SAMPLE_HISTORY_RESULTS,
+  ].map((game) => ({ id: game.gameId }));
 }
 
 // Next.js 16 では params が Promise（CLAUDE.md）
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const game = SAMPLE_GAMES.find((candidate) => candidate.gameId === id);
+  // **終了した試合は専用の構成にする**（基本設計 5.2「試合詳細・試合後」）。
+  // このプロダクトで最も信頼が揺れる場面であり、実績との対比を主役に置く
+  const finished = SAMPLE_HISTORY_RESULTS.find((candidate) => candidate.gameId === id);
+  if (finished) {
+    return (
+      <>
+        <h2 className="mt-5 text-[19px] font-extrabold">
+          {finished.home.name} <span className="text-text-2">対</span> {finished.away.name}
+        </h2>
+        <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-text-2">
+          <span>B.PREMIER</span>
+          {/* 試合開始をもって凍結された予測である（要件 3.3） */}
+          <StatusBadge kind="final" />
+        </p>
+        <div className="mt-4">
+          <ResultComparison result={finished} />
+        </div>
+        {/* **根拠は試合後も残す。** 凍結された予測の一部であり、
+            後から書き換えない（CLAUDE.md 絶対ルール2） */}
+        <ReasonList summary={SAMPLE_REASON_SUMMARY} reasons={SAMPLE_REASONS} />
+        <p className="mt-4 text-[11px] leading-relaxed text-text-3">
+          使用モデル {SAMPLE_MODEL.version} ・ 通算的中率{' '}
+          {(SAMPLE_MODEL.accuracy * 100).toFixed(1)}%（{SAMPLE_MODEL.n}試合）
+        </p>
+      </>
+    );
+  }
+
+  const game = [...SAMPLE_GAMES, ...SAMPLE_FULL_DAY].find(
+    (candidate) => candidate.gameId === id,
+  );
   if (!game) {
     // **「試合がない」と「予測がまだない」を混ぜない。** 前者は 404、
     // 後者は試合の情報を出したうえで空状態を添える（要件 8.5）
@@ -49,8 +89,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   return (
     <>
+      {/* クラブ名からクラブ別ページへ辿れるようにする（基本設計 5.1） */}
       <h2 className="mt-5 text-[19px] font-extrabold">
-        {game.home.name} <span className="text-text-2">対</span> {game.away.name}
+        <Link href={`/teams/${game.home.slug}/`} className="underline decoration-border">
+          {game.home.name}
+        </Link>{' '}
+        <span className="text-text-2">対</span>{' '}
+        <Link href={`/teams/${game.away.slug}/`} className="underline decoration-border">
+          {game.away.name}
+        </Link>
       </h2>
       <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-text-2">
         <span>B.PREMIER{game.tipoffLabel ? ` ${game.tipoffLabel}` : ' 時刻未定'}</span>
@@ -96,7 +143,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             ] as const
           ).map(([side, name]) => (
             <div key={side} className="flex items-baseline justify-between gap-2 py-0.5">
-              <dt className="min-w-0 truncate text-text-2">{name}</dt>
+              <dt className="min-w-0 truncate">
+                <Link
+                  href={`/teams/${side === 'home' ? game.home.slug : game.away.slug}/`}
+                  className="text-text-2 underline decoration-border"
+                >
+                  {name}
+                </Link>
+              </dt>
               <dd>
                 {SAMPLE_FORM[side].last5.join(' ')}
                 <span className="text-text-2">

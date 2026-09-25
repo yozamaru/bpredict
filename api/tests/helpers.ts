@@ -85,7 +85,11 @@ export async function resetAll() {
         UNION SELECT club_id FROM player_predictions)`),
     env.DB.prepare('DELETE FROM venue_source_keys'),
     env.DB.prepare('DELETE FROM venue_revisions'),
-    env.DB.prepare('DELETE FROM venues'),
+    // **残った試合が参照している会場は消せない。** 凍結済み予測に紐づく試合行は
+    // 残るため（トリガが DELETE を拒否する）、無条件に消すと FK 違反で
+    // 後片付け自体が落ちる
+    env.DB.prepare(
+      'DELETE FROM venues WHERE id NOT IN (SELECT venue_id FROM games WHERE venue_id IS NOT NULL)'),
     env.DB.prepare('DELETE FROM seasons WHERE id NOT IN (SELECT season_id FROM games)'),
   ]);
 }

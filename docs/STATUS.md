@@ -25,6 +25,7 @@
 | 会場の座標（工程6） | 経路は全部できた（`GET /internal/venues` → `resolve_venue_geo`）。**実行は取り込み完了後に1回** |
 | **工程8（学習）** | **コードを書いて実データで通した**（指標・ベースライン3段・walk-forward・LightGBM）。**採用判定はしていない** — 下記の判断待ち2件を先に決める。数値は `verification/RESULTS.md` |
 | 静的JSON の全体像（U-09） | **解決した。** 詳細設計 3.7 に確定（案B）。工程9と11bの前提が開いた |
+| **静的JSON の書き出し（工程9a）** | **完了。** `batch/static_json/` と `contracts/public-shapes.json`（キー構造の契約。api と batch の両方が読む）。**残りは 9b（推論との結線）で、工程8の採用判定を待つ** |
 
 ## 決まったこと（再検討しない）
 

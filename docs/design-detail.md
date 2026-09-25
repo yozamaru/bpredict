@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.34** |
+| 版数 | **1.36** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** / **v1.22: `games` の `UNIQUE (season_id, game_date, home_club_id, away_club_id)` を外した（同じ日・同じカードで行われる CS の決着戦が実在し、取り込みが 500 で止まっていた）** / **v1.23: 工程10a（公開API の `/games/:gameId` と `/accuracy`）を実装した。形状が文書にない4本と `/health` の `quota` は保留** / **v1.24: backfill の再開判定を「スタッツまで入っているか」に変えた（試合行だけが残るとスタッツが永久に欠ける穴があった）** / v1.25: 規約の関門に節ごとの指紋を足した（本文が変わっていなくても止まるため、どの節が変わったかを出す） / **v1.26: 2018-19 の取り込みで落ちた「結果が書かれていない行」の扱いを定めた（リンクのない行を許す条件、`<script>` を状態として読まない、状態を推測せず飛ばして数える） / v1.27: 非200のステータスをログに出し、1試合の取得失敗でジョブ全体を落とさないようにした / v1.28: backfill の上限を「1日1シーズン」から「1日の書き込み行数（92,000行）」に変えた（枠の34%を毎日捨てていた）。書き込み失敗時の安全網を足した / v1.29: `GET /internal/venues` を追加し、会場の座標を解決するジョブ（4.10）を定めた / v1.30: 未決事項 U-09 を解決し、静的JSON の全体像を 3.7 に定めた / **v1.31: `HOME_ADVANTAGE` のグリッドを実測（ホーム勝率52.7% → 18.8点）に合わせ、パラメータ探索を2段に分けた（素朴に回すと105時間かかる） / v1.32: 404 の文言を確定し（要件 8.5 の表に追加）、E2E は工程15で入れると決めた / **v1.33: 公開API の残り4本（`/games?date=` / `/results?date=` / `/teams` / `/teams/:slug`）の応答形状を定めた。`/games?date=` は `today.json` の正本でもある** / **v1.34: 工程10b を実装した（日付検証の3段、当季の判定に時計を使わない）** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** / **v1.22: `games` の `UNIQUE (season_id, game_date, home_club_id, away_club_id)` を外した（同じ日・同じカードで行われる CS の決着戦が実在し、取り込みが 500 で止まっていた）** / **v1.23: 工程10a（公開API の `/games/:gameId` と `/accuracy`）を実装した。形状が文書にない4本と `/health` の `quota` は保留** / **v1.24: backfill の再開判定を「スタッツまで入っているか」に変えた（試合行だけが残るとスタッツが永久に欠ける穴があった）** / v1.25: 規約の関門に節ごとの指紋を足した（本文が変わっていなくても止まるため、どの節が変わったかを出す） / **v1.26: 2018-19 の取り込みで落ちた「結果が書かれていない行」の扱いを定めた（リンクのない行を許す条件、`<script>` を状態として読まない、状態を推測せず飛ばして数える） / v1.27: 非200のステータスをログに出し、1試合の取得失敗でジョブ全体を落とさないようにした / v1.28: backfill の上限を「1日1シーズン」から「1日の書き込み行数（92,000行）」に変えた（枠の34%を毎日捨てていた）。書き込み失敗時の安全網を足した / v1.29: `GET /internal/venues` を追加し、会場の座標を解決するジョブ（4.10）を定めた / v1.30: 未決事項 U-09 を解決し、静的JSON の全体像を 3.7 に定めた / **v1.31: `HOME_ADVANTAGE` のグリッドを実測（ホーム勝率52.7% → 18.8点）に合わせ、パラメータ探索を2段に分けた（素朴に回すと105時間かかる） / v1.32: 404 の文言を確定し（要件 8.5 の表に追加）、E2E は工程15で入れると決めた / **v1.33: 公開API の残り4本（`/games?date=` / `/results?date=` / `/teams` / `/teams/:slug`）の応答形状を定めた。`/games?date=` は `today.json` の正本でもある** / **v1.34: 工程10b を実装した（日付検証の3段、当季の判定に時計を使わない）** / **v1.35: 静的JSON のスキーマ一致を契約ファイルで機械的に守ることにし、`meta.lastSuccessAt` の取り方を定め、工程9 を 9a / 9b に分けた。3.6 と 3.7 の節順も直した** / **v1.36: 工程9a（静的JSON の書き出しと契約ファイル）を実装した** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -1936,6 +1936,22 @@ Workers 側にも Cache API を使った簡易カウンタを置き、429 + `Ret
 
 **CORS はレート制限の代替ではない。** ブラウザ内の制限であり、サーバからのアクセスには効かない。しかもフロントは静的出力でサーバサイド fetch するため `Origin` すら付かない。目的が「他サイトからの埋め込み抑止」であることを明記する。
 
+### 3.6 セキュリティヘッダ
+
+`web/public/_headers` に設定する。
+
+```
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=()
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'sha256-<テーマ適用スクリプトのハッシュ>'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
+```
+
+テーマ適用の inline script は**最初から `sha256-` ハッシュ指定で許可する形で書く**。後から CSP を入れるとこのスクリプトが真っ先に壊れ、「CSPを入れたらテーマがちらつくのでCSPをやめる」という後退が起きる。Report-Only で数週間様子を見てから強制に切り替える。
+
+`dangerouslySetInnerHTML` を使わない。
+
 ### 3.7 静的JSON（U-09 の解決）
 
 **主要導線は Workers も D1 も経由させない**（要件 4.2）。バッチが `web/public/data/` に
@@ -2009,6 +2025,61 @@ web/public/data/
 | 削除もコミットに含める | リポジトリと配信内容を一致させる |
 | **推論に失敗したら1ファイルも書かない**（前回のものを残す） | 基本設計 4.3。画面は `meta.generatedAt` で遅延を出す |
 
+#### スキーマ一致は「キー構造の契約ファイル」で機械的に守る
+
+「API と同じ形にする」は**言葉で決めても守られない**。書き出す側は Python、API は
+TypeScript で、同じコードを共有できないためである。**キー構造だけを1つのファイルに
+固定し、両方のテストがそれを読む。**
+
+```
+contracts/public-shapes.json    キーのパスの一覧（`games[].prediction.homeWinProb` など）
+```
+
+| どちらが読むか | 何を検査するか |
+|---|---|
+| `api/tests/public-contract.test.ts` | 実際の応答から抜いたキーのパスが契約と一致する |
+| `batch/tests/test_static_json.py` | 書き出した JSON から抜いたキーのパスが契約と一致する |
+
+**値ではなくキーの集合を比較する。** 値の範囲は各側のテストが個別に見ており、ここで
+二重に持つと同じ検査が2箇所に散る。配列は `[]` と書いて要素数を問わない。
+`null` を取りうるキーも**常に存在する**ことを要求する（`prediction: null` は
+キーごと消さない。3.3）。
+
+**契約ファイルを手で書き換えて通すことを禁じない。** 形を変える判断はありうる。
+ただし**片方だけを直すと必ず落ちる**ため、変更が両側に届く。これがこの仕組みの目的で
+あって、形の凍結ではない。
+
+#### `meta.lastSuccessAt` は前回の `meta.json` から引き継ぐ
+
+`lastSuccessAt` は「`status = 'SUCCESS'` の最新の終了時刻」であり、`PARTIAL` で
+終わった回には**この回の時刻を書けない**。そのために D1（`ingestion_logs`）を読むことは
+しない — 公開APIの `/health` を叩く経路を作ると、静的配信が Worker の可用性に
+依存し始める（要件 4.2 が消す前提そのものである）。
+
+**書き出し先の `meta.json` は作業ツリーにある**（リポジトリにコミットされている）。
+これを読み、次のとおり決める。
+
+| この回の `status` | `lastSuccessAt` |
+|---|---|
+| `SUCCESS` | この回の終了時刻 |
+| それ以外 | **前回の `meta.json` の値をそのまま引き継ぐ** |
+| それ以外で `meta.json` が無い（初回） | `null`。クライアントは遅延と判定しない（判定材料がない） |
+
+`generatedAt` は**毎回この回の時刻**である。`lastSuccessAt` と別に持つのはこのためで、
+「いつ書いたか」と「いつ最後に成功したか」を1つの列に畳むと、毎日失敗しても遅延と
+判定されない（基本設計 4.5 で旧版が踏んだ誤り）。
+
+#### 工程9 を 9a と 9b に分ける
+
+書き出し（9a）は**推論の完成を待たない**。入力を「予測の一覧」として受け取る関数に
+すれば、合成データでテストでき、契約ファイルもここで立つ。推論との結線（9b）は
+工程8の採用判定が終わってから行う。
+
+| 工程 | 範囲 |
+|---|---|
+| **9a** | `batch/static_json/`（組み立てと書き出し、窓から出たファイルの削除）、契約ファイル、CI の `data/` ファイル数検査 |
+| **9b** | `daily_ingest` からの呼び出し（推論結果とチーム目標・個人スタッツの受け渡し） |
+
 #### CI で検査すること
 
 | 検査 | 理由 |
@@ -2016,22 +2087,6 @@ web/public/data/
 | `out/` のファイル数 18,000以下 | 既にある（A-14）。**静的JSON もここに含まれる** |
 | `data/` のファイル数が 50 以下 | 窓から出たファイルの削除漏れを機械で捕まえる |
 | 静的JSON が API と同じスキーマに適合すること | 形を1つに保つ。ずれたら片方だけ壊れる |
-
-### 3.6 セキュリティヘッダ
-
-`web/public/_headers` に設定する。
-
-```
-/*
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(), camera=(), microphone=()
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'sha256-<テーマ適用スクリプトのハッシュ>'; style-src 'self' 'unsafe-inline'; img-src 'self' data:
-```
-
-テーマ適用の inline script は**最初から `sha256-` ハッシュ指定で許可する形で書く**。後から CSP を入れるとこのスクリプトが真っ先に壊れ、「CSPを入れたらテーマがちらつくのでCSPをやめる」という後退が起きる。Report-Only で数週間様子を見てから強制に切り替える。
-
-`dangerouslySetInnerHTML` を使わない。
 
 ---
 
@@ -3525,7 +3580,8 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/`、`batch/jobs/backfill.py`、`.github/workflows/backfill.yml`、`batch/ratings/`（Elo）と `batch/jobs/recompute_ratings.py` を実装済み。`batch/masters/venue_revisions.py` と `batch/jobs/build_venue_revisions.py`（会場の履歴）、`batch/jobs/resolve_venue_geo.py`（会場の座標。4.10）を実装済み。**残りは実サイトからの取り込みの実行と、`daily_ingest` によるスナップショットの日常書き出し**）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る。**完了した** — `batch/features/`（`dataset` / `base` / `team_strength` / `schedule_ctx` / `player` / `builder`）と採用16キー、`db/seeds/test/`（架空8クラブ × 2シーズン / 224試合の決定論的シード）、`scripts/rebuild_snapshot.py`。batch のテストは 404 件で、リーク検証10件・スナップショット9件・特徴量10件を含む |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
-| 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |
+| 9a | **静的JSON の書き出し**（`batch/static_json/`、契約ファイル、CI の `data/` ファイル数検査）。U-09 は 3.7 で解決済み | **完了した** — 組み立て・書き出し・窓から出たファイルの削除を実装し、batch のテストは 671 件（静的JSON 27件）。**キー構造を `contracts/public-shapes.json` に固定し、api（243件）と batch の両方が読む**。変異試験で片側だけを直すと両側が落ちることを確認した |
+| 9b | 推論と predictions 登録、`daily_ingest` からの書き出し呼び出し | 予測が JSON に出る。**工程8の採用判定の後に行う** |
 | 10 | 公開API（動的クエリ） | `/games?date=` `/accuracy` が応答する。**10a・10b 完了** — `/games/:gameId` `/accuracy` `/games?date=` `/results?date=` `/teams` `/teams/:slug` の6本を実装し、api のテストは 239 件。`/health` のみ `quota` の出所が未確定で保留（3.3）|
 | 11a | **デザインシステムと画面の骨組み。** トークン（6.1）とコントラストの CI 検証、テーマ切替、マークアップ規約（5.2）に沿った主要コンポーネント、各画面の骨組み。データは**合成データ**を使う | `/` が 375px で横スクロールなく表示され、ライト/ダークが切り替わって再訪時も保持される。トークンのコントラスト検証と `out/` のファイル数検査（18,000以下）が CI で通る |
 | 11b | 画面を実データへ結線する（今日の予測・試合詳細・結果） | 予測と結果が表示される |

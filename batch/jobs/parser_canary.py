@@ -10,6 +10,11 @@ from pathlib import Path
 
 from batch.jobs.seed_master import load_club_source_ids
 from batch.parser.boxscore_parser import parse_boxscore
+from batch.parser.terms import (
+    FINGERPRINT_PATH,
+    build_fingerprint,
+    report_terms_change,
+)
 from batch.scraper.boxscore import boxscore_url
 from batch.scraper.client import RateLimitedClient
 
@@ -35,25 +40,48 @@ def main(argv: list[str] | None = None) -> int:
         "--inspect-policy", action="store_true",
         help="robots/規約のハッシュ候補のみ表示する。基準値の保存・承認はしない",
     )
+    ap.add_argument(
+        "--write-terms-fingerprint", action="store_true",
+        help=(
+            "規約の節ごとのハッシュを書き出す。**承認ではない** — 承認は運営者が"
+            " SCRAPER_TERMS_SHA256 を更新して行う。このファイルは「どの節が変わったか」を"
+            "指すためだけに使う"
+        ),
+    )
     args = ap.parse_args(argv)
+    inspecting = args.inspect_policy or args.write_terms_fingerprint
 
     try:
         # 未設定・不正な基準値で通常実行を始めない。確認モードだけ候補取得を許す。
-        robots = None if args.inspect_policy else _baseline("SCRAPER_ROBOTS_SHA256")
-        terms = None if args.inspect_policy else _baseline("SCRAPER_TERMS_SHA256")
+        robots = None if inspecting else _baseline("SCRAPER_ROBOTS_SHA256")
+        terms = None if inspecting else _baseline("SCRAPER_TERMS_SHA256")
         client = RateLimitedClient(
             user_agent=os.environ.get("SCRAPER_USER_AGENT", ""),
             state_path=Path(os.environ.get("SCRAPER_STATE_PATH", str(DEFAULT_STATE_PATH))),
             robots_sha256=robots,
             terms_sha256=terms,
         )
+        if args.write_terms_fingerprint:
+            # **承認済みハッシュと対で書く。** 対にしないと、後から「この指紋は
+            # どの版の規約のものか」が分からなくなる（詳細設計 4.3）
+            approved = _baseline("SCRAPER_TERMS_SHA256")
+            body = client.terms_body()
+            FINGERPRINT_PATH.write_text(
+                json.dumps(build_fingerprint(body, approved), ensure_ascii=False, indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
+            print(f"parser_canary: {FINGERPRINT_PATH.name} を書き出した")
+            return 0
         if args.inspect_policy:
             print(json.dumps(client.inspect_policy(), sort_keys=True))
             return 0
 
         url = boxscore_url(args.game_id)
         clubs = {row.source_id: row.club_id for row in load_club_source_ids()}
-        client.verify_policy()
+        client.verify_policy(
+            terms_reporter=report_terms_change(os.environ.get("SCRAPER_TERMS_SHA256", "")),
+        )
         result = parse_boxscore(
             client.get(url), event=args.event, clubs=clubs, expected_game_id=args.game_id,
         )

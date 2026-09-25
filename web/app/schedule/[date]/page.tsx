@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { GameCardCompact } from '@/components/prediction/GameCardCompact';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SAMPLE_GAMES } from '@/lib/fixtures/today';
+import { SAMPLE_FULL_DAY, SAMPLE_GAMES } from '@/lib/fixtures/today';
 import { noGames } from '@/lib/messages';
+import { byTipoff } from '@/lib/view';
 
 export const dynamic = 'force-static';
 
@@ -17,7 +18,8 @@ type SampleDate = (typeof SAMPLE_DATES)[number];
 const GAMES_BY_DATE: Record<SampleDate, typeof SAMPLE_GAMES> = {
   '2026-09-22': SAMPLE_GAMES,
   '2026-09-23': [],
-  '2026-09-24': SAMPLE_GAMES.slice(0, 1),
+  // **1日の最大構成（13試合）。** 圧縮カードだけの一覧がこの規模で読めるかを見る
+  '2026-09-24': SAMPLE_FULL_DAY,
 };
 
 export function generateStaticParams() {
@@ -78,9 +80,15 @@ export default async function Page({ params }: { params: Promise<{ date: string 
         )}
       </nav>
 
-      <div className="mt-3 flex flex-col gap-3">
+      {games.length > 0 && (
+        <p className="mt-3 text-[11px] text-text-3">全{games.length}試合</p>
+      )}
+
+      <div className="mt-2 flex flex-col gap-3">
         {games.length > 0 ? (
-          games.map((game) => <GameCardCompact key={game.gameId} game={game} />)
+          [...games]
+            .sort(byTipoff)
+            .map((game) => <GameCardCompact key={game.gameId} game={game} />)
         ) : (
           <EmptyState
             message={noGames(label(current))}

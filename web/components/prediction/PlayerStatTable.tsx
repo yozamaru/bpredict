@@ -54,7 +54,10 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
                   <span className="w-11 text-right text-[13px] font-bold">{d.pts.toFixed(1)}</span>
                   <span className="w-9 text-right text-[13px]">{d.reb.toFixed(1)}</span>
                   <span className="w-9 text-right text-[13px]">{player.ast.toFixed(1)}</span>
-                  <span aria-hidden="true" className="w-3 text-right text-[11px] text-text-2">
+                  <span
+                    aria-hidden="true"
+                    className="disclosure-marker w-3 text-right text-[11px] text-text-2"
+                  >
                     ▾
                   </span>
                 </summary>

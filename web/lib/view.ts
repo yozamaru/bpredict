@@ -142,3 +142,18 @@ export function statusBadgeKind(game: GameView): 'provisional' | 'final' | null 
   if (game.isProvisional) return 'provisional';
   return null;
 }
+
+/**
+ * 開始時刻の昇順。**時刻未公表は末尾**に置く。
+ *
+ * 一覧は日程であり、**時刻順でないと読めない**。11a の fixture は
+ * 19:05 → 17:05 → 14:05 の順に並んでいて、画面がその順で出していた。
+ * 並べ替えを画面側に持たせるのは、静的JSON の並びに画面が依存しないようにするため
+ * （書き出す側の順序が変わっても表示は崩れない）。
+ */
+export function byTipoff(a: GameView, b: GameView): number {
+  if (a.tipoffLabel === b.tipoffLabel) return 0;
+  if (a.tipoffLabel === null) return 1;
+  if (b.tipoffLabel === null) return -1;
+  return a.tipoffLabel < b.tipoffLabel ? -1 : 1;
+}

@@ -74,7 +74,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
           的中した試合も外した試合も、同じ並びで出しています。
         </p>
         {SAMPLE_HISTORY.length > 0 ? (
-          <ul className="mt-2 rounded-2xl border border-border bg-surface px-3 py-1">
+          <ul className="mt-2 rounded-2xl border border-border bg-surface px-3">
             {SAMPLE_HISTORY.map((item) => (
               <HistoryRow key={item.gameId} item={item} />
             ))}

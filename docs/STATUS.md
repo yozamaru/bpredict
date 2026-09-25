@@ -92,7 +92,7 @@
 | GitHub Variables | `API_BASE_URL` / `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` 設定済み |
 | 稼働しているワークフロー | `ci` / `parser-canary`（日次）/ `backfill`（手動）。**日次・当日・月次は未実装** |
 | 公開APIの応答 | `/accuracy` は 200 で空の集計（**予測が0件**。工程9b が未着手）。`/games?date=` は実データで 200。`/teams` は **2026-27 のクラブが0件**（下記の判断待ち） |
-| `seasons` の範囲 | **CSV を直したが D1 は未更新。** `seed_master` を流して 11行を入れ替える必要がある（`ON CONFLICT DO UPDATE` で `start_date` / `end_date` も更新される） |
+| `seasons` の範囲 | **CSV を直したが D1 は未更新。** `backfill.yml` が毎回先頭で `seed_master` を流すため（冪等）、**次の取り込みで自動的に入れ替わる**。それまで `/games?date=2017-05-20`（実在する CS の試合日）は 404 を返す |
 
 ### 取り込み済みシーズン
 

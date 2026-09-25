@@ -45,6 +45,7 @@
 |---|---|---|---|
 | — | **`/health` の `quota` の出所。** Workers リクエスト数とキャッシュヒット率を数える先がない（KV も Durable Objects も従量課金で絶対ルール5に触れる） | 運営者 | 受け入れ基準 A-10 の検証手段 |
 | — | **短い試合（CS の決着戦）を Elo でどう扱うか。** 10分規模の得点差を40分の試合と同じ `multiplier` で扱ってよいか | 工程8で決める | Elo のパラメータ探索 |
+| — | **シーズンの最初の試合が終わるまで `club_seasons` が空になる。** `name` の出典は `TeamNameJ`（ボックススコア = 終了済みの試合）であり（詳細設計 1.2 / 4.4）、**開幕前と開幕当日は当季のクラブ一覧と表示名が存在しない**。実機で `/teams` が 2026-27 のクラブ0件を返して判明した。日程ページのクラブ選択肢（`short_name` の出典）を `name` にも使うのか、`clubs.name` にフォールバックするのかは設計にない | 運営者 | Phase 1 の開幕日の表示。工程11b の結線 |
 | — | **Elo の σ が 191 で他リーグ（100〜150）より広い。** `K` か得点差の `multiplier` が強い可能性 | 工程8の探索で決める（先に直さない） | Elo のパラメータ |
 
 ## 運営者にしかできない作業
@@ -83,14 +84,15 @@
 | 対象 | 状態 |
 |---|---|
 | D1 `bpredict` | `6af3adc9-3f7f-4b10-b374-efde48e1339a` / APAC(NRT) / マイグレーション `0010` まで適用済み |
-| D1 のデータ | マスタ ＋ **2016-17 / 2017-18 の試合**（`games` 1,109）。スタッツ欠けは0件 |
+| D1 のデータ | マスタ ＋ **2016-17 / 2017-18 / 2018-19 の試合と 2019-20 の210試合**（`games` 1,874）。スタッツ欠けは0件 |
 | Worker | **`https://bpredict-api.naomaru.workers.dev`**（2026-09-26 に workers.dev のサブドメインを `bpredict` → `naomaru` へ変更）。毎時の Cron Trigger（freeze）が稼働 |
-| Worker のデプロイ版 | **2026-09-26 に更新**（Version `f3831f6b`）。公開API（`/games/:gameId` / `/accuracy`）を含む。**「デプロイ済み」だけ書くとコードとの差が見えない** — 09-22 版のまま公開APIが404を返していたことに、URL変更の確認で初めて気づいた。**次に上げたらこの行を更新する** |
+| Worker のデプロイ版 | **2026-09-26 に更新**（Version `b5f20bad`）。公開API6本（`/games/:gameId` / `/accuracy` / `/games?date=` / `/results?date=` / `/teams` / `/teams/:slug`）を含む。**「デプロイ済み」だけ書くとコードとの差が見えない** — 09-22 版のまま公開APIが404を返していたことに、URL変更の確認で初めて気づいた。**次に上げたらこの行を更新する** |
 | Workers Secret | `INGEST_TOKEN` / `FINALIZE_TOKEN` 設定済み |
 | GitHub Secret | `INGEST_TOKEN` 設定済み |
 | GitHub Variables | `API_BASE_URL` / `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` 設定済み |
 | 稼働しているワークフロー | `ci` / `parser-canary`（日次）/ `backfill`（手動）。**日次・当日・月次は未実装** |
-| 公開APIの応答 | `/accuracy` は 200 で空の集計（**予測が0件**。工程9が未着手）。`/games/:gameId` は404、不正なIDは400 |
+| 公開APIの応答 | `/accuracy` は 200 で空の集計（**予測が0件**。工程9b が未着手）。`/games?date=` は実データで 200。`/teams` は **2026-27 のクラブが0件**（下記の判断待ち） |
+| `seasons` の範囲 | **CSV を直したが D1 は未更新。** `backfill.yml` が毎回先頭で `seed_master` を流すため（冪等）、**次の取り込みで自動的に入れ替わる**。それまで `/games?date=2017-05-20`（実在する CS の試合日）は 404 を返す |
 
 ### 取り込み済みシーズン
 

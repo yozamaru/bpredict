@@ -14,7 +14,9 @@ import pathlib
 import re
 import sqlite3
 from collections.abc import Iterator
+from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from batch.jobs.seed_master import (
@@ -72,6 +74,29 @@ def test_season_range_contains_known_game_dates():
     for season_id, date in known.items():
         s = by_id[season_id]
         assert s.start_date <= date <= s.end_date, (season_id, date)
+
+
+def test_season_range_contains_every_ingested_game_date():
+    """**取り込み済みの全試合日が範囲に入っていること**（詳細設計 1.1）。
+
+    開幕日1件だけの検査では、**終わりが狭いことを捕まえられなかった**。
+    実際に 2016-17 の `end_date` が 2017-05-07 で、チャンピオンシップの
+    2017-05-27 までの20日ぶんが範囲外になっていた（`/games?date=2017-05-20`
+    が実在する試合日なのに 404 を返した）。日程一覧からの導出が CS の行を
+    取りこぼしていたためである。
+
+    スナップショットはリポジトリにあるため、この検査は外部アクセスなしで回る。
+    """
+    snapshot = Path(__file__).resolve().parents[1] / "snapshot" / "games.parquet"
+    if not snapshot.exists():          # 取り込み前は検査対象がない
+        pytest.skip("スナップショットがまだない")
+
+    games = pd.read_parquet(snapshot, columns=["season_id", "game_date"])
+    by_id = {s.id: s for s in load_seasons()}
+    for season_id, group in games.groupby("season_id"):
+        season = by_id[str(season_id)]
+        assert season.start_date <= group["game_date"].min(), season_id
+        assert group["game_date"].max() <= season.end_date, season_id
 
 
 def test_club_slug_format_and_uniqueness():

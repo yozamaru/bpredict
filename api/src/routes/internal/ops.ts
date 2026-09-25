@@ -146,3 +146,26 @@ ops.get('/games/ingested', async (c) => {
   const gameIds = rows.results.map((r) => r.id);
   return ok(c, { seasonId, count: gameIds.length, gameIds });
 });
+
+/**
+ * `GET /internal/venues` — 座標を解決する会場の一覧（詳細設計 3.4 / 4.10）。
+ *
+ * **スナップショットで代替しない。** 会場の集合は事前に列挙できず（詳細設計 1.2）、
+ * 取り込みとともに増える。座標の解決は取り込みが終わってから1回だけ流すため、
+ * そのときスナップショットが最新である保証がない（`daily_ingest` が書き出す）。
+ * これは入力データの読み取りではなく運用上の読み取りであり、絶対ルール3の射程外。
+ */
+ops.get('/venues', async (c) => {
+  // 既定は全件。`missingCoordinates=1` で座標が未解決の行だけに絞る
+  const only = c.req.query('missingCoordinates');
+  if (only !== undefined && only !== '1') {
+    return fail(c, 'BAD_REQUEST', 'missingCoordinates は 1 のみ');
+  }
+  const where = only === '1' ? ' WHERE lat IS NULL OR lng IS NULL' : '';
+  const rows = await c.env.DB.prepare(
+    `SELECT id, name, prefecture, lat, lng FROM venues${where} ORDER BY id`,
+  ).all<{
+    id: string; name: string; prefecture: string | null; lat: number | null; lng: number | null;
+  }>();
+  return ok(c, { count: rows.results.length, venues: rows.results });
+});

@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | **1.28** |
+| 版数 | **1.29** |
 | 作成日 | 2026-09-19 |
-| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** / **v1.22: `games` の `UNIQUE (season_id, game_date, home_club_id, away_club_id)` を外した（同じ日・同じカードで行われる CS の決着戦が実在し、取り込みが 500 で止まっていた）** / **v1.23: 工程10a（公開API の `/games/:gameId` と `/accuracy`）を実装した。形状が文書にない4本と `/health` の `quota` は保留** / **v1.24: backfill の再開判定を「スタッツまで入っているか」に変えた（試合行だけが残るとスタッツが永久に欠ける穴があった）** / v1.25: 規約の関門に節ごとの指紋を足した（本文が変わっていなくても止まるため、どの節が変わったかを出す） / **v1.26: 2018-19 の取り込みで落ちた「結果が書かれていない行」の扱いを定めた（リンクのない行を許す条件、`<script>` を状態として読まない、状態を推測せず飛ばして数える） / v1.27: 非200のステータスをログに出し、1試合の取得失敗でジョブ全体を落とさないようにした / **v1.28: backfill の上限を「1日1シーズン」から「1日の書き込み行数（92,000行）」に変えた（枠の34%を毎日捨てていた）。書き込み失敗時の安全網を足した** |
+| 改訂 | v1.1: 9領域レビューの指摘を反映（DDL全面改訂） / v1.2: 個人スタッツをフルボックススコアに拡張 / v1.3: 実装前検証の結果を反映（整合化アルゴリズム、DDL の試投数+成功率化、子テーブル凍結、バッチサイズ、WAF、Next.js 16、実装順序） / v1.4: 文書レビューの指摘を反映（チーム目標の整合化、内部GETの追加、列数の検算、`finished_at_is_estimated`、`spectator_restricted` の NULL、freeze の親子同時実行、レスポンス形状の統一） / **v1.5: 実装着手前の再点検を反映（`accuracy_summary` の主キー、`updated_at` の適用範囲、調査用トークンの分離、Phase 0 の記録先） / **v1.6: ボックススコアが埋め込みJSONで配信されている実地確認を反映（`parser/` の責務を「レスポンス本文の解釈」に変更） / v1.7: `player_predictions` に親参照の凍結トリガを追加（凍結の網羅を完成） / v1.8: Phase 0（P0-5）の結果を反映（大会区分 `competition` の追加、`club_seasons` の出典と構築工程、復帰クラブの Elo 初期値） / v1.9: 会場マスタの出典を確定（`venues.id` に公式の `StadiumCD` を採用、会場行は backfill が構築、座標は国土地理院で1回だけ解決、収容人数は手入力） / v1.10: 工程2の前提を確定（`POST /internal/masters` の追加、`clubs.slug` は手入力で改称でも不変、`seasons` の開始・終了日は日程一覧から1回だけ導出） / v1.11: 工程3の CI を実態に合わせた（api / web のジョブは `detect` で分岐、ESLint は工程4、Dependabot の npm は後追い、ワークフローの不変条件をテストで固定） / v1.12: 工程4a（Workers API の土台と `POST /internal/masters`）を実装し、工程2の D1 投入を完了させた / **v1.13: 工程4b（残りの `/internal/*` と freeze の Cron Trigger）を実装した / **v1.14: 工程5（スクレイパ・パーサ）を実装し、Phase 0 の実地確認で判明した非選手行2種の区別・旧年度の項目欠損・カナリアの検査対象を反映した / **v1.15: 工程11a の実測で外れた前提を反映（初期JS の上限を 180KB、静的生成の範囲を直近3シーズン）と、未決事項 U-10 の解決 / **v1.16: 工程7（特徴量生成とリーク検証）を実装し、`team_ratings` の1行の意味（その試合日の終了時点）と `rest_days` の定義（中N日）を明記した** / **v1.17: 工程6のワークフロー（`backfill.yml`、手動実行のみ）を追加し、`inputs` を `run:` へ展開しないことをテストで固定した** / **v1.18: 工程6の Elo（`batch/ratings/`）と `recompute_ratings` を実装し、最初のシーズンの境界条件・`off_rating` ほかを NULL にする理由・`PROMOTED_ELO_INITIAL` を探索対象とすることを明記した** / **v1.19: `venue_revisions` を派生テーブルに変更した（`games.venue_name_at_game` を追加し、全期間を再計算して洗い替える）。`POST /internal/venue-revisions` を追加** / **v1.20: 内部APIのクライアントに User-Agent を足した（urllib の既定が Cloudflare に 403 で弾かれていた）** / **v1.21: 実データで落ちた9試合を反映（得点を持つ `Category=2` 行を照合に含める、ポゼッション値域外は NULL にして試合は取り込む、スキップした試合IDと理由を出力する）** / **v1.22: `games` の `UNIQUE (season_id, game_date, home_club_id, away_club_id)` を外した（同じ日・同じカードで行われる CS の決着戦が実在し、取り込みが 500 で止まっていた）** / **v1.23: 工程10a（公開API の `/games/:gameId` と `/accuracy`）を実装した。形状が文書にない4本と `/health` の `quota` は保留** / **v1.24: backfill の再開判定を「スタッツまで入っているか」に変えた（試合行だけが残るとスタッツが永久に欠ける穴があった）** / v1.25: 規約の関門に節ごとの指紋を足した（本文が変わっていなくても止まるため、どの節が変わったかを出す） / **v1.26: 2018-19 の取り込みで落ちた「結果が書かれていない行」の扱いを定めた（リンクのない行を許す条件、`<script>` を状態として読まない、状態を推測せず飛ばして数える） / v1.27: 非200のステータスをログに出し、1試合の取得失敗でジョブ全体を落とさないようにした / v1.28: backfill の上限を「1日1シーズン」から「1日の書き込み行数（92,000行）」に変えた（枠の34%を毎日捨てていた）。書き込み失敗時の安全網を足した / **v1.29: `GET /internal/venues` を追加し、会場の座標を解決するジョブ（4.10）を定めた** |
 | 上位文書 | `docs/design-basic.md` |
 
 ---
@@ -1483,6 +1483,7 @@ SHAP 値は個別特徴ではなく、以下のグループに合算して表示
 | **GET** | **`/internal/models/active`** | `INGEST_TOKEN` | 有効モデル一覧（メタのみ） |
 | **GET** | **`/internal/models/:version/artifact`** | `INGEST_TOKEN` | artifact 本体を1本ずつ取得 |
 | **GET** | **`/internal/games/ingested`** | `INGEST_TOKEN` | backfill の再開判定 |
+| **GET** | **`/internal/venues`** | `INGEST_TOKEN` | 座標を解決する会場の一覧（4.10） |
 | **GET** | **`/internal/predictions/pending`** | `INGEST_TOKEN` | 照合対象の確定予測 |
 | **GET** | **`/internal/metrics/active`** | `INGEST_TOKEN` | 現行モデルの識別子と記録済み評価値。**`/internal/models` とは別のルータにする**（同じルータを2箇所にマウントすると `/internal/metrics/active` がモデル一覧の `/active` に当たる） |
 
@@ -1574,13 +1575,18 @@ v1.16 まで、この口が設計に書かれていなかった。
 
 #### 内部 GET を置く理由と射程
 
-バッチは**入力データ**としては D1 を読まない（`batch/snapshot/*.parquet` のみ）。しかし運用上、D1 の現在値が要る場面が4つある — backfill の再開判定、照合対象の取得、モデル artifact の読み出し、現行モデルの識別。これらを `/internal/*` の GET に集約することで、**D1 REST API の直叩きを作らない**という方針を保ったまま実装できる。
+バッチは**入力データ**としては D1 を読まない（`batch/snapshot/*.parquet` のみ）。しかし運用上、D1 の現在値が要る場面が5つある — backfill の再開判定、照合対象の取得、モデル artifact の読み出し、現行モデルの識別、**座標を解決する会場の一覧**。これらを `/internal/*` の GET に集約することで、**D1 REST API の直叩きを作らない**という方針を保ったまま実装できる。
 
 | 区分 | 読み取り元 |
 |---|---|
 | 特徴量生成・学習・推論の入力データ | **スナップショットのみ** |
-| 上記4つの運用上の読み取り | `/internal/*` の GET |
+| 上記5つの運用上の読み取り | `/internal/*` の GET |
 | D1 REST API の直叩き | **全面禁止** |
+
+**`GET /internal/venues` をスナップショットで代替しない。** 会場の集合は事前に列挙できず
+（詳細設計 1.2）、取り込みとともに増える。座標の解決は取り込みが終わってから1回だけ
+流すため、そのときスナップショットが最新である保証がない（`daily_ingest` が書き出す）。
+**運用上の読み取りであり、`/internal/*` の GET が既存の型である。**
 
 返却は `{ "data": ..., "meta": ... }`（3.1）に揃え、`Cache-Control: no-store` を付ける。いずれも1リクエストあたり1〜2クエリで、50クエリ制限にも読取枠にも影響しない。
 
@@ -1589,6 +1595,13 @@ v1.16 まで、この口が設計に書かれていなかった。
 //   **「試合行がある」ではなく「スタッツまで入っている」を取り込み済みとする**（下記）
 { "data": { "seasonId": "2016-17-B1", "count": 540,
             "gameIds": ["...", "..."] } }
+
+// GET /internal/venues[?missingCoordinates=1]
+//   座標の解決に使う（4.10）。全会場でも数百行に収まる。
+//   missingCoordinates=1 のとき lat か lng が NULL の行だけを返す
+{ "data": { "count": 88, "venues": [
+    { "id": "3", "name": "<会場名>", "prefecture": null, "lat": null, "lng": null }
+  ] } }
 
 // GET /internal/predictions/pending?limit=200
 //   games.status が FINISHED / CANCELLED / POSTPONED で、
@@ -2477,6 +2490,56 @@ python -m batch.jobs.build_venue_revisions [--dry-run]
 
 ---
 
+### 4.10 会場の座標の解決（`batch/jobs/resolve_venue_geo.py`）
+
+```
+python -m batch.jobs.resolve_venue_geo [--dry-run] [--load]
+```
+
+**1回だけ解決して CSV に固定し、実行時には取得しない**（1.2）。座標を使うのは特徴量 #16
+（移動距離・**検証**区分）だけで、距離は数百kmの単位であるため精度の要求は低い。
+
+| 段 | 内容 |
+|---|---|
+| 1 | `GET /internal/venues?missingCoordinates=1` で対象の会場IDと名称を得る（3.4） |
+| 2 | `/arena_detail/?ArenaCD=<id>` を取得し、**住所**を抜き出す（`batch/parser/arena_parser.py`） |
+| 3 | 住所を**国土地理院の住所検索**でジオコーディングする |
+| 4 | `db/seeds/master/venues_geo.csv` に書き出す（`venue_id` / `name` / `prefecture` / `lat` / `lng` / `address` / `source`） |
+| 5 | `--load` のときだけ、CSV を `POST /internal/games` の `venues` 配列で D1 に送る |
+
+**取り込みが全部終わってから流す。** 会場は取り込みとともに増える（2026-09-25 時点で88件）。
+途中で流すと同じ会場を二度取りに行くことになる。
+
+#### 埋められないときは埋めない
+
+| 事象 | 扱い |
+|---|---|
+| `/arena_detail/` に住所がない | その会場を飛ばし、**件数と会場IDを出力に出す**。座標は NULL のまま |
+| 国土地理院が候補を返さない | 同じ |
+| 返ってきた候補の都道府県が住所と食い違う | **採らずに報告する。** 候補は関連度順に並ぶが、1件目を無条件に採ると別の市区町村の座標が入りうる |
+| 住所から都道府県が読めない | `prefecture` を NULL にし、報告する |
+
+**座標が NULL のままでも先に進める。** #16 は検証区分であり、当該会場で欠損するだけである
+（`club_seasons` や収容人数と同じ扱い。1.2）。
+
+#### 国土地理院への間隔は1秒とする
+
+公式サイト向けの3秒＋ジッタを無条件に適用しない（4.3）。**国土地理院の住所検索は
+無料・APIキー不要で、政府標準利用規約のもとで提供されている**（出典表記が条件）。
+このジョブは1回しか流さず、総リクエスト数は会場数（120件前後）である。
+
+**1秒は運営者の判断として置いた値であり、実測に基づくものではない。** 公式サイト向けの
+値と混ぜないため、`batch/geocode/` に別の定数として持つ。`batch/scraper/` は
+**公式サイト専用のまま**にする（取得先を公式サイトのHTTPSに限定するという実装を崩さない）。
+
+#### 収容人数はこのジョブでは扱わない
+
+**公式サイトに収容人数はない**（`/arena_detail/` に住所はあるが収容人数はないことを
+2026-09-25 に再確認した）。外部の情報源を当たって `db/seeds/master/venue_revisions.csv`
+に行ごとの出典URLつきで入れる（1.2 / 4.9）。定義は「B.LEAGUE 開催時の観客席数」に
+固定されており、**情報源が建物の最大収容を載せている場合は採らずに報告する**
+（混ぜると動員率が比較不能になる）。
+
 ## 5. 画面詳細
 
 ### 5.1 コンポーネント構成
@@ -3207,7 +3270,7 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 4a | **Workers API の土台と `POST /internal/masters`。** Hono / Zod / vitest（Workers ランタイム）/ ESLint Flat Config / `wrangler.toml` / `batch-limits.ts` / Bearer 認証（2キー方式・定数時間比較） | Bearer なしで401、汎用テーブル指定で400、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`POST /internal/masters` がローカル D1 にマスタを投入でき、2回流しても行数が増えない |
 | 4b | 残りの `/internal/*`（`predictions` / `finalize` / `evaluate` / `summary` / `log` / `ratings` / `games` / `stats` / `entries` / `models` と GET 群）。**freeze の Cron Trigger（毎時）もここで置く** | tipoff 経過後に409、freeze が子 → 親の順で通る、`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る。**完了した** — `batch/scraper/`（HTTP・取得前確認・URL構築）と `batch/parser/`（日程・終了済みボックススコア）を**標準ライブラリのみ**で実装し、batch のテストは 371 件。取得前確認は robots / 利用規約のハッシュが未設定・不一致なら試合データを取得しない。日次3,000件と 429/503 の停止はプロセス再起動を跨いで保たれる。**実サイトの取得は `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定するまで行わない**（カナリアは警告を残してスキップする）。利用方法は [スクレイパ・パーサ](scraper-parser.md) |
-| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/`、`batch/jobs/backfill.py`、`.github/workflows/backfill.yml`、`batch/ratings/`（Elo）と `batch/jobs/recompute_ratings.py` を実装済み。`batch/masters/venue_revisions.py` と `batch/jobs/build_venue_revisions.py`（会場の履歴）を実装済み。**残りは実サイトからの取り込みの実行と、`daily_ingest` によるスナップショットの日常書き出し**）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
+| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**進行中**: `batch/loader/`、`batch/jobs/backfill.py`、`.github/workflows/backfill.yml`、`batch/ratings/`（Elo）と `batch/jobs/recompute_ratings.py` を実装済み。`batch/masters/venue_revisions.py` と `batch/jobs/build_venue_revisions.py`（会場の履歴）、`batch/jobs/resolve_venue_geo.py`（会場の座標。4.10）を実装済み。**残りは実サイトからの取り込みの実行と、`daily_ingest` によるスナップショットの日常書き出し**）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決）。**着手前に、運営者が `robots.txt` と利用規約を確認して `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定する必要がある**（未設定では取得しない。docs/scraper-parser.md） | 全シーズンが DB に入り、`test_snapshot_matches_d1` が通る |
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る。**完了した** — `batch/features/`（`dataset` / `base` / `team_strength` / `schedule_ctx` / `player` / `builder`）と採用16キー、`db/seeds/test/`（架空8クラブ × 2シーズン / 224試合の決定論的シード）、`scripts/rebuild_snapshot.py`。batch のテストは 404 件で、リーク検証10件・スナップショット9件・特徴量10件を含む |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9 | 推論と predictions 登録、静的JSON書き出し（**着手前に未決事項 U-09「静的JSON の全体像」を確定させる**） | 予測が JSON に出る |

@@ -84,4 +84,47 @@
     outline: 2px solid var(--text);
     outline-offset: 2px;
   }
+
+  /* 段階開示の開閉（詳細設計 5.3「アニメーション付きの `<details>` 相当にし、
+     キーボードで操作できるようにする」）。
+
+     **JavaScript を使わない。** 初期JS は 172.7KB で上限180KB に対して余裕がなく、
+     開閉のためにクライアントコンポーネントを増やす判断はしない。`<details>` は
+     素の HTML でキーボード操作できる（Enter / Space）。
+
+     `::details-content` と `interpolate-size` に対応しない環境では**即座に開く**
+     だけで、機能は落ちない（プログレッシブエンハンスメント）。 */
+  html {
+    interpolate-size: allow-keywords;
+  }
+
+  details::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size 180ms ease,
+      content-visibility 180ms allow-discrete;
+  }
+
+  details[open]::details-content {
+    block-size: auto;
+  }
+
+  /* 開いている印。三角を回す */
+  details summary .disclosure-marker {
+    transition: transform 180ms ease;
+  }
+
+  details[open] summary .disclosure-marker {
+    transform: rotate(180deg);
+  }
+
+  /* **動きを減らす設定を尊重する。** アニメーションは装飾であり、
+     開閉そのものを妨げてはならない */
+  @media (prefers-reduced-motion: reduce) {
+    details::details-content,
+    details summary .disclosure-marker {
+      transition: none;
+    }
+  }
 }

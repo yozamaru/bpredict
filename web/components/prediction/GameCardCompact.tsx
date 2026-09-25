@@ -25,8 +25,13 @@ export function GameCardCompact({ game }: { game: GameView }) {
             <span className="text-[16px] font-extrabold">{away}%</span> {game.away.shortName}
           </span>
         </div>
-        <div aria-hidden="true" className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-track">
+        {/* 大きいカードと同じ規則。50% の基準線を入れる（ProbabilityBar と同じ理由） */}
+        <div
+          aria-hidden="true"
+          className="relative mt-1.5 flex h-2 overflow-hidden rounded-full bg-track"
+        >
           <div className="h-full bg-accent" style={{ width: `${home}%` }} />
+          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
         </div>
         <p className="mt-1.5 text-[11px] text-text-3">
           {isTossUp(game.homeWinProb) ? 'ほぼ互角 ・ ' : ''}

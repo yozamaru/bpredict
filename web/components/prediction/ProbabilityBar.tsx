@@ -27,8 +27,12 @@ export function ProbabilityBar({ game, size = 'large' }: { game: GameView; size?
           {/* 敗者側にも --text-2 を使う。差は色の濃淡ではなくバーの幅と数値で伝える */}
           <span className={`${number} text-text-2`}>{away}%</span>
         </div>
-        <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-track">
+        {/* **50% の位置に目印を置く。** 「45〜55% はほぼ互角、それ以外は一方的」を
+            見た目で区別する（要件 8.3）ために、どちら側に傾いているかが一目で分かる
+            基準線が要る。線は文字ではないため `--border` を使う */}
+        <div className="relative mt-2 flex h-2.5 overflow-hidden rounded-full bg-track">
           <div className="h-full bg-accent" style={{ width: `${home}%` }} />
+          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
         </div>
       </div>
     </div>

@@ -100,14 +100,22 @@ class FakeScraper:
 class FakeApi:
     """投入内容を記録する。D1 には触れない。"""
 
-    def __init__(self, ingested: set[str] | None = None) -> None:
+    def __init__(self, ingested: set[str] | None = None,
+                 fail_write_after: int | None = None) -> None:
         self.posted: list[tuple[str, dict[str, Any]]] = []
         self._ingested = ingested or set()
+        #: N 試合を書き終えたあと、以降の書き込みを失敗させる（書き込み枠の
+        #: 枯渇の模擬）。完了の数え方は `stats`（1試合の2本目）で、`log` は失敗させない
+        self._fail_write_after = fail_write_after
 
     def ingested_game_ids(self, season_id: str) -> set[str]:
         return self._ingested
 
     def post(self, path: str, payload: dict[str, Any]) -> None:
+        if (self._fail_write_after is not None and path in ("games", "stats")
+                and sum(1 for p, _ in self.posted if p == "stats")
+                >= self._fail_write_after):
+            raise LoaderError("内部APIが失敗を返した（500 / games）")
         self.posted.append((path, payload))
 
 
@@ -129,8 +137,9 @@ def run(
     *,
     ingested: set[str] | None = None,
     limit: int | None = None,
+    fail_write_after: int | None = None,
 ) -> tuple[backfill.Result, FakeScraper, FakeApi]:
-    scraper, api = FakeScraper(responses), FakeApi(ingested)
+    scraper, api = FakeScraper(responses), FakeApi(ingested, fail_write_after)
     result = backfill.run(SEASON, client=scraper, api=api, limit=limit)  # type: ignore[arg-type]
     return result, scraper, api
 
@@ -230,6 +239,26 @@ def test_one_failed_fetch_does_not_stop_the_season() -> None:
     game_id, kind, message = result.skipped[0]
     assert (game_id, kind) == ("101", "ResponseError")
     assert "500" in message
+
+
+def test_write_failure_stops_cleanly_and_keeps_the_log() -> None:
+    """**D1 の書き込みが失敗したら、その場で止めて記録を残す。**
+
+    主な原因は日次の書き込み枠（10万行）の枯渇で、1シーズンで66%を使うため
+    「1日に1.5シーズン」を狙うと起こりうる。捕まえていなかったため、この例外は
+    `run()` を抜けて `_finish()` を飛ばし、`ingestion_logs` の行も残らなかった。
+    """
+    responses = schedule_responses("101", "102", "103")
+    result, scraper, api = run(responses, fail_write_after=1)
+
+    assert result.status == "PARTIAL"
+    assert result.ingested == 1, "1試合目は入っている"
+    assert any("D1 への書き込みを中止した" in note for note in result.notes)
+    # **枠が尽きた状態で残りを叩かない**
+    assert not any("ScheduleKey=103" in url for url in scraper.requested)
+    # ログは残る（どこまで入ったかは再開判定で分かるが、理由はここにしかない）
+    assert api.posted[-1][0] == "log"
+    assert api.posted[-1][1]["status"] == "PARTIAL"
 
 
 def test_three_consecutive_fetch_failures_abort() -> None:

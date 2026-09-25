@@ -181,6 +181,19 @@ def run(
         except ScrapingStopped:
             result.degrade("PARTIAL", "429/503 により取得区間を中止した")
             break
+        except LoaderError as error:
+            # **D1 への書き込みが失敗したら、その場で止めて記録を残す。**
+            # 主な原因は日次の書き込み枠（10万行）の枯渇で、1シーズンで66%を使う
+            # ため「1日に1.5シーズン」を狙うと起こりうる（枠は 00:00 UTC に戻る）。
+            #
+            # 捕まえていなかったため、この例外は `run()` を抜けて `_finish()` を
+            # 飛ばし、**`ingestion_logs` の行もスキップ一覧も残らなかった**。
+            # どこまで入ったかは再開判定（スタッツの有無）で分かるが、
+            # 「なぜ止まったか」が残らない。
+            #
+            # **継続しない。** 枠が尽きた状態で残りを叩いても全部失敗する。
+            result.degrade("PARTIAL", f"D1 への書き込みを中止した（{error}）")
+            break
         except ValidationError as error:
             # 値域・恒等式の違反は当該試合をスキップする（異常値を Elo に流さない）
             result.skipped_invalid += 1

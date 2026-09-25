@@ -58,6 +58,9 @@ class Result:
     skipped_invalid: int = 0
     #: 日程に混ざる非リーグ戦（オールスター・国際試合）。件数を必ず表に出す
     skipped_non_league: int = 0
+    #: 状態がサーバ側に書かれていない行（2018-19 CS の不要になった第3戦）。
+    #: **非リーグ戦と混ぜない** — 混ぜると出力からどちらが起きたか分からない
+    skipped_unresolved: int = 0
     notes: list[str] = field(default_factory=list)
     #: スキップした試合の (game_id, 例外の型名, 自前メッセージ)。
     #: **件数だけでは調査ができない**（詳細設計 4.4）。2016-17 で9試合が落ちたとき、
@@ -102,6 +105,7 @@ def _schedule_pages(
         yield from page.games
         # 非リーグ戦を黙って捨てない。件数を集計して出力に出す
         result.skipped_non_league += page.skipped
+        result.skipped_unresolved += page.unresolved
         previous_date = page.last_date
         if page.next_index is None:
             return
@@ -141,7 +145,10 @@ def run(
         result.degrade("PARTIAL", "429/503 により日程の取得を中止した")
         return _finish(api, season_id, result)
     except (ParseError, ValidationError) as error:
-        result.degrade("PARTIAL", f"日程の解析に失敗した（{type(error).__name__}）")
+        # **型名だけにしない。** `ParseError` の本文は parser が書いた固定の文言で、
+        # 取得した本文もURLも含まない（絶対ルール4に触れない）。型名だけを出していた
+        # ため、2018-19 が落ちた原因の特定に実サイトへの再取得が必要になった。
+        result.degrade("PARTIAL", f"日程の解析に失敗した（{type(error).__name__}: {error}）")
         return _finish(api, season_id, result)
 
     short_names = {source_id: name for name, source_id in clubs_by_name.items()}
@@ -281,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         f"backfill: {result.status} 取り込み={result.ingested} 既取得={result.skipped_existing}"
         f" 未実施={result.skipped_unfinished} 不正={result.skipped_invalid}"
         f" 非リーグ戦={result.skipped_non_league}"
+        f" 状態不明={result.skipped_unresolved}"
     )
     for note in result.notes:
         print(f"  - {note}")

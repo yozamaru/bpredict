@@ -67,6 +67,9 @@ class SchedulePage:
     last_date: str | None
     #: 取り込み対象外として飛ばした行数（オールスター・国際試合など）
     skipped: int = 0
+    #: 状態がサーバ側に書かれていないため飛ばした行数。**別に数える** —
+    #: 非リーグ戦と混ぜると、どちらが起きたのか出力から分からない
+    unresolved: int = 0
 
 
 @dataclass
@@ -79,8 +82,14 @@ class _Node:
         return name in (self.attrs.get("class") or "").split()
 
     def text(self) -> str:
+        """表示される文字だけを返す。**`<script>` / `<style>` の中身は文字ではない。**
+
+        除外しないと、行の状態欄に埋め込まれた JS がそのまま状態の文字列になる
+        （2018-19 の CS で、`info-scorestate` が `<script>` だけの行が実在した）。
+        """
         return "".join(child.text() if isinstance(child, _Node) else child
-                       for child in self.children)
+                       for child in self.children
+                       if not (isinstance(child, _Node) and child.tag in ("script", "style")))
 
     def descendants(self) -> Iterator[_Node]:
         for child in self.children:
@@ -221,6 +230,10 @@ class _NotALeagueGame(Exception):
     """その年度のクラブ一覧にないチームの試合。取り込み対象外として飛ばす。"""
 
 
+class _UnresolvedState(Exception):
+    """サーバが試合の状態を書いていない行。状態を推測せずに飛ばす。"""
+
+
 def _season_year(month: int, year: int) -> int:
     """シーズン内の月から暦年を決める。
 
@@ -313,6 +326,47 @@ def _team(node: _Node, side: str, clubs_by_name: Mapping[str, str]) -> tuple[str
     return name, _identifier(clubs_by_name[name])
 
 
+def _no_server_rendered_outcome(row: _Node) -> bool:
+    """行にサーバ側で書かれた結果が何もないか。
+
+    2018-19 の CS に、状態欄が空で得点欄も空（または存在しない）行が4件あった。
+    いずれも2勝0敗で不要になった第3戦で、状態は `<script>` の `ScheduleState` から
+    JS が描く。**`"2"` が中止か延期かの対応は公開されていないため、推測で埋めない。**
+    行の操作ボタンの文字（`試合中止` / `配信終了`）は放送・導線の状態であって
+    試合の状態ではないので、こちらも状態の出典にしない。
+
+    **得点が入っている行は、状態が空でも飛ばさない**（構造変更の疑いとして落とす）。
+    ここを緩めると、終了した試合が静かに取り込まれなくなる。
+    """
+    return all(_text(node) == "" for side in ("home", "away")
+               for node in _with_class(row, f"{side}-score"))
+
+
+def _check_row_link(row: _Node, game_id: str, status: str) -> None:
+    """行が試合詳細を指していることを確かめる。
+
+    **中止・延期の行はリンクを持たない。** その場合 `.data-game` は `<a>` ではなく
+    `<div class="... btn disabled">` になる（2018-19 の CS で、2勝0敗で不要になった
+    クォーターファイナル第3戦3試合がこの形だった。それまでの実装は `<a>` を必須に
+    していたため、CS のページごと `ParseError` で落ち、**シーズン全体が取り込めなかった**）。
+
+    リンクがない行を無条件に許すと、行のIDと試合詳細のIDが一致することの確認が
+    静かに消える。**中止・延期に限って許す。**
+    """
+    if row.tag != "a":
+        if status not in ("CANCELLED", "POSTPONED"):
+            raise ParseError("schedule game row is not a link")
+        return
+    try:
+        url = urlsplit(row.attrs.get("href") or "")
+        keys = parse_qs(url.query, keep_blank_values=True).get("ScheduleKey")
+    except ValueError:
+        raise ParseError("invalid schedule game link") from None
+    if (url.scheme not in ("", "https") or url.netloc not in ("", "www.bleague.jp")
+            or url.path != "/game_detail/" or keys != [game_id] or url.fragment):
+        raise ParseError("schedule row and game link do not agree")
+
+
 def _parse_game(
     node: _Node,
     heading_date: str | None,
@@ -321,26 +375,20 @@ def _parse_game(
     clubs_by_name: Mapping[str, str],
 ) -> ScheduleGame:
     game_id = _identifier(node.attrs.get("id"))
-    link = _one([child for child in _with_class(node, "data-game") if child.tag == "a"],
-                "schedule game link")
-    try:
-        url = urlsplit(link.attrs.get("href") or "")
-        keys = parse_qs(url.query, keep_blank_values=True).get("ScheduleKey")
-    except ValueError:
-        raise ParseError("invalid schedule game link") from None
-    if (url.scheme not in ("", "https") or url.netloc not in ("", "www.bleague.jp")
-            or url.path != "/game_detail/" or keys != [game_id] or url.fragment):
-        raise ParseError("schedule row and game link do not agree")
-    game_date, tipoff_at = _row_schedule(link, year, heading_date)
-    home_name, home_id = _team(link, "home", clubs_by_name)
-    away_name, away_id = _team(link, "away", clubs_by_name)
-    if home_id == away_id:
-        raise ValidationError("schedule teams must be different")
-    home_score, away_score = _score(link, "home"), _score(link, "away")
-    state = _text(_one(_with_class(link, "info-scorestate"), "schedule game state"))
+    row = _one(_with_class(node, "data-game"), "schedule game row")
+    state = _text(_one(_with_class(row, "info-scorestate"), "schedule game state"))
+    if state == "" and _no_server_rendered_outcome(row):
+        raise _UnresolvedState(game_id)
     if state not in _STATES:
         raise ParseError("unrecognized or live schedule game state")
     status = _STATES[state]
+    _check_row_link(row, game_id, status)
+    game_date, tipoff_at = _row_schedule(row, year, heading_date)
+    home_name, home_id = _team(row, "home", clubs_by_name)
+    away_name, away_id = _team(row, "away", clubs_by_name)
+    if home_id == away_id:
+        raise ValidationError("schedule teams must be different")
+    home_score, away_score = _score(row, "home"), _score(row, "away")
     if status == "FINISHED":
         if home_score is None or away_score is None:
             raise ParseError("finished schedule game is missing a score")
@@ -422,6 +470,7 @@ def parse_schedule(
     games: dict[str, ScheduleGame] = {}
     competition = "REGULAR" if event == 2 else "PLAYOFF"
     skipped = 0
+    unresolved = 0
     for node in _schedule_nodes(document.root):
         if node.has_class("champion-box"):
             last_date = _heading_date(node, year)
@@ -433,10 +482,13 @@ def parse_schedule(
             # **推測で埋めずに飛ばし、件数を返す。**
             skipped += 1
             continue
+        except _UnresolvedState:
+            unresolved += 1
+            continue
         if game.game_id in games and games[game.game_id] != game:
             raise ParseError("conflicting duplicate schedule game")
         games[game.game_id] = game
-    if not games and skipped == 0:
+    if not games and skipped == 0 and unresolved == 0:
         # 行はあるのに1件も取れず、飛ばした覚えもない → 構造が変わった
         raise ParseError("nonempty schedule topics contain no game rows")
-    return SchedulePage(tuple(games.values()), next_index, last_date, skipped)
+    return SchedulePage(tuple(games.values()), next_index, last_date, skipped, unresolved)

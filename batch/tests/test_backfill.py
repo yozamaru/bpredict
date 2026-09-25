@@ -186,6 +186,32 @@ def test_scraping_stop_degrades_to_partial() -> None:
     assert api.posted[-1][1]["status"] == "PARTIAL"
 
 
+def test_schedule_parse_failure_keeps_its_own_message() -> None:
+    """日程の解析に失敗したら、**型名だけでなく自前の文言も残す**。
+
+    2018-19 は CS の中止試合の行にリンクがなく（`<a>` ではなく `<div>`）落ちたが、
+    ログが「日程の解析に失敗した（ParseError）」だけだったため、原因の特定に
+    実サイトへの再取得が必要になった。`ParseError` の本文は parser が書いた固定の
+    文言であり、取得した本文もURLも含まない。
+    """
+    responses = schedule_responses("101")
+    # 行のIDと試合詳細のIDを食い違わせる（構造変更と同じ扱いになる）
+    responses["data_format=json&year=2016&mon=all&tab=1&event=2&index=0"] = body(
+        HEADER + game_html("101", state="FINAL", home="80", away="79").replace(
+            "ScheduleKey=101", "ScheduleKey=999"),
+        index=20)
+    result, _, api = run(responses)
+
+    assert result.status == "PARTIAL"
+    assert result.ingested == 0
+    assert len(result.notes) == 1
+    note = result.notes[0]
+    assert "ParseError" in note
+    assert "game link do not agree" in note, "自前の文言が落ちている"
+    assert "http" not in note.lower(), "URL を混ぜない（絶対ルール4）"
+    assert api.posted[-1][1]["status"] == "PARTIAL"
+
+
 def test_three_consecutive_parse_errors_abort() -> None:
     """パース失敗が連続3件でジョブを中止する（構造変更の疑い）。"""
     responses = schedule_responses("101", "102", "103", "104")

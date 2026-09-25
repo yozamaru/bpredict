@@ -81,11 +81,13 @@
 |---|---|
 | D1 `bpredict` | `6af3adc9-3f7f-4b10-b374-efde48e1339a` / APAC(NRT) / マイグレーション `0010` まで適用済み |
 | D1 のデータ | マスタ ＋ **2016-17 / 2017-18 の試合**（`games` 1,109）。スタッツ欠けは0件 |
-| Worker | `https://bpredict-api.bpredict.workers.dev` にデプロイ済み。毎時の Cron Trigger（freeze）が稼働 |
+| Worker | **`https://bpredict-api.naomaru.workers.dev`**（2026-09-26 に workers.dev のサブドメインを `bpredict` → `naomaru` へ変更）。毎時の Cron Trigger（freeze）が稼働 |
+| Worker のデプロイ版 | **2026-09-26 に更新**（Version `f3831f6b`）。公開API（`/games/:gameId` / `/accuracy`）を含む。**「デプロイ済み」だけ書くとコードとの差が見えない** — 09-22 版のまま公開APIが404を返していたことに、URL変更の確認で初めて気づいた。**次に上げたらこの行を更新する** |
 | Workers Secret | `INGEST_TOKEN` / `FINALIZE_TOKEN` 設定済み |
 | GitHub Secret | `INGEST_TOKEN` 設定済み |
 | GitHub Variables | `API_BASE_URL` / `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` 設定済み |
 | 稼働しているワークフロー | `ci` / `parser-canary`（日次）/ `backfill`（手動）。**日次・当日・月次は未実装** |
+| 公開APIの応答 | `/accuracy` は 200 で空の集計（**予測が0件**。工程9が未着手）。`/games/:gameId` は404、不正なIDは400 |
 
 ### 取り込み済みシーズン
 
@@ -160,6 +162,9 @@ Elo には結果を渡せる**。しかし1試合ぶんの損失は小さく（5
 - **1シーズンの D1 書き込みは約65,800行 / 1試合 118.6行**（設計の見積り26,500行は外れていた）。上限はシーズン数ではなく行数（詳細設計 4.8）
 - 公式サイトから 429/503 を受けたら、クライアントがそのUTC日の取得を自動停止する。**朝（09:00 JST）まで待つ**
 - D1 は `PRAGMA foreign_keys=OFF` を無視する。**データが入ったままでは参照されているテーブルを作り直せない**
+- **workers.dev のサブドメインを変えると旧URLは NXDOMAIN になる**（リダイレクトされない）。
+  `API_BASE_URL` の Variable と `docs/STATUS.md` を同時に直す。新URLの TLS 証明書は
+  変更直後は出ておらず、`sslv3 alert handshake failure` になる（数分〜数十分で解消する）
 - **日程の行は全部が `<a>` ではない。** 中止・延期の行はリンクを持たず、状態欄が
   `<script>` だけの行もある（2018-19 の CS）。1件で**シーズン全体が落ちた**。詳細設計 4.4
 - 公式サイトは**たまに 502 を返す**（`ResponseError`）。2018-19 では555試合中11件。**1試合の失敗ではジョブを止めず、飛ばして続ける**（連続3件で中止）。再実行で拾う

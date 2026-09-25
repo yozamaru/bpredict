@@ -450,10 +450,18 @@ def test_http_failure_is_not_retried_or_redirected(tmp_path, status):
     transport = FakeTransport(clock, policy_responses() + [response])
     client = make_client(tmp_path / "state.json", clock, transport)
     client.verify_policy()
-    with pytest.raises(ResponseError):
+    with pytest.raises(ResponseError) as error:
         client.get(GAME_URL)
     assert len(transport.calls) == 3
     assert response.body.closed
+    # **ステータスの数値を出す。** 伏せていたため、実サイトが非200を返したときに
+    # 403 なのか 500 なのかが分からず、切り分けに追加のリクエストが必要になった
+    message = str(error.value)
+    assert str(status) in message
+    # URL・Location ヘッダ・本文は出さない（絶対ルール4）
+    assert "evil.test" not in message
+    assert "bleague" not in message
+    assert GAME_URL not in message
 
 
 def test_default_transport_retains_http_status_and_disables_redirects(monkeypatch):

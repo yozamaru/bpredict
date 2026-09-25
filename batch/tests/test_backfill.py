@@ -14,7 +14,7 @@ import pytest
 from batch.jobs import backfill
 from batch.loader.api import InternalApi, LoaderError, Response
 from batch.loader.payload import series_numbers, spectator_restricted
-from batch.scraper.client import ScrapingStopped
+from batch.scraper.client import PolicyError, ResponseError, ScrapingStopped
 from batch.tests.fixtures.boxscore import boxscore_data, page
 from batch.tests.test_schedule_parser import body, game_html
 
@@ -212,6 +212,39 @@ def test_schedule_parse_failure_keeps_its_own_message() -> None:
     assert api.posted[-1][1]["status"] == "PARTIAL"
 
 
+def test_one_failed_fetch_does_not_stop_the_season() -> None:
+    """**1試合の取得失敗でシーズンを落とさない**（基本設計 4.3）。
+
+    公式サイトはたまに非200を返す（2026-09-25 までに4回）。捕まえていなかったため、
+    300試合目で1回起きればその日の書き込み枠ごと失われる状態だった。
+    """
+    responses = schedule_responses("101", "102")
+    responses["ScheduleKey=101"] = ResponseError(
+        "The server returned an unsupported HTTP status: 500.")
+    result, scraper, _ = run(responses)
+
+    assert result.status == "SUCCESS"
+    assert result.ingested == 1, "2試合目は取りに行く"
+    assert result.skipped_invalid == 1
+    assert any("ScheduleKey=102" in url for url in scraper.requested)
+    game_id, kind, message = result.skipped[0]
+    assert (game_id, kind) == ("101", "ResponseError")
+    assert "500" in message
+
+
+def test_three_consecutive_fetch_failures_abort() -> None:
+    """非200が続くのは遮断の疑い。**500回叩き続けない**（絶対ルール6）。"""
+    responses = schedule_responses("101", "102", "103", "104")
+    for game_id in ("101", "102", "103"):
+        responses[f"ScheduleKey={game_id}"] = ResponseError(
+            "The server returned an unsupported HTTP status: 403.")
+    result, scraper, _ = run(responses)
+
+    assert result.status == "PARTIAL"
+    assert result.ingested == 0
+    assert not any("ScheduleKey=104" in url for url in scraper.requested), "4件目は取りに行かない"
+
+
 def test_three_consecutive_parse_errors_abort() -> None:
     """パース失敗が連続3件でジョブを中止する（構造変更の疑い）。"""
     responses = schedule_responses("101", "102", "103", "104")
@@ -314,6 +347,40 @@ def test_loader_error_message_reaches_stdout(monkeypatch, capsys, tmp_path: Path
     err = capsys.readouterr().err
     assert "LoaderError" in err
     assert "500" in err and "games/ingested" in err
+
+
+def test_scraper_error_message_reaches_stdout(monkeypatch, capsys, tmp_path: Path) -> None:
+    """`ScraperError` の**メッセージ**も出すこと。
+
+    `ResponseError` が型名だけで出ていたため、実サイトが非200を返したときに
+    ステータスの値が分からなかった（2026-09-25 の 2018-19）。この例外系は設計上
+    URL・応答本文・元の通信例外を含まない（`batch/scraper/client.py` の
+    `ScraperError` の定義）。
+    """
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise ResponseError("The server returned an unsupported HTTP status: 403.")
+
+    monkeypatch.setattr(backfill, "run", boom)
+    _job_env(monkeypatch, tmp_path)
+
+    assert backfill.main(["--season", SEASON]) == 1
+    err = capsys.readouterr().err
+    assert "ResponseError" in err
+    assert "403" in err
+
+
+def test_policy_error_keeps_the_operator_facing_wording(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    """規約・robots の変更は**運営者向けの文言**で出す（`ScraperError` の一種だが別扱い）。"""
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise PolicyError("terms changed")
+
+    monkeypatch.setattr(backfill, "run", boom)
+    _job_env(monkeypatch, tmp_path)
+
+    assert backfill.main(["--season", SEASON]) == 1
+    assert "robots / 利用規約" in capsys.readouterr().err
 
 
 def test_unexpected_exception_prints_only_the_type(monkeypatch, capsys, tmp_path: Path) -> None:

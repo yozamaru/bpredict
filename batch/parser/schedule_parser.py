@@ -65,19 +65,19 @@ class SchedulePage:
     games: tuple[ScheduleGame, ...]
     next_index: int | None
     last_date: str | None
-    #: その年度のクラブ一覧にない相手の行数（オールスター・国際試合など）
-    skipped: int = 0
-    #: **日付が決まらなかった行数。別に数える** — 見出しにも行にも日付がない行で、
-    #: クラブ一覧にない相手とは原因がまったく違う。混ぜると出力から区別できず、
-    #: 2020-21 で128件が「非リーグ戦」として報告されて原因の切り分けに再取得を
-    #: 要した（`unresolved` を別に数えるのと同じ理由）
+    #: **日付が決まらなかった行数。理由ごとに別に数える** — 見出しにも行にも日付が
+    #: ない行。2020-21 では128件が「非リーグ戦」に混ざって報告され、原因の切り分けに
+    #: 再取得を要した（`unresolved` を別に数えるのと同じ理由）
     undated: int = 0
     #: 状態がサーバ側に書かれていないため飛ばした行数。**別に数える** —
     #: 非リーグ戦と混ぜると、どちらが起きたのか出力から分からない
     unresolved: int = 0
-    #: クラブ一覧と照合できなかった名前（重複を除く）。**件数だけでは調査できない** —
-    #: 2020-21 で128件が落ちたとき、どのクラブかを知るために再取得を要した。
-    #: クラブ名は `club_seasons` に保存している事実であり、伏せる理由がない
+    #: クラブ選択肢と照合できなかった行の名前（重複を除き、出現順）。
+    #: **飛ばす理由ではない** — 行は略称のことがあり（2020-21 の `千葉J`）、
+    #: リーグ戦かどうかはボックススコアの `TeamID` で判定する（要件 5.3）。
+    #: ここに出るのは連戦番号の鍵が公式IDでない行であり、季中で表記が揺れると
+    #: 連戦番号が振り直るため、気づけるように返す。クラブ名は `club_seasons` に
+    #: 保存している事実であり、伏せる理由がない
     unmatched_clubs: tuple[str, ...] = ()
 
 
@@ -235,10 +235,6 @@ class _NoScheduleDate(Exception):
     """見出しも行も日付を持たない。取り込み対象外として飛ばす。"""
 
 
-class _NotALeagueGame(Exception):
-    """その年度のクラブ一覧にないチームの試合。取り込み対象外として飛ばす。"""
-
-
 class _UnresolvedState(Exception):
     """サーバが試合の状態を書いていない行。状態を推測せずに飛ばす。"""
 
@@ -327,11 +323,18 @@ def _team(node: _Node, side: str, clubs_by_name: Mapping[str, str]) -> tuple[str
     team = _one([child for child in node.descendants()
                  if child.has_class("team") and child.has_class(side)], "schedule team")
     name = _text(_one(_with_class(team, "team-name"), "schedule club name"))
+    if not name:
+        raise ParseError("schedule club name is empty")
     if name not in clubs_by_name:
-        # クラブ選択肢はその年度のリーグ所属クラブの正本である。ここにない相手は
-        # リーグ戦のカードではない（選抜チーム・海外クラブ・下位リーグ）。
-        # **改称は選択肢側も当該年度の名称になるため、取りこぼしにはならない。**
-        raise _NotALeagueGame(name)
+        # **ここで飛ばさない。** 行のクラブ名は略称のことがあり（2020-21 の
+        # `千葉J` / `横浜BC`）、選択肢の正式名称と一致しない。名前で絞ると
+        # **実在の試合を落とす**（実際に128試合が落ちた。詳細設計 4.4）。
+        # リーグ戦かどうかは、ボックススコアの `TeamID` が
+        # `club_source_ids` で解決できるかで判定する（要件 5.3）。
+        #
+        # 返す鍵は連戦番号（`series_game_no`）にしか使わない。そこが要求するのは
+        # 「同じクラブが同じ表記で現れる」ことだけで、正式名称である必要はない
+        return name, name
     return name, _identifier(clubs_by_name[name])
 
 
@@ -478,22 +481,16 @@ def parse_schedule(
     document = _Document("".join(topics))
     games: dict[str, ScheduleGame] = {}
     competition = "REGULAR" if event == 2 else "PLAYOFF"
-    skipped = 0
     undated = 0
     unresolved = 0
     unmatched: dict[str, None] = {}      # 出現順を保つ（set だと出力が実行ごとに変わる）
+    official_ids = set(clubs_by_name.values())
     for node in _schedule_nodes(document.root):
         if node.has_class("champion-box"):
             last_date = _heading_date(node, year)
             continue
         try:
             game = _parse_game(node, last_date, year, competition, clubs_by_name)
-        except _NotALeagueGame as unknown:
-            # その年度のクラブ一覧にない相手（選抜チーム・海外クラブ・下位リーグ）。
-            # **推測で埋めずに飛ばし、件数と名前を返す。**
-            skipped += 1
-            unmatched.setdefault(str(unknown), None)
-            continue
         except _NoScheduleDate:
             # 見出しにも行にも日付がない。**推測で埋めない**（絶対ルール1の隣にある
             # 「勝手な仕様補完をしない」）。理由が違うので別に数える
@@ -505,8 +502,12 @@ def parse_schedule(
         if game.game_id in games and games[game.game_id] != game:
             raise ParseError("conflicting duplicate schedule game")
         games[game.game_id] = game
-    if not games and skipped == 0 and undated == 0 and unresolved == 0:
+        # 鍵が公式IDでない行（= 選択肢と照合できなかった名前）を記録する
+        for key in (game.home_source_id, game.away_source_id):
+            if key not in official_ids:
+                unmatched.setdefault(key, None)
+    if not games and undated == 0 and unresolved == 0:
         # 行はあるのに1件も取れず、飛ばした覚えもない → 構造が変わった
         raise ParseError("nonempty schedule topics contain no game rows")
-    return SchedulePage(tuple(games.values()), next_index, last_date, skipped, undated,
+    return SchedulePage(tuple(games.values()), next_index, last_date, undated,
                         unresolved, tuple(unmatched))

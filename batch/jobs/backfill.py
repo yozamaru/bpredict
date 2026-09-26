@@ -32,6 +32,7 @@ from batch.parser.errors import (
     ParseError,
     ParseErrorStreak,
     ParseFailureTracker,
+    UnknownClubError,
     ValidationError,
 )
 from batch.parser.schedule_parser import ScheduleGame, parse_club_options, parse_schedule
@@ -117,8 +118,8 @@ def _schedule_pages(
             index=index,
         )
         yield from page.games
-        # 飛ばした行を黙って捨てない。**理由ごとに**集計して出力に出す
-        result.skipped_non_league += page.skipped
+        # 飛ばした行を黙って捨てない。**理由ごとに**集計して出力に出す。
+        # 非リーグ戦は日程では判定しない（行の名前は略称のことがある。要件 5.3）
         result.skipped_undated += page.undated
         result.skipped_unresolved += page.unresolved
         for name in page.unmatched_clubs:
@@ -194,6 +195,11 @@ def run(
         except ScrapingStopped:
             result.degrade("PARTIAL", "429/503 により取得区間を中止した")
             break
+        except UnknownClubError:
+            # **リーグ戦ではない**（選抜チーム・海外クラブ・下位リーグ）。
+            # データの欠陥ではないので `不正` に数えず、連続失敗にも入れない
+            result.skipped_non_league += 1
+            continue
         except LoaderError as error:
             # **D1 への書き込みが失敗したら、その場で止めて記録を残す。**
             # 主な原因は日次の書き込み枠（10万行）の枯渇で、1シーズンで66%を使う

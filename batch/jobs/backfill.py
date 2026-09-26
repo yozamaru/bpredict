@@ -68,6 +68,10 @@ class Result:
     #: **日付が決まらなかった行。非リーグ戦と混ぜない** — 原因がまったく違う。
     #: 2020-21 で128件が「非リーグ戦」に混ざり、切り分けに再取得を要した
     skipped_undated: int = 0
+    #: クラブ一覧に無かった名前（出現順）と、その年度の一覧の件数。
+    #: **件数だけでは調査できない**（詳細設計 4.4）
+    unmatched_clubs: list[str] = field(default_factory=list)
+    club_options: int = 0
     #: 状態がサーバ側に書かれていない行（2018-19 CS の不要になった第3戦）。
     #: **非リーグ戦と混ぜない** — 混ぜると出力からどちらが起きたか分からない
     skipped_unresolved: int = 0
@@ -117,6 +121,9 @@ def _schedule_pages(
         result.skipped_non_league += page.skipped
         result.skipped_undated += page.undated
         result.skipped_unresolved += page.unresolved
+        for name in page.unmatched_clubs:
+            if name not in result.unmatched_clubs:
+                result.unmatched_clubs.append(name)
         previous_date = page.last_date
         if page.next_index is None:
             return
@@ -144,6 +151,8 @@ def run(
     collected: list[tuple[ScheduleGame, int]] = []
     try:
         clubs_by_name = parse_club_options(client.get(schedule_html_url(year)))
+        # その年度のクラブ一覧の件数を出す。**20クラブのはずが18なら、ここで分かる**
+        result.club_options = len(clubs_by_name)
         seen: set[str] = set()
         for event in EVENTS:
             for game in _schedule_pages(client, year, event, clubs_by_name, result):
@@ -337,7 +346,12 @@ def main(argv: list[str] | None = None) -> int:
         f" 非リーグ戦={result.skipped_non_league}"
         f" 日付不明={result.skipped_undated}"
         f" 状態不明={result.skipped_unresolved}"
+        f" クラブ一覧={result.club_options}"
     )
+    if result.unmatched_clubs:
+        # **どのクラブが照合できなかったかを出す。** 件数だけでは、選抜チームが
+        # 混ざったのか実在のクラブを取りこぼしたのかが区別できない
+        print(f"  - クラブ一覧にない相手: {' / '.join(result.unmatched_clubs)}")
     for note in result.notes:
         print(f"  - {note}")
     # **スキップした試合は1行1件で出す。** 件数だけでは、どの試合がなぜ落ちたかを

@@ -297,6 +297,9 @@ def test_skip_reasons_are_counted_separately():
     )
     assert [game.game_id for game in page.games] == ["game-real"]
     assert (page.skipped, page.undated) == (1, 1)
+    # **どのクラブが照合できなかったかまで返す。** 件数だけでは、選抜チームが
+    # 混ざったのか実在のクラブを取りこぼしたのかが区別できない
+    assert page.unmatched_clubs == ("別の架空クラブ",)
 
 
 def stage_row(game_id: str = "game-cs-1", *, day: str = "05/13 (土)", clock: str = "16:05") -> str:

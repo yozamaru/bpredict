@@ -457,6 +457,8 @@ def test_summary_line_counts_each_skip_reason_separately(
         result.skipped_non_league = 2
         result.skipped_undated = 128
         result.skipped_unresolved = 26
+        result.club_options = 20
+        result.unmatched_clubs = ["架空クラブA", "架空クラブB"]
         return result
 
     monkeypatch.setattr(backfill, "run", fake_run)
@@ -467,3 +469,6 @@ def test_summary_line_counts_each_skip_reason_separately(
     assert "非リーグ戦=2" in out
     assert "日付不明=128" in out
     assert "状態不明=26" in out
+    # 一覧の件数と、照合できなかった名前まで出す（20クラブのはずが18なら分かる）
+    assert "クラブ一覧=20" in out
+    assert "架空クラブA / 架空クラブB" in out

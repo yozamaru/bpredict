@@ -439,3 +439,31 @@ def test_dry_run_posts_nothing(tmp_path: Path) -> None:
     assert result.ingested == 1
     assert [path for path, _ in api.skipped] == ["games", "stats", "log"]
     assert datetime.now(UTC).tzinfo is UTC
+
+
+def test_summary_line_counts_each_skip_reason_separately(
+    monkeypatch, capsys, tmp_path: Path,
+) -> None:
+    """**要約行に理由ごとの件数を出す。**
+
+    運用者がこのジョブの結果を見る窓はこの1行しかない。2020-21 の取り込みで
+    「非リーグ戦=128」とだけ出たが、実際には「クラブ一覧にない相手」と
+    「日付が決まらない行」が混ざっており、どちらが起きたのか出力から分からず、
+    切り分けに実サイトへの再取得を要した。
+    """
+    def fake_run(*_args: object, **_kwargs: object) -> backfill.Result:
+        result = backfill.Result()
+        result.ingested = 469
+        result.skipped_non_league = 2
+        result.skipped_undated = 128
+        result.skipped_unresolved = 26
+        return result
+
+    monkeypatch.setattr(backfill, "run", fake_run)
+    _job_env(monkeypatch, tmp_path)
+
+    assert backfill.main(["--season", SEASON]) == 0
+    out = capsys.readouterr().out
+    assert "非リーグ戦=2" in out
+    assert "日付不明=128" in out
+    assert "状態不明=26" in out

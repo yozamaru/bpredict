@@ -223,7 +223,7 @@ def test_rows_without_a_date_are_skipped_not_guessed():
     """
     page = parse_schedule(body(game_html()), year=2026, event=2, clubs_by_name=CLUBS)
     assert page.games == ()
-    assert page.skipped == 1
+    assert page.undated == 1
 
 
 @pytest.mark.parametrize("clock", ["24:00", "19:60"])
@@ -262,7 +262,12 @@ def test_unknown_club_is_skipped_not_guessed():
 
 
 def test_non_league_block_is_skipped_but_real_games_are_kept():
-    """非リーグ戦の区画を飛ばしても、同じページの実試合は取り込むこと。"""
+    """非リーグ戦の区画を飛ばしても、同じページの実試合は取り込むこと。
+
+    **この行が落ちる理由は `undated` である。** 区画の見出しがステージ名で、
+    行も日付を持たないため、クラブ一覧の照合まで到達しない。クラブ一覧の照合
+    そのものは `test_unknown_club_is_skipped_not_guessed` が見る。
+    """
     special = ('<div class="champion-box box-container">'
                '<span class="title">オールスター</span></div>')
     page = parse_schedule(
@@ -270,7 +275,28 @@ def test_non_league_block_is_skipped_but_real_games_are_kept():
         year=2026, event=2, clubs_by_name=CLUBS,
     )
     assert [game.game_id for game in page.games] == ["game-real"]
-    assert page.skipped == 1
+    assert page.undated == 1
+
+
+def test_skip_reasons_are_counted_separately():
+    """**飛ばした理由を1つの counter に混ぜない。**
+
+    2020-21 の取り込みで128件が「非リーグ戦」として報告されたが、実際にどちらの
+    理由かは出力から区別できず、切り分けに実サイトへの再取得を要した
+    （`unresolved` を別に数えるのと同じ誤り）。
+    """
+    special = ('<div class="champion-box box-container">'
+               '<span class="title">オールスター</span></div>')
+    page = parse_schedule(
+        body(HEADER,
+             game_html("game-real"),                       # 取り込む
+             game_html("game-other", name="別の架空クラブ"),  # クラブ一覧にない
+             special,
+             game_html("game-undated")),                   # 日付が決まらない
+        year=2026, event=2, clubs_by_name=CLUBS,
+    )
+    assert [game.game_id for game in page.games] == ["game-real"]
+    assert (page.skipped, page.undated) == (1, 1)
 
 
 def stage_row(game_id: str = "game-cs-1", *, day: str = "05/13 (土)", clock: str = "16:05") -> str:
@@ -331,7 +357,7 @@ def test_row_without_any_date_is_skipped():
     page = parse_schedule(body(STAGE_HEADING, game_html(), index=None),
                           year=2026, event=2, clubs_by_name=CLUBS)
     assert page.games == ()
-    assert page.skipped == 1
+    assert page.undated == 1
 
 
 def test_terminal_page_with_games_is_accepted():

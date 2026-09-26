@@ -27,6 +27,10 @@ node_modules/
 api/worker-configuration.d.ts
 .next/
 out/
+# `wrangler pages` が Next.js を検出すると `opennextjs-cloudflare build` を走らせて
+# これを作る。**この構成は採用していない**（ISR が R2/KV を要求し、絶対ルール5に
+# 触れる。要件 7章）。残すと ESLint が生成物を lint して落ちる
+.open-next/
 __pycache__/
 *.pyc
 .venv/

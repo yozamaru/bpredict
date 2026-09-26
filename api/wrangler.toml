@@ -6,6 +6,20 @@ main = "src/index.ts"
 compatibility_date = "2026-08-22"
 compatibility_flags = ["nodejs_compat"]
 
+# **サイトと同じオリジンに置く**（詳細設計 3.5）。`/api/*` だけを Worker が受け、
+# 残り（画面・静的JSON）は Pages が返す。CORS も CSP の追加設定も要らなくなる。
+#
+# `*.workers.dev` は残るが正本ではない。ゾーンを持たないため WAF もレートリミットも
+# キャッシュルールも効かない（要件 4.1）。
+# **`workers.dev` を残す。** `routes` を足すと既定で無効化され、旧URLが 404 になる。
+# 独自ドメインの DNS が立つまでの経路がなくなり、バッチ（`API_BASE_URL`）も落ちる。
+# 正本は独自ドメイン側だが、退避路として残す（要件 4.1）。
+workers_dev = true
+
+[[routes]]
+pattern = "bpredict.naomaru.app/api/*"
+zone_name = "naomaru.app"
+
 # D1_DATABASE_ID は機密ではない（操作には API トークンが別途必要）ため直書きしてよい。
 # `d1_databases` の必須フィールドは環境変数注入が効かない（基本設計 7.4）。
 #

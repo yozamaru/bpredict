@@ -2,3 +2,14 @@ out/
 .next/
 next-env.d.ts
 *.tsbuildinfo
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+
+.env*
+!.env.example

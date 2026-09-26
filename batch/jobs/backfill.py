@@ -65,6 +65,9 @@ class Result:
     skipped_invalid: int = 0
     #: 日程に混ざる非リーグ戦（オールスター・国際試合）。件数を必ず表に出す
     skipped_non_league: int = 0
+    #: **日付が決まらなかった行。非リーグ戦と混ぜない** — 原因がまったく違う。
+    #: 2020-21 で128件が「非リーグ戦」に混ざり、切り分けに再取得を要した
+    skipped_undated: int = 0
     #: 状態がサーバ側に書かれていない行（2018-19 CS の不要になった第3戦）。
     #: **非リーグ戦と混ぜない** — 混ぜると出力からどちらが起きたか分からない
     skipped_unresolved: int = 0
@@ -110,8 +113,9 @@ def _schedule_pages(
             index=index,
         )
         yield from page.games
-        # 非リーグ戦を黙って捨てない。件数を集計して出力に出す
+        # 飛ばした行を黙って捨てない。**理由ごとに**集計して出力に出す
         result.skipped_non_league += page.skipped
+        result.skipped_undated += page.undated
         result.skipped_unresolved += page.unresolved
         previous_date = page.last_date
         if page.next_index is None:
@@ -331,6 +335,7 @@ def main(argv: list[str] | None = None) -> int:
         f"backfill: {result.status} 取り込み={result.ingested} 既取得={result.skipped_existing}"
         f" 未実施={result.skipped_unfinished} 不正={result.skipped_invalid}"
         f" 非リーグ戦={result.skipped_non_league}"
+        f" 日付不明={result.skipped_undated}"
         f" 状態不明={result.skipped_unresolved}"
     )
     for note in result.notes:

@@ -65,8 +65,13 @@ class SchedulePage:
     games: tuple[ScheduleGame, ...]
     next_index: int | None
     last_date: str | None
-    #: 取り込み対象外として飛ばした行数（オールスター・国際試合など）
+    #: その年度のクラブ一覧にない相手の行数（オールスター・国際試合など）
     skipped: int = 0
+    #: **日付が決まらなかった行数。別に数える** — 見出しにも行にも日付がない行で、
+    #: クラブ一覧にない相手とは原因がまったく違う。混ぜると出力から区別できず、
+    #: 2020-21 で128件が「非リーグ戦」として報告されて原因の切り分けに再取得を
+    #: 要した（`unresolved` を別に数えるのと同じ理由）
+    undated: int = 0
     #: 状態がサーバ側に書かれていないため飛ばした行数。**別に数える** —
     #: 非リーグ戦と混ぜると、どちらが起きたのか出力から分からない
     unresolved: int = 0
@@ -470,6 +475,7 @@ def parse_schedule(
     games: dict[str, ScheduleGame] = {}
     competition = "REGULAR" if event == 2 else "PLAYOFF"
     skipped = 0
+    undated = 0
     unresolved = 0
     for node in _schedule_nodes(document.root):
         if node.has_class("champion-box"):
@@ -477,10 +483,15 @@ def parse_schedule(
             continue
         try:
             game = _parse_game(node, last_date, year, competition, clubs_by_name)
-        except (_NotALeagueGame, _NoScheduleDate):
-            # その年度のクラブ一覧にない相手、または日付が決まらない行。
+        except _NotALeagueGame:
+            # その年度のクラブ一覧にない相手（選抜チーム・海外クラブ・下位リーグ）。
             # **推測で埋めずに飛ばし、件数を返す。**
             skipped += 1
+            continue
+        except _NoScheduleDate:
+            # 見出しにも行にも日付がない。**推測で埋めない**（絶対ルール1の隣にある
+            # 「勝手な仕様補完をしない」）。理由が違うので別に数える
+            undated += 1
             continue
         except _UnresolvedState:
             unresolved += 1
@@ -488,7 +499,8 @@ def parse_schedule(
         if game.game_id in games and games[game.game_id] != game:
             raise ParseError("conflicting duplicate schedule game")
         games[game.game_id] = game
-    if not games and skipped == 0 and unresolved == 0:
+    if not games and skipped == 0 and undated == 0 and unresolved == 0:
         # 行はあるのに1件も取れず、飛ばした覚えもない → 構造が変わった
         raise ParseError("nonempty schedule topics contain no game rows")
-    return SchedulePage(tuple(games.values()), next_index, last_date, skipped, unresolved)
+    return SchedulePage(tuple(games.values()), next_index, last_date, skipped, undated,
+                        unresolved)

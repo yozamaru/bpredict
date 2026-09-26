@@ -57,7 +57,9 @@
 | Phase 1 の前 | 正式名称の確定と商標調査（U-01 / P0-8） |
 | Phase 1 の前 | 法律相談（要件 4.5.8 の論点1〜3） |
 | Phase 1 の前 | B.LEAGUE への事前連絡（要件 4.5.6） |
-| Phase 1 の前 | 独自ドメインの取得（WAF レートリミットに必要） |
+| **実データを載せる前** | **`/about` の連絡先を決めて埋める。** いま「準備中です」のまま本番で見えている。要件 F-13（必須）で、選手の氏名をDB化している以上は開示・訂正・利用停止の請求を受ける口が要る。形式（メール / フォーム / GitHub issues）は運営者の判断。**埋まるまでスクレイパの User-Agent を `/about` に向けない**（いまの GitHub issues の URL のほうが連絡手段として機能する） |
+| **いますぐ（任意）** | **WAF レートリミット**を naomaru.app ゾーンに1本。`(http.request.uri.path contains "/api/v1/") and (not cf.bot_management.verified_bot)` / 10秒あたり30 / ブロック10秒（詳細設計 3.5） |
+| ~~Phase 1 の前~~ | ~~独自ドメインの取得~~ **完了**（2026-09-26。`naomaru.app` を取得し `bpredict.naomaru.app` を接続） |
 
 ## backfill は AI が実行する（2026-09-25 から）
 

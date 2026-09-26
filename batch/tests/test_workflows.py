@@ -215,3 +215,20 @@ def test_inputs_are_not_interpolated_into_run(path):
     assert blocks, f"{path.name}: run が1つも見つからない（検査が空振りしている）"
     for block in blocks:
         assert "inputs." not in block, f"{path.name}: run の中で inputs を展開している"
+
+
+def test_dry_run_writes_nothing_to_d1():
+    """**`dry_run` は D1 に1行も書かない。**
+
+    入力の説明は「取得はするが D1 には書かない」である。ところが `seed_master` の
+    ステップが無条件に走っており、診断のたびにマスタを書いて当日の書き込み枠を
+    削っていた（1回あたり約200行。2026-09-26 に400行を無駄にした）。
+
+    枠は00:00 UTC にしか戻らないため、診断で削ると**その日に取り込める試合数が
+    そのぶん減る**（詳細設計 4.8）。
+    """
+    body = (WORKFLOW_DIR / "backfill.yml").read_text(encoding="utf-8")
+    step = re.search(r"^(\s+)- name: マスタの投入.*\n((?:\1  .*\n)+)", body, re.MULTILINE)
+    assert step, "backfill.yml: マスタ投入のステップが見つからない"
+    assert "inputs.dry_run" in step[2], \
+        "backfill.yml: マスタ投入が dry_run で守られていない（D1 に書いてしまう）"

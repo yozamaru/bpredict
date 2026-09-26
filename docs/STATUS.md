@@ -85,8 +85,10 @@
 |---|---|
 | D1 `bpredict` | `6af3adc9-3f7f-4b10-b374-efde48e1339a` / APAC(NRT) / マイグレーション `0010` まで適用済み |
 | D1 のデータ | マスタ ＋ **2016-17 / 2017-18 / 2018-19 の試合と 2019-20 の210試合**（`games` 1,874）。スタッツ欠けは0件 |
+| **公開URL** | **`https://bpredict.naomaru.app`**（2026-09-26 に独自ドメインを接続）。`/api/*` は Worker、残りは Pages（同一オリジン。詳細設計 3.5） |
+| Pages | プロジェクト `bpredict` / **直接アップロード**（Git 連携ではない。方式は作成後に変更できない）。`bpredict.pages.dev` も生きている。デプロイは `npx wrangler pages deploy web/out --project-name bpredict --branch main` |
 | Worker | **`https://bpredict-api.naomaru.workers.dev`**（2026-09-26 に workers.dev のサブドメインを `bpredict` → `naomaru` へ変更）。毎時の Cron Trigger（freeze）が稼働 |
-| Worker のデプロイ版 | **2026-09-26 に更新**（Version `b5f20bad`）。公開API6本（`/games/:gameId` / `/accuracy` / `/games?date=` / `/results?date=` / `/teams` / `/teams/:slug`）を含む。**「デプロイ済み」だけ書くとコードとの差が見えない** — 09-22 版のまま公開APIが404を返していたことに、URL変更の確認で初めて気づいた。**次に上げたらこの行を更新する** |
+| Worker のデプロイ版 | **2026-09-26 に更新**（Version `a4deb61c`。独自ドメインのルートを追加）。公開API6本（`/games/:gameId` / `/accuracy` / `/games?date=` / `/results?date=` / `/teams` / `/teams/:slug`）を含む。**「デプロイ済み」だけ書くとコードとの差が見えない** — 09-22 版のまま公開APIが404を返していたことに、URL変更の確認で初めて気づいた。**次に上げたらこの行を更新する** |
 | Workers Secret | `INGEST_TOKEN` / `FINALIZE_TOKEN` 設定済み |
 | GitHub Secret | `INGEST_TOKEN` 設定済み |
 | GitHub Variables | `API_BASE_URL` / `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` 設定済み |

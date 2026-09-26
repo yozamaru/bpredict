@@ -75,6 +75,10 @@ class SchedulePage:
     #: 状態がサーバ側に書かれていないため飛ばした行数。**別に数える** —
     #: 非リーグ戦と混ぜると、どちらが起きたのか出力から分からない
     unresolved: int = 0
+    #: クラブ一覧と照合できなかった名前（重複を除く）。**件数だけでは調査できない** —
+    #: 2020-21 で128件が落ちたとき、どのクラブかを知るために再取得を要した。
+    #: クラブ名は `club_seasons` に保存している事実であり、伏せる理由がない
+    unmatched_clubs: tuple[str, ...] = ()
 
 
 @dataclass
@@ -477,16 +481,18 @@ def parse_schedule(
     skipped = 0
     undated = 0
     unresolved = 0
+    unmatched: dict[str, None] = {}      # 出現順を保つ（set だと出力が実行ごとに変わる）
     for node in _schedule_nodes(document.root):
         if node.has_class("champion-box"):
             last_date = _heading_date(node, year)
             continue
         try:
             game = _parse_game(node, last_date, year, competition, clubs_by_name)
-        except _NotALeagueGame:
+        except _NotALeagueGame as unknown:
             # その年度のクラブ一覧にない相手（選抜チーム・海外クラブ・下位リーグ）。
-            # **推測で埋めずに飛ばし、件数を返す。**
+            # **推測で埋めずに飛ばし、件数と名前を返す。**
             skipped += 1
+            unmatched.setdefault(str(unknown), None)
             continue
         except _NoScheduleDate:
             # 見出しにも行にも日付がない。**推測で埋めない**（絶対ルール1の隣にある
@@ -503,4 +509,4 @@ def parse_schedule(
         # 行はあるのに1件も取れず、飛ばした覚えもない → 構造が変わった
         raise ParseError("nonempty schedule topics contain no game rows")
     return SchedulePage(tuple(games.values()), next_index, last_date, skipped, undated,
-                        unresolved)
+                        unresolved, tuple(unmatched))

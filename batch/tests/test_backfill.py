@@ -14,6 +14,7 @@ import pytest
 from batch.jobs import backfill
 from batch.loader.api import InternalApi, LoaderError, Response
 from batch.loader.payload import series_numbers, spectator_restricted
+from batch.parser.extract import extract_embedded_json
 from batch.scraper.client import PolicyError, ResponseError, ScrapingStopped
 from batch.tests.fixtures.boxscore import boxscore_data, page
 from batch.tests.test_schedule_parser import body, game_html
@@ -307,6 +308,27 @@ def test_a_single_invalid_game_does_not_stop_the_job() -> None:
     assert message
     # 例外オブジェクトを残さない（URL や本文が混ざらない。絶対ルール4）
     assert "http" not in message.lower()
+
+
+def test_non_league_game_is_decided_by_team_id_not_by_name() -> None:
+    """**リーグ戦かどうかは `TeamID` で判定する**（要件 5.3 / 詳細設計 4.4）。
+
+    行のクラブ名は略称のことがあり（2020-21 の `千葉J` / `横浜BC`）、名前で絞ると
+    実在の試合を落とす（実際に128試合が落ちた）。`club_source_ids` で解決できない
+    `TeamID` は **`不正` ではなく `非リーグ戦`** に数え、連続失敗にも入れない。
+    """
+    responses = schedule_responses("101", "102")
+    allstar: dict[str, Any] = extract_embedded_json(responses["ScheduleKey=101"])
+    game: dict[str, Any] = allstar["Game"]
+    game["HomeTeamID"] = "999"                 # クラブ対応表にない（選抜チーム）
+    responses["ScheduleKey=101"] = page(allstar)
+    result, _, _ = run(responses)
+
+    assert result.status == "SUCCESS"
+    assert result.skipped_non_league == 1
+    assert result.skipped_invalid == 0         # データの欠陥ではない
+    assert result.ingested == 1
+    assert result.skipped == []                # 調査対象として並べない
 
 
 def test_limit_stops_after_the_requested_count() -> None:

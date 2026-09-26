@@ -9,6 +9,7 @@ from batch.parser.errors import (
     ParseError,
     ParseErrorStreak,
     ParseFailureTracker,
+    UnknownClubError,
     ValidationError,
 )
 from batch.parser.extract import extract_embedded_json
@@ -179,8 +180,23 @@ def test_invalid_row_cardinality(mutation):
         parse(data)
 
 
+def test_unknown_team_id_is_not_a_data_defect():
+    """`club_source_ids` に無い `TeamID` は **`不正` ではなく `非リーグ戦`**。
+
+    リーグ戦の絞り込みはクラブ名ではなくこの判定で行う（要件 5.3 / 詳細設計 4.4）。
+    行のクラブ名は略称のことがあり（2020-21 の `千葉J` / `横浜BC`）、名前で絞ると
+    **実在の試合を落とす**（実際に128試合が落ちた）。
+    """
+    data = boxscore_data()
+    data["Game"]["HomeTeamID"] = "unknown"
+    with pytest.raises(UnknownClubError):
+        parse(data)
+    # 連続失敗の打ち切りに巻き込まないため、パース失敗とは別の型にする
+    assert not isinstance(UnknownClubError("x"), ParseError)
+
+
 @pytest.mark.parametrize("place,key,value", [
-    ("game", "HomeTeamID", "unknown"), ("game", "AwayTeamID", 101),
+    ("game", "AwayTeamID", 101),
     ("row", "TeamID", "102"), ("row", "ScheduleKey", "other-game"),
     ("game", "ScheduleKey", "other-game"), ("game", "Event", 5),
     ("game", "GameEndTime", "1700000000"), ("game", "Year", 2016),

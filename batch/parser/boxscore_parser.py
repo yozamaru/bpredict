@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-from .errors import DataUnavailable, ParseError, ValidationError
+from .errors import DataUnavailable, ParseError, UnknownClubError, ValidationError
 from .extract import extract_embedded_json
 from .fields import COUNT_FIELDS
 from .models import BoxScore, Counts, GameRecord, PlayerStats, TeamStats
@@ -138,7 +138,12 @@ def parse_boxscore(
     if finished < tipoff:
         raise ValidationError("終了時刻が開始時刻より前")
     home_id, away_id = (source_id(required(game, f"{side}TeamID")) for side in ("Home", "Away"))
-    if home_id == away_id or home_id not in clubs or away_id not in clubs:
+    if home_id not in clubs or away_id not in clubs:
+        # **クラブ対応表に無い = リーグ戦ではない**（選抜チーム・海外クラブ・下位
+        # リーグ）。データの欠陥ではないので `ValidationError` と区別する
+        # （要件 5.3 の絞り込み3段目。詳細設計 4.4）
+        raise UnknownClubError("club_source_ids で解決できない TeamID")
+    if home_id == away_id:
         raise ValidationError("対戦クラブを解決できない")
     home_club, away_club = clubs[home_id], clubs[away_id]
     if not home_club or not away_club or home_club == away_club:

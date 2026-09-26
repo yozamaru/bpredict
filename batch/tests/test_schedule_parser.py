@@ -248,17 +248,23 @@ def test_invalid_scores_and_status_consistency(home, away, state, error):
                        year=2026, event=2, clubs_by_name=CLUBS)
 
 
-def test_unknown_club_is_skipped_not_guessed():
-    """その年度のクラブ一覧にない相手の試合は飛ばす（名前からIDを推測しない）。
+def test_club_not_in_the_options_is_kept_and_reported():
+    """**クラブ名で飛ばさない。** 行の名前は略称のことがある（要件 5.3 / 詳細設計 4.4）。
 
-    `event=2`（リーグ戦）に選抜チームや海外クラブが混ざる実データがある
-    （2016-17 の `B.BLACK` 対 `B.WHITE`、`川崎` 対 `安養KGC`）。
-    改称は選択肢側も当該年度の名称になるため、取りこぼしにはならない。
+    2020-21 の実データでは行が `千葉J` / `横浜BC`、選択肢が正式名称で一致せず、
+    名前で絞ったために**実在する128試合を落とした**。リーグ戦かどうかは
+    ボックススコアの `TeamID` が `club_source_ids` で解決できるかで判定する。
+
+    照合できなかった名前は返す — 連戦番号の鍵が公式IDでない行であり、季中で表記が
+    揺れると連戦番号が振り直るため、気づけるようにする。
     """
     page = parse_schedule(body(HEADER, game_html(name="別の架空クラブ")),
                           year=2026, event=2, clubs_by_name=CLUBS)
-    assert page.games == ()
-    assert page.skipped == 1
+    assert [game.game_id for game in page.games] == ["game-demo-1"]
+    # 鍵は「一致すれば公式ID、しなければ行の名前」
+    assert page.games[0].home_source_id == "別の架空クラブ"
+    assert page.games[0].away_source_id == "club-away"
+    assert page.unmatched_clubs == ("別の架空クラブ",)
 
 
 def test_non_league_block_is_skipped_but_real_games_are_kept():
@@ -290,15 +296,14 @@ def test_skip_reasons_are_counted_separately():
     page = parse_schedule(
         body(HEADER,
              game_html("game-real"),                       # 取り込む
-             game_html("game-other", name="別の架空クラブ"),  # クラブ一覧にない
+             game_html("game-other", name="別の架空クラブ"),  # 名前は一致しないが取り込む
              special,
              game_html("game-undated")),                   # 日付が決まらない
         year=2026, event=2, clubs_by_name=CLUBS,
     )
-    assert [game.game_id for game in page.games] == ["game-real"]
-    assert (page.skipped, page.undated) == (1, 1)
-    # **どのクラブが照合できなかったかまで返す。** 件数だけでは、選抜チームが
-    # 混ざったのか実在のクラブを取りこぼしたのかが区別できない
+    assert [game.game_id for game in page.games] == ["game-real", "game-other"]
+    assert page.undated == 1
+    # **どのクラブが照合できなかったかまで返す。** 連戦番号の鍵が公式IDでない
     assert page.unmatched_clubs == ("別の架空クラブ",)
 
 
@@ -338,7 +343,7 @@ def test_stage_block_takes_the_date_from_the_row():
     """
     page = parse_schedule(body(STAGE_HEADING, stage_row(), index=None),
                           year=2026, event=3, clubs_by_name=CLUBS, index=0)
-    assert page.skipped == 0
+    assert page.undated == 0
     assert len(page.games) == 1
     game = page.games[0]
     # 1〜8月はシーズン開始年の翌年
@@ -454,7 +459,7 @@ def test_cancelled_row_without_a_link_is_parsed():
     """
     page = parse_schedule(body(STAGE_HEADING, cancelled_stage_row(), index=None),
                           year=2026, event=3, clubs_by_name=CLUBS, index=0)
-    assert page.skipped == 0
+    assert page.undated == 0
     assert len(page.games) == 1
     game = page.games[0]
     assert game.status == "CANCELLED"
@@ -501,7 +506,7 @@ def test_row_with_no_server_rendered_outcome_is_skipped():
                           year=2026, event=3, clubs_by_name=CLUBS, index=0)
     assert page.games == ()
     assert page.unresolved == 1
-    assert page.skipped == 0, "非リーグ戦と混ぜない"
+    assert page.undated == 0, "日付不明と混ぜない"
 
 
 def test_script_only_state_is_not_read_as_the_state():

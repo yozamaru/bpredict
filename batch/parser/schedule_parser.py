@@ -385,6 +385,7 @@ def _parse_game(
     year: int,
     competition: str,
     clubs_by_name: Mapping[str, str],
+    heading_text: str = "",
 ) -> ScheduleGame:
     game_id = _identifier(node.attrs.get("id"))
     row = _one(_with_class(node, "data-game"), "schedule game row")
@@ -402,9 +403,20 @@ def _parse_game(
         # 判断できない。試合IDも得点も DB に保存している事実である
         scores = [_text(node)[:20] for side in ("home", "away")
                   for node in _with_class(row, f"{side}-score")]
+        # **区画の見出しとチーム名も出す。** 「何の試合か」を示す文字列はここにある
+        # （見出しは日付として読めないとき催し名が入る）。これが無いと、特殊な催しの
+        # 行なのか構造変更なのかを出力だけで判断できない
+        names = [
+            _text(label)[:40]
+            for side in ("home", "away")
+            for team in row.descendants()
+            if team.has_class("team") and team.has_class(side)
+            for label in _with_class(team, "team-name")
+        ]
         raise ParseError(
             f"unrecognized or live schedule game state: {state[:40]!r}"
-            f" (game_id={game_id} scores={scores})")
+            f" (game_id={game_id} scores={scores} teams={names}"
+            f" heading={heading_text[:60]!r})")
     status = _STATES[state]
     _check_row_link(row, game_id, status)
     game_date, tipoff_at = _row_schedule(row, year, heading_date)
@@ -496,13 +508,16 @@ def parse_schedule(
     undated = 0
     unresolved = 0
     unmatched: dict[str, None] = {}      # 出現順を保つ（set だと出力が実行ごとに変わる）
+    last_heading = ""
     official_ids = set(clubs_by_name.values())
     for node in _schedule_nodes(document.root):
         if node.has_class("champion-box"):
             last_date = _heading_date(node, year)
+            last_heading = _text(node)
             continue
         try:
-            game = _parse_game(node, last_date, year, competition, clubs_by_name)
+            game = _parse_game(node, last_date, year, competition, clubs_by_name,
+                               last_heading)
         except _NoScheduleDate:
             # 見出しにも行にも日付がない。**推測で埋めない**（絶対ルール1の隣にある
             # 「勝手な仕様補完をしない」）。理由が違うので別に数える

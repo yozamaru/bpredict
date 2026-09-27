@@ -63,7 +63,13 @@ class Result:
     ingested: int = 0
     skipped_existing: int = 0
     skipped_unfinished: int = 0
+    #: 値域・恒等式の違反。**データの欠陥である**
     skipped_invalid: int = 0
+    #: 取得できなかった試合（非200・通信失敗）。**`不正` と混ぜない** —
+    #: データの欠陥ではなく相手側の事情であり、**再実行で解消する**。
+    #: 2021-22 で 502 が10件出たとき `不正=8` と報告され、値域違反と区別が
+    #: つかなかった（詳細設計 4.4 の「理由ごとに数える」と同じ話）
+    skipped_unfetched: int = 0
     #: 日程に混ざる非リーグ戦（オールスター・国際試合）。件数を必ず表に出す
     skipped_non_league: int = 0
     #: **日付が決まらなかった行。非リーグ戦と混ぜない** — 原因がまったく違う。
@@ -233,7 +239,7 @@ def run(
             # **連続3件は中止する。** 4.3 は取得失敗に上限を定めていないが、
             # 非200が続くのは遮断の疑いであり、500回叩き続けるのは絶対ルール6に反する。
             # パース失敗と同じ `tracker` を使う（種類を問わず連続3件で止める）。
-            result.skipped_invalid += 1
+            result.skipped_unfetched += 1
             result.skip(game.game_id, error)
             try:
                 tracker.failure()
@@ -349,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"backfill: {result.status} 取り込み={result.ingested} 既取得={result.skipped_existing}"
         f" 未実施={result.skipped_unfinished} 不正={result.skipped_invalid}"
+        f" 取得失敗={result.skipped_unfetched}"
         f" 非リーグ戦={result.skipped_non_league}"
         f" 日付不明={result.skipped_undated}"
         f" 状態不明={result.skipped_unresolved}"

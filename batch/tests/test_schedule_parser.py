@@ -157,8 +157,11 @@ def test_explicit_postponed_cancelled_states(state, expected):
 
 @pytest.mark.parametrize("state", ["LIVE", "3Q", "unknown", "見どころ LIVE"])
 def test_unknown_or_live_state_never_becomes_scheduled_or_finished(state):
-    with pytest.raises(ParseError, match="state"):
+    with pytest.raises(ParseError, match="state") as raised:
         parse_schedule(body(HEADER, game_html(state=state)), year=2026, event=2, clubs_by_name=CLUBS)
+    # **値そのものを出す。** 対応表に足すかどうかの判断に要る。伏せると原因の特定に
+    # 実サイトへの再取得が必要になり、2022-23 で実際にそうなった（詳細設計 1.46）
+    assert state in str(raised.value)
 
 
 def test_empty_state_with_a_score_is_rejected():

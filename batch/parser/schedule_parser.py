@@ -396,7 +396,15 @@ def _parse_game(
         # 判断するにはこれが要る。伏せると原因の特定に実サイトへの再取得が必要に
         # なり、2022-23 で実際にそうなった（非200のステータスを出すようにしたのと
         # 同じ理由。詳細設計 1.27）。**本文でもURLでもトークンでもない**
-        raise ParseError(f"unrecognized or live schedule game state: {state[:40]!r}")
+        #
+        # **試合IDと得点欄も出す。** 状態が空のときは「得点欄に何かある」ことが
+        # 落ちた理由であり、その中身を見ないと構造変更なのか特殊な行なのかを
+        # 判断できない。試合IDも得点も DB に保存している事実である
+        scores = [_text(node)[:20] for side in ("home", "away")
+                  for node in _with_class(row, f"{side}-score")]
+        raise ParseError(
+            f"unrecognized or live schedule game state: {state[:40]!r}"
+            f" (game_id={game_id} scores={scores})")
     status = _STATES[state]
     _check_row_link(row, game_id, status)
     game_date, tipoff_at = _row_schedule(row, year, heading_date)

@@ -235,7 +235,10 @@ def test_one_failed_fetch_does_not_stop_the_season() -> None:
 
     assert result.status == "SUCCESS"
     assert result.ingested == 1, "2試合目は取りに行く"
-    assert result.skipped_invalid == 1
+    # **`不正`（データの欠陥）と混ぜない。** 取得失敗は相手側の事情であり、
+    # 再実行で解消する。2021-22 で 502 が10件出たとき `不正=8` と報告され、
+    # 値域違反と区別がつかなかった
+    assert (result.skipped_unfetched, result.skipped_invalid) == (1, 0)
     assert any("ScheduleKey=102" in url for url in scraper.requested)
     game_id, kind, message = result.skipped[0]
     assert (game_id, kind) == ("101", "ResponseError")
@@ -479,6 +482,7 @@ def test_summary_line_counts_each_skip_reason_separately(
         result.skipped_non_league = 2
         result.skipped_undated = 128
         result.skipped_unresolved = 26
+        result.skipped_unfetched = 8
         result.club_options = 20
         result.unmatched_clubs = ["架空クラブA", "架空クラブB"]
         return result
@@ -491,6 +495,7 @@ def test_summary_line_counts_each_skip_reason_separately(
     assert "非リーグ戦=2" in out
     assert "日付不明=128" in out
     assert "状態不明=26" in out
+    assert "取得失敗=8" in out
     # 一覧の件数と、照合できなかった名前まで出す（20クラブのはずが18なら分かる）
     assert "クラブ一覧=20" in out
     assert "架空クラブA / 架空クラブB" in out

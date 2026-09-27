@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from batch.jobs.seed_master import load_club_source_ids, load_seasons
+from batch.loader import exclusions
 from batch.loader.api import InternalApi, LoaderError
 from batch.loader.payload import SeasonRef, games_payload, series_numbers, stats_payload
 from batch.parser.boxscore_parser import parse_boxscore
@@ -35,7 +36,12 @@ from batch.parser.errors import (
     UnknownClubError,
     ValidationError,
 )
-from batch.parser.schedule_parser import ScheduleGame, parse_club_options, parse_schedule
+from batch.parser.schedule_parser import (
+    ExcludedGame,
+    ScheduleGame,
+    parse_club_options,
+    parse_schedule,
+)
 from batch.parser.terms import report_terms_change
 from batch.scraper.boxscore import boxscore_url
 from batch.scraper.client import (
@@ -75,6 +81,9 @@ class Result:
     #: **日付が決まらなかった行。非リーグ戦と混ぜない** — 原因がまったく違う。
     #: 2020-21 で128件が「非リーグ戦」に混ざり、切り分けに再取得を要した
     skipped_undated: int = 0
+    #: 学習データに取り込まない試合（不戦敗）。**件数だけでなく中身を残す** —
+    #: 後で「学習データに含めていない」と注釈するための一覧になる（要件 5.3）
+    excluded: list[ExcludedGame] = field(default_factory=list)
     #: クラブ一覧に無かった名前（出現順）と、その年度の一覧の件数。
     #: **件数だけでは調査できない**（詳細設計 4.4）
     unmatched_clubs: list[str] = field(default_factory=list)
@@ -128,6 +137,7 @@ def _schedule_pages(
         # 非リーグ戦は日程では判定しない（行の名前は略称のことがある。要件 5.3）
         result.skipped_undated += page.undated
         result.skipped_unresolved += page.unresolved
+        result.excluded.extend(page.excluded)
         for name in page.unmatched_clubs:
             if name not in result.unmatched_clubs:
                 result.unmatched_clubs.append(name)
@@ -331,6 +341,12 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
         )
         result = run(args.season, client=client, api=api, limit=args.limit)
+        if result.excluded and not args.dry_run:
+            # **一覧はリポジトリに残す。** 後で「学習データに含めていない」と
+            # 注釈するための唯一の出典になる（要件 5.3）。dry-run では書かない
+            exclusions.save(
+                exclusions.merge(exclusions.load(), result.excluded, season_id=args.season)
+            )
     except PolicyError:
         print("backfill: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
         return 1
@@ -359,6 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         f" 非リーグ戦={result.skipped_non_league}"
         f" 日付不明={result.skipped_undated}"
         f" 状態不明={result.skipped_unresolved}"
+        f" 除外={len(result.excluded)}"
         f" クラブ一覧={result.club_options}"
     )
     if result.unmatched_clubs:

@@ -61,6 +61,27 @@ class ScheduleGame:
 
 
 @dataclass(frozen=True)
+class ExcludedGame:
+    """学習データに取り込まない試合（要件 5.3）。
+
+    **不戦敗（B リーグ規約 第57条第1項）が該当する。** 公式は試合数に計上し
+    得失点差も動かすが、**実際にプレーしていない**ため、得点差をそのまま Elo に
+    通すと実力差の証拠がないままレーティングが動く。
+
+    **必ず一覧に残す。** 静かに消えるのは、この設計が最も避けたい壊れ方である。
+    理由は観察した事実だけを書く（原因は推測しない）。
+    """
+
+    game_id: str
+    game_date: str | None
+    home_name: str
+    away_name: str
+    home_score: str
+    away_score: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class SchedulePage:
     games: tuple[ScheduleGame, ...]
     next_index: int | None
@@ -79,6 +100,9 @@ class SchedulePage:
     #: 連戦番号が振り直るため、気づけるように返す。クラブ名は `club_seasons` に
     #: 保存している事実であり、伏せる理由がない
     unmatched_clubs: tuple[str, ...] = ()
+    #: 取り込まない試合（不戦敗）。**件数だけでなく中身を返す** — 後で
+    #: 「学習データに含めていない」と注釈するための一覧になる（要件 5.3）
+    excluded: tuple[ExcludedGame, ...] = ()
 
 
 @dataclass
@@ -233,6 +257,14 @@ def _heading_date(node: _Node, year: int) -> str | None:
 
 class _NoScheduleDate(Exception):
     """見出しも行も日付を持たない。取り込み対象外として飛ばす。"""
+
+
+class _ExcludedGame(Exception):
+    """取り込まない試合（不戦敗の形）。**落とさず、一覧に残して続ける。**"""
+
+    def __init__(self, game: ExcludedGame) -> None:
+        super().__init__(game.game_id)
+        self.game = game
 
 
 class _UnresolvedState(Exception):
@@ -413,6 +445,20 @@ def _parse_game(
             if team.has_class("team") and team.has_class(side)
             for label in _with_class(team, "team-name")
         ]
+        if state == "":
+            # **状態欄が空で得点がある = 不戦敗の形**（要件 5.3）。実際にプレーして
+            # いないため学習データに入れないが、**一覧には必ず残す**。
+            # 点数（`20-0`）を条件にしない — 規約が別の点数を定める場合や、別の
+            # 理由による不成立を取りこぼす
+            raise _ExcludedGame(ExcludedGame(
+                game_id=game_id,
+                game_date=heading_date,
+                home_name=names[0] if names else "",
+                away_name=names[1] if len(names) > 1 else "",
+                home_score=scores[0] if scores else "",
+                away_score=scores[1] if len(scores) > 1 else "",
+                reason="状態欄が空で得点がある（不戦敗の形）",
+            ))
         raise ParseError(
             f"unrecognized or live schedule game state: {state[:40]!r}"
             f" (game_id={game_id} scores={scores} teams={names}"
@@ -509,6 +555,7 @@ def parse_schedule(
     unresolved = 0
     unmatched: dict[str, None] = {}      # 出現順を保つ（set だと出力が実行ごとに変わる）
     last_heading = ""
+    excluded: list[ExcludedGame] = []
     official_ids = set(clubs_by_name.values())
     for node in _schedule_nodes(document.root):
         if node.has_class("champion-box"):
@@ -523,6 +570,10 @@ def parse_schedule(
             # 「勝手な仕様補完をしない」）。理由が違うので別に数える
             undated += 1
             continue
+        except _ExcludedGame as excluded_game:
+            # **落とさず、一覧に残して続ける。** 件数は呼び出し側が出力に出す
+            excluded.append(excluded_game.game)
+            continue
         except _UnresolvedState:
             unresolved += 1
             continue
@@ -533,8 +584,8 @@ def parse_schedule(
         for key in (game.home_source_id, game.away_source_id):
             if key not in official_ids:
                 unmatched.setdefault(key, None)
-    if not games and undated == 0 and unresolved == 0:
+    if not games and undated == 0 and unresolved == 0 and not excluded:
         # 行はあるのに1件も取れず、飛ばした覚えもない → 構造が変わった
         raise ParseError("nonempty schedule topics contain no game rows")
     return SchedulePage(tuple(games.values()), next_index, last_date, undated,
-                        unresolved, tuple(unmatched))
+                        unresolved, tuple(unmatched), tuple(excluded))

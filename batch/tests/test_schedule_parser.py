@@ -164,14 +164,26 @@ def test_unknown_or_live_state_never_becomes_scheduled_or_finished(state):
     assert state in str(raised.value)
 
 
-def test_empty_state_with_a_score_is_rejected():
-    """状態が空でも**得点が入っていれば飛ばさない**。
+def test_empty_state_with_a_score_is_recorded_not_ingested():
+    """状態が空で得点がある行は**不戦敗の形**（要件 5.3）。
 
-    ここを飛ばすと、終了した試合が静かに取り込まれなくなる。
+    2022-23 の `500609`（2023-04-12 滋賀 対 名古屋D）が該当した。B リーグ規約
+    第57条第1項により 0–20 の不戦敗で、公式は試合数に計上するが**実際には
+    プレーしていない**。得点差をそのまま Elo に通すと実力差の証拠がないまま
+    レーティングが動くため、学習データには入れない。
+
+    **ただし静かに消さない。** 一覧に残し、件数を出力に出す。
     """
-    with pytest.raises(ParseError, match="state"):
-        parse_schedule(body(HEADER, game_html(state="", home="80", away="79")),
-                       year=2026, event=2, clubs_by_name=CLUBS)
+    page = parse_schedule(body(HEADER, game_html(state="", home="20", away="0")),
+                          year=2026, event=2, clubs_by_name=CLUBS)
+    assert page.games == (), "取り込まない"
+    assert len(page.excluded) == 1
+    excluded = page.excluded[0]
+    assert (excluded.game_id, excluded.home_score, excluded.away_score) == ("game-demo-1", "20", "0")
+    assert (excluded.home_name, excluded.away_name) == ("架空ホーム", "架空アウェイ")
+    assert excluded.game_date == "2026-10-01"
+    # 理由は**観察した事実だけ**を書く（原因は推測しない）
+    assert "状態欄が空" in excluded.reason
 
 
 @pytest.mark.parametrize("malformed", [

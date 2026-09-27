@@ -392,7 +392,11 @@ def _parse_game(
     if state == "" and _no_server_rendered_outcome(row):
         raise _UnresolvedState(game_id)
     if state not in _STATES:
-        raise ParseError("unrecognized or live schedule game state")
+        # **値そのものを出す。** 数文字の状態ラベルであり、対応表に足すかどうかを
+        # 判断するにはこれが要る。伏せると原因の特定に実サイトへの再取得が必要に
+        # なり、2022-23 で実際にそうなった（非200のステータスを出すようにしたのと
+        # 同じ理由。詳細設計 1.27）。**本文でもURLでもトークンでもない**
+        raise ParseError(f"unrecognized or live schedule game state: {state[:40]!r}")
     status = _STATES[state]
     _check_row_link(row, game_id, status)
     game_date, tipoff_at = _row_schedule(row, year, heading_date)

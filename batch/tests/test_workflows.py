@@ -232,3 +232,26 @@ def test_dry_run_writes_nothing_to_d1():
     assert step, "backfill.yml: マスタ投入のステップが見つからない"
     assert "inputs.dry_run" in step[2], \
         "backfill.yml: マスタ投入が dry_run で守られていない（D1 に書いてしまう）"
+
+
+def test_backfill_carries_the_exclusion_list_home():
+    """**取り込まない試合の一覧を持ち帰る**（要件 5.3 / 詳細設計 4.8）。
+
+    `backfill` は `contents: read` でコミットできないため、実行環境で書いた
+    `batch/exclusions/excluded_games.json` はジョブ終了とともに消える。実際に
+    2022-23 の `除外=1` を1回失った。**権限を増やさず artifact で持ち帰る。**
+
+    `if: always()` でなければ、PARTIAL で終わった回の分が落ちる。
+    """
+    body = (WORKFLOW_DIR / "backfill.yml").read_text(encoding="utf-8")
+    step = re.search(
+        r"^(\s+)- name: 取り込まない試合の一覧を持ち帰る\n((?:\1  .*\n)+)", body, re.MULTILINE)
+    assert step, "backfill.yml: 一覧を持ち帰るステップがない"
+    assert "upload-artifact" in step[2]
+    assert "batch/exclusions/excluded_games.json" in step[2]
+    assert "if: always()" in step[2], "PARTIAL の回の分が落ちる"
+    # **権限は read のまま。** 一覧のためにワークフローへ write を与えない（絶対ルール4）。
+    # **コメント中の文字列を拾わないよう、`permissions` ブロックだけを見る**
+    granted = re.search(r"^permissions:\n((?:[ \t]+.*\n)+)", body, re.MULTILINE)
+    assert granted, "backfill.yml: permissions がない"
+    assert "contents: write" not in granted[1]

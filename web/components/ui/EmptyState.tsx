@@ -9,12 +9,12 @@ export function EmptyState({
   action?: { href: string; label: string };
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-6 text-center">
-      <p className="text-[14px] text-text-2">{message}</p>
+    <div className="rounded-2xl border border-rule bg-panel p-6 text-center">
+      <p className="text-[14px] text-ink-2">{message}</p>
       {action && (
         <Link
           href={action.href}
-          className="mt-3 inline-flex min-h-11 items-center px-3 text-[13px] font-bold text-accent"
+          className="mt-3 inline-flex min-h-11 items-center px-3 text-[13px] font-bold text-ink-2 underline underline-offset-4"
         >
           {action.label}
         </Link>

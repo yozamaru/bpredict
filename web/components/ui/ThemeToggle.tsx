@@ -47,7 +47,7 @@ export function ThemeToggle() {
       type="button"
       onClick={() => apply(theme === 'dark' ? 'light' : 'dark')}
       aria-pressed={theme === 'dark'}
-      className="min-h-11 min-w-11 rounded-xl border border-border px-3 text-[11px] font-bold text-text-2"
+      className="min-h-11 min-w-11 rounded-xl border border-rule px-3 text-[11px] font-bold text-ink-2"
     >
       {theme === 'dark' ? 'ダーク' : 'ライト'}
     </button>

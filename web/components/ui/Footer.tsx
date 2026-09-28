@@ -6,7 +6,7 @@ import Link from 'next/link';
  */
 export function Footer() {
   return (
-    <footer className="mt-8 border-t border-border py-4 text-[11px] leading-relaxed text-text-3">
+    <footer className="mt-8 border-t border-rule py-4 text-[11px] leading-relaxed text-ink-3">
       <p>
         データ出典: B.LEAGUE 公式サイト（
         <a href="https://www.bleague.jp/" className="underline">
@@ -20,7 +20,7 @@ export function Footer() {
         予測内容について B.LEAGUE および各クラブへお問い合わせいただくことはご遠慮ください。
       </p>
       <nav aria-label="このサイトについて" className="mt-2 flex gap-4">
-        <Link href="/about/" className="flex min-h-11 items-center font-bold text-text-2 underline">
+        <Link href="/about/" className="flex min-h-11 items-center font-bold text-ink-2 underline">
           免責・出典・個人情報の取扱い
         </Link>
       </nav>

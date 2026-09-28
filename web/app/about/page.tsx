@@ -8,7 +8,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mt-6">
       <h3 className="text-[15px] font-extrabold">{title}</h3>
-      <div className="mt-1.5 space-y-2 text-[13px] leading-relaxed text-text-2">{children}</div>
+      <div className="mt-1.5 space-y-2 text-[13px] leading-relaxed text-ink-2">{children}</div>
     </section>
   );
 }

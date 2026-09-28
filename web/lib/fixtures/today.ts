@@ -19,7 +19,12 @@ export const SAMPLE_DAY = {
   nextLabel: '9月23日（水）',
 };
 
-export const SAMPLE_ACCURACY: AccuracyView = { rate: 0.682, n: 312 };
+export const SAMPLE_ACCURACY: AccuracyView = {
+  rate: 0.682,
+  // 「ホームが必ず勝つ」。実測 52.7%（要件 付録B）
+  baselineRate: 0.527,
+  n: 312,
+};
 
 export const SAMPLE_GAMES: GameView[] = [
   {

@@ -1,59 +1,93 @@
 @import 'tailwindcss';
 
 /* 色はすべてここで定義し、コンポーネントに直接書かない（CLAUDE.md UI）。
-   値は基本設計 6.1 / 詳細設計 5.4 のトークン表と一致させる。 */
+   値は基本設計 6.1 / 詳細設計 5.4 のトークン表と一致させる。
+
+   2026-09-29 に方向性A「データ密度型」を採用した。旧トークン（単一の緑アクセント
+   --accent / --text-4 / カードの影）は廃止した。
+
+   テキストと線を**別の系列**に分けてある。旧版は --text-3 を本文用、--text-4 を
+   非テキスト専用としていたが、同じ「テキスト色」の系列に非テキスト専用の値を
+   混ぜる構造そのものが混同の原因だった。 */
 :root {
-  --bg: #F6F7F9;
-  --surface: #FFFFFF;
-  --border: #E5E8ED;
-  --text: #0F1622;
-  --text-2: #5A6577;
-  --text-3: #667184;  /* 本文用 */
-  --text-4: #8E99AB;  /* 罫線など非テキスト専用 */
-  --accent: #416A0E;
-  --accent-bg: rgba(65, 106, 14, 0.1);
-  --track: #E8EBF0;
-  --warn: #7A4A12;
-  --warn-bg: #FEF3E7;
+  /* 面 */
+  --paper: #F7F5EF;      /* 地。黄みのオフホワイト */
+  --panel: #FFFFFF;      /* 表・パネルの地 */
+  --tint: #F2EFE6;       /* 互角の行・合計行・ホバーの地 */
+
+  /* テキスト（すべて本文に使える） */
+  --ink: #15181D;        /* 16.32:1 on paper */
+  --ink-2: #4B515B;      /*  7.33:1 */
+  --ink-3: #676D78;      /*  4.77:1 */
+
+  /* 側。対等な2色で、どちらも「良い／悪い」を含意しない */
+  --home: #134A83;       /* 藍     8.25:1 */
+  --away: #8E3A12;       /* 弁柄   6.97:1 */
+
+  /* 注意状態 */
+  --warn: #7A4A12;       /*  6.84:1 */
+  --warn-bg: #FBF1E2;
+
+  /* 線。意味を持つのは --axis だけ */
+  --rule: #D9D3C5;       /* 装飾的な仕切り（非テキスト） */
+  --rule-soft: #E7E2D6;  /* 行内の弱い仕切り（非テキスト） */
+  --axis: #736B5A;       /* 50%軸。帯 --band に対し 3.82:1 */
+  --band: #E3DBC4;       /* 互角帯（±5ポイント） */
 }
 
 :root[data-theme='dark'] {
-  --bg: #0B0E13;
-  --surface: #131820;
-  --border: #212A36;
-  --text: #E6EAF2;
-  --text-2: #93A0B5;
-  --text-3: #7C8798;
-  --text-4: #59657A;
-  --accent: #A3E635;
-  --accent-bg: rgba(163, 230, 53, 0.12);
-  --track: #232C3A;
-  --warn: #E0A458;
+  --paper: #0B0D11;
+  --panel: #12151A;
+  --tint: #161A20;
+  --ink: #E9ECF2;        /* 16.43:1 */
+  --ink-2: #A9B2BF;      /*  9.08:1 */
+  --ink-3: #8D97A5;      /*  6.58:1 */
+  --home: #79B2F7;       /*  8.82:1 */
+  --away: #F2966C;       /*  8.66:1 */
+  --warn: #E0A458;       /*  8.91:1 */
   --warn-bg: rgba(224, 164, 88, 0.12);
+  --rule: #242A33;
+  --rule-soft: #1C212A;
+  --axis: #788395;       /* 帯 #252D38 に対し 3.63:1 */
+  --band: #252D38;
 }
 
 /* トークンを Tailwind のユーティリティへ橋渡しする。
    inline にすることで、値は上の変数のまま残る（ダーク切替が効く）。 */
 @theme inline {
-  --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
-  --color-text: var(--text);
-  --color-text-2: var(--text-2);
-  --color-text-3: var(--text-3);
-  --color-text-4: var(--text-4);
-  --color-accent: var(--accent);
-  --color-accent-bg: var(--accent-bg);
-  --color-track: var(--track);
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-tint: var(--tint);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-home: var(--home);
+  --color-away: var(--away);
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
-  /* システムフォントスタック。Web フォントは数字用1ウェイトのみ許す（基本設計 6.2） */
-  --font-sans: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  --color-rule: var(--rule);
+  --color-rule-soft: var(--rule-soft);
+  --color-axis: var(--axis);
+  --color-band: var(--band);
+
+  /* 書体は3系統。見出しのみ明朝、ラベルと本文はサンセリフ、数値はすべて等幅。
+     **Web フォントは一切読み込まない**（要件 8.1 / 基本設計 6.2）。旧版は
+     「数字用の1ウェイトのみ（60KB以内）」を許していたが、数値を等幅システム
+     フォントで組むことにしたため不要になった。
+
+     明朝が無い環境（一部の Android）ではゴシックに落ちる。**落ちても情報は
+     失われない** — 明朝が担うのは見出しの格であって、数値でもラベルでもない。 */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic UI',
+    system-ui, sans-serif;
+  --font-serif: 'Hiragino Mincho ProN', 'Yu Mincho', YuMincho, 'Noto Serif JP', serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
 @layer base {
   html {
-    background: var(--bg);
+    background: var(--paper);
     color-scheme: light;
   }
 
@@ -62,33 +96,27 @@
   }
 
   body {
-    background: var(--bg);
-    color: var(--text);
+    background: var(--paper);
+    color: var(--ink);
     font-family: var(--font-sans);
     /* 桁を揃える。数値が主役の画面であるため全体に効かせる（要件 8.1） */
     font-variant-numeric: tabular-nums;
     -webkit-text-size-adjust: 100%;
   }
 
-  /* ライトでは境界線 + 淡い影、ダークでは境界線のみ（基本設計 6.3） */
-  .card-shadow {
-    box-shadow: 0 1px 2px rgb(15 22 34 / 4%);
-  }
+  /* 影は使わない（基本設計 6.3）。影は要素を浮かせて「1件ずつ」に見せる装置であり、
+     一覧性を最優先するこの方向性では目的と逆に働く。囲いは 1px の罫線だけで作る。 */
 
-  :root[data-theme='dark'] .card-shadow {
-    box-shadow: none;
-  }
-
-  /* --accent の上に --accent のリングが乗ると消えるため、トークンで分ける */
+  /* --home / --away の上にその色のリングが乗ると消えるため、--ink を使う */
   :focus-visible {
-    outline: 2px solid var(--text);
+    outline: 2px solid var(--ink);
     outline-offset: 2px;
   }
 
   /* 段階開示の開閉（詳細設計 5.3「アニメーション付きの `<details>` 相当にし、
      キーボードで操作できるようにする」）。
 
-     **JavaScript を使わない。** 初期JS は 172.7KB で上限180KB に対して余裕がなく、
+     **JavaScript を使わない。** 初期JS は上限180KB に対して余裕がなく、
      開閉のためにクライアントコンポーネントを増やす判断はしない。`<details>` は
      素の HTML でキーボード操作できる（Enter / Space）。
 
@@ -126,5 +154,61 @@
     details summary .disclosure-marker {
       transition: none;
     }
+  }
+}
+
+/* ============================================================
+   中央基準（ダイバージング）バー
+
+   50% を軸に、勝率が 50 からどれだけ離れているかだけを優勢な側へ伸ばす。
+   左詰めのバーは全行が左端から始まるため、68% と 52% の差（このツールが
+   最も伝えるべき差）がひと目で立ち上がらない（詳細設計 5.3）。
+
+   **溝（0〜100 のトラック）を描かない。** 描くとバーが「勝率そのものの長さ」に
+   見えるうえ、互角帯が溝に溶けて読めなくなる（実測で溝と帯のコントラストが
+   1.07:1 しかなかった）。地は互角帯と 50%軸だけにする。
+   ============================================================ */
+@layer components {
+  .axis-bar {
+    position: relative;
+    /* 45〜55% にあたる ±5ポイントの帯を、常に同じ位置に描く。
+       しきい値が画面に出ているので、互角かどうかを読者が自分の目で検算できる */
+    background-image: linear-gradient(
+      to right,
+      transparent calc(50% - var(--band-half)),
+      var(--band) calc(50% - var(--band-half)),
+      var(--band) calc(50% + var(--band-half)),
+      transparent calc(50% + var(--band-half))
+    );
+  }
+
+  /* 50% 軸。意味を持つ唯一の線なので、帯に対して 3:1 を確保した色を使う */
+  .axis-bar::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: var(--axis-overhang, 0);
+    bottom: var(--axis-overhang, 0);
+    width: 1px;
+    background: var(--axis);
+  }
+
+  .axis-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    /* 隔たり（--dev ポイント）を幅に写す。--dev-scale は 1 ポイントあたりの幅 */
+    width: calc(var(--dev) * var(--dev-scale));
+    min-width: 2px;
+  }
+
+  .axis-fill-home {
+    left: 50%;
+    background: var(--home);
+  }
+
+  .axis-fill-away {
+    right: 50%;
+    background: var(--away);
   }
 }

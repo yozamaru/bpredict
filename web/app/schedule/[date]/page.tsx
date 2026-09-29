@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { GameCardCompact } from '@/components/prediction/GameCardCompact';
+import { GameTable } from '@/components/prediction/GameTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SAMPLE_FULL_DAY, SAMPLE_GAMES } from '@/lib/fixtures/today';
 import { noGames } from '@/lib/messages';
@@ -18,7 +18,7 @@ type SampleDate = (typeof SAMPLE_DATES)[number];
 const GAMES_BY_DATE: Record<SampleDate, typeof SAMPLE_GAMES> = {
   '2026-09-22': SAMPLE_GAMES,
   '2026-09-23': [],
-  // **1日の最大構成（13試合）。** 圧縮カードだけの一覧がこの規模で読めるかを見る
+  // **1日の最大構成（13試合）。** 表がこの規模で読めるかを見る
   '2026-09-24': SAMPLE_FULL_DAY,
 };
 
@@ -59,13 +59,13 @@ export default async function Page({ params }: { params: Promise<{ date: string 
 
       {/* 前後の日付。タップ領域は最低 44px（要件 8.6）。
           **範囲の端では何も描かない。** 無効の矢印を灰色で置くと「押せそうなのに
-          押せない」見た目になり、しかも `--text-4`（罫線など非テキスト専用）を
+          押せない」見た目になり、しかも `--rule`（線のトークン）を
           文字色に使うことになる（トークンの単体テストが検出する） */}
       <nav aria-label="日付の移動" className="mt-3 flex items-stretch gap-2">
         {previous && (
           <Link
             href={`/schedule/${previous}/`}
-            className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-border text-[13px] font-bold"
+            className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-rule text-[13px] font-bold"
           >
             ← {label(previous)}
           </Link>
@@ -73,7 +73,7 @@ export default async function Page({ params }: { params: Promise<{ date: string 
         {next && (
           <Link
             href={`/schedule/${next}/`}
-            className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-border text-[13px] font-bold"
+            className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-rule text-[13px] font-bold"
           >
             {label(next)} →
           </Link>
@@ -81,15 +81,13 @@ export default async function Page({ params }: { params: Promise<{ date: string 
       </nav>
 
       {games.length > 0 && (
-        <p className="mt-3 text-[11px] text-text-3">全{games.length}試合</p>
+        <p className="mt-3 text-[11px] text-ink-3">全{games.length}試合</p>
       )}
 
-      <div className="mt-2 flex flex-col gap-3">
-        {games.length > 0 ? (
-          [...games]
-            .sort(byTipoff)
-            .map((game) => <GameCardCompact key={game.gameId} game={game} />)
-        ) : (
+      {games.length > 0 ? (
+        <GameTable games={[...games].sort(byTipoff)} dateLabel={label(current)} />
+      ) : (
+        <div className="mt-2">
           <EmptyState
             message={noGames(label(current))}
             action={
@@ -98,8 +96,8 @@ export default async function Page({ params }: { params: Promise<{ date: string 
                 : undefined
             }
           />
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }

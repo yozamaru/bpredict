@@ -16,21 +16,21 @@ export default function NotFound() {
   return (
     <>
       <h2 className="mt-5 text-[19px] font-extrabold">ページが見つかりません</h2>
-      <div className="mt-3 rounded-2xl border border-border bg-surface p-6 text-center">
-        <p className="text-[14px] text-text-2">{NOT_FOUND}</p>
+      <div className="mt-3 rounded-2xl border border-rule bg-panel p-6 text-center">
+        <p className="text-[14px] text-ink-2">{NOT_FOUND}</p>
         <Link
           href="/"
-          className="mt-3 inline-flex min-h-11 items-center px-3 text-[13px] font-bold text-accent"
+          className="mt-3 inline-flex min-h-11 items-center px-3 text-[13px] font-bold text-ink-2 underline underline-offset-4"
         >
           今日の予測を見る
         </Link>
       </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-text-3">
+      <p className="mt-3 text-[11px] leading-relaxed text-ink-3">
         日付やクラブを指定して開いた場合、対象の範囲外だと このページになります。
       </p>
       <Link
         href={ACTIONS.about.href}
-        className="mt-2 flex min-h-11 items-center justify-center rounded-xl border border-border text-[13px] font-bold"
+        className="mt-2 flex min-h-11 items-center justify-center rounded-xl border border-rule text-[13px] font-bold"
       >
         {ACTIONS.about.label}
       </Link>

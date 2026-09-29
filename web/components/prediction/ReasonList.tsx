@@ -10,17 +10,17 @@ export function ReasonList({ summary, reasons }: { summary: string; reasons: Rea
   return (
     <section className="mt-6">
       <h3 className="text-[15px] font-extrabold">なぜこの予測になったか</h3>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-text-2">{summary}</p>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">{summary}</p>
       <ul className="mt-3 flex flex-col gap-3">
         {reasons.map((reason) => (
-          <li key={reason.label} className="rounded-xl border border-border bg-surface p-3">
+          <li key={reason.label} className="rounded-xl border border-rule bg-panel p-3">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-[13px] font-bold">{reason.label}</span>
-              <span className="text-[11px] font-bold text-text-2">
+              <span className="text-[11px] font-bold text-ink-2">
                 {reason.favors === 'HOME' ? 'ホーム有利' : 'アウェイ有利'}
               </span>
             </div>
-            <p className="mt-0.5 text-[13px] text-text-2">{reason.value}</p>
+            <p className="mt-0.5 text-[13px] text-ink-2">{reason.value}</p>
             <div
               className="mt-2 flex gap-1"
               role="img"
@@ -29,8 +29,8 @@ export function ReasonList({ summary, reasons }: { summary: string; reasons: Rea
               {[1, 2, 3, 4].map((step) => (
                 <span
                   key={step}
-                  className={`h-1.5 flex-1 rounded-full ${
-                    step <= reason.strength ? 'bg-accent' : 'bg-track'
+                  className={`h-1.5 flex-1 border ${
+                    step <= reason.strength ? 'border-ink-2 bg-ink-2' : 'border-rule bg-tint'
                   }`}
                 />
               ))}

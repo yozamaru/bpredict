@@ -42,9 +42,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     return (
       <>
         <h2 className="mt-5 text-[19px] font-extrabold">
-          {finished.home.name} <span className="text-text-2">対</span> {finished.away.name}
+          {finished.home.name} <span className="text-ink-2">対</span> {finished.away.name}
         </h2>
-        <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-text-2">
+        <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-ink-2">
           <span>B.PREMIER</span>
           {/* 試合開始をもって凍結された予測である（要件 3.3） */}
           <StatusBadge kind="final" />
@@ -55,7 +55,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         {/* **根拠は試合後も残す。** 凍結された予測の一部であり、
             後から書き換えない（CLAUDE.md 絶対ルール2） */}
         <ReasonList summary={SAMPLE_REASON_SUMMARY} reasons={SAMPLE_REASONS} />
-        <p className="mt-4 text-[11px] leading-relaxed text-text-3">
+        <p className="mt-4 text-[11px] leading-relaxed text-ink-3">
           使用モデル {SAMPLE_MODEL.version} ・ 通算的中率{' '}
           {(SAMPLE_MODEL.accuracy * 100).toFixed(1)}%（{SAMPLE_MODEL.n}試合）
         </p>
@@ -74,9 +74,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     return (
       <>
         <h2 className="mt-5 text-[19px] font-extrabold">
-          {pending.home.name} <span className="text-text-2">対</span> {pending.away.name}
+          {pending.home.name} <span className="text-ink-2">対</span> {pending.away.name}
         </h2>
-        <p className="mt-1 text-[11px] font-bold tracking-wider text-text-2">
+        <p className="mt-1 text-[11px] font-bold tracking-wider text-ink-2">
           B.PREMIER{pending.tipoffLabel ? ` ${pending.tipoffLabel}` : ' 時刻未定'}
         </p>
         <div className="mt-4">
@@ -94,31 +94,31 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         <Link href={`/teams/${game.home.slug}/`} className="underline decoration-border">
           {game.home.name}
         </Link>{' '}
-        <span className="text-text-2">対</span>{' '}
+        <span className="text-ink-2">対</span>{' '}
         <Link href={`/teams/${game.away.slug}/`} className="underline decoration-border">
           {game.away.name}
         </Link>
       </h2>
-      <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-text-2">
+      <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-ink-2">
         <span>B.PREMIER{game.tipoffLabel ? ` ${game.tipoffLabel}` : ' 時刻未定'}</span>
         {game.isEarlySeason && <StatusBadge kind="early" />}
         {/* 開始前に「確定」を出さない（lib/view.ts の statusBadgeKind） */}
         {kind && <StatusBadge kind={kind} />}
       </p>
 
-      <div className="mt-4 rounded-2xl border border-border bg-surface p-4">
+      <div className="mt-4 rounded-2xl border border-rule bg-panel p-4">
         <ProbabilityBar game={game} />
         <dl className="mt-3 flex items-baseline justify-between">
-          <dt className="text-[11px] font-bold tracking-wider text-text-2">予想スコア</dt>
+          <dt className="text-[11px] font-bold tracking-wider text-ink-2">予想スコア</dt>
           <dd className="text-[28px] font-extrabold">
-            {game.predHomeScore} <span className="text-text-3">–</span> {game.predAwayScore}
+            {game.predHomeScore} <span className="text-ink-3">–</span> {game.predAwayScore}
           </dd>
         </dl>
       </div>
 
       {/* 状態の理由を一文で示す（要件 8.4）。具体時刻は U-06 が決まるまで書かない */}
       {game.isProvisional && (
-        <p className="mt-3 text-[12px] leading-relaxed text-text-2">
+        <p className="mt-3 text-[12px] leading-relaxed text-ink-2">
           暫定 — 出場選手が未発表のため、直近5試合の出場傾向から推定しています。
           試合当日の午前中に更新されます。
         </p>
@@ -135,7 +135,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       <section className="mt-6">
         <h3 className="text-[15px] font-extrabold">両チームの直近成績</h3>
-        <dl className="mt-2 rounded-xl border border-border bg-surface p-3 text-[13px]">
+        <dl className="mt-2 rounded-xl border border-rule bg-panel p-3 text-[13px]">
           {(
             [
               ['home', game.home.name],
@@ -146,14 +146,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <dt className="min-w-0 truncate">
                 <Link
                   href={`/teams/${side === 'home' ? game.home.slug : game.away.slug}/`}
-                  className="text-text-2 underline decoration-border"
+                  className="text-ink-2 underline decoration-border"
                 >
                   {name}
                 </Link>
               </dt>
               <dd>
                 {SAMPLE_FORM[side].last5.join(' ')}
-                <span className="text-text-2">
+                <span className="text-ink-2">
                   {' '}
                   ・ 平均得失点差 {SAMPLE_FORM[side].avgMargin > 0 ? '＋' : ''}
                   {SAMPLE_FORM[side].avgMargin.toFixed(1)}
@@ -165,7 +165,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       </section>
 
       {/* 使用モデルと、そのモデルの通算精度（母数つき。要件 8.3） */}
-      <p className="mt-4 text-[11px] leading-relaxed text-text-3">
+      <p className="mt-4 text-[11px] leading-relaxed text-ink-3">
         使用モデル {SAMPLE_MODEL.version} ・ 通算的中率{' '}
         {(SAMPLE_MODEL.accuracy * 100).toFixed(1)}%（{SAMPLE_MODEL.n}試合）
       </p>

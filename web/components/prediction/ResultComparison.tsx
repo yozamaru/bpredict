@@ -30,28 +30,28 @@ export function ResultComparison({ result }: { result: ResultView }) {
   const homeWon = result.homeScore > result.awayScore;
 
   return (
-    <article className="rounded-2xl border border-border bg-surface p-4">
+    <article className="rounded-2xl border border-rule bg-panel p-4">
       <h3 className="text-[14px] font-bold">
-        {result.home.name} <span className="text-text-2">対</span> {result.away.name}
+        {result.home.name} <span className="text-ink-2">対</span> {result.away.name}
       </h3>
       <dl className="mt-2 text-[13px]">
         <div className="flex items-baseline justify-between py-0.5">
-          <dt className="text-text-2">実際のスコア</dt>
+          <dt className="text-ink-2">実際のスコア</dt>
           <dd className="text-[19px] font-extrabold">
-            {result.homeScore} <span className="text-text-3">–</span> {result.awayScore}
-            <span className="ml-1 text-[12px] font-bold text-text-2">
+            {result.homeScore} <span className="text-ink-3">–</span> {result.awayScore}
+            <span className="ml-1 text-[12px] font-bold text-ink-2">
               （{homeWon ? 'ホーム' : 'アウェイ'}勝利）
             </span>
           </dd>
         </div>
         <div className="flex items-baseline justify-between py-0.5">
-          <dt className="text-text-2">予測</dt>
+          <dt className="text-ink-2">予測</dt>
           <dd>
             ホーム {home}% / アウェイ {away}% ・ {result.predHomeScore}–{result.predAwayScore}
           </dd>
         </div>
         <div className="py-1">
-          <dt className="text-text-2">判定</dt>
+          <dt className="text-ink-2">判定</dt>
           <dd className="mt-0.5 leading-relaxed">
             {result.isCorrect
               ? `予測どおりでした（得点差の誤差 ${result.scoreError}点）`
@@ -59,7 +59,7 @@ export function ResultComparison({ result }: { result: ResultView }) {
           </dd>
         </div>
         <div className="py-1">
-          <dt className="text-text-2">この予測の位置づけ</dt>
+          <dt className="text-ink-2">この予測の位置づけ</dt>
           <dd className="mt-0.5 leading-relaxed">
             {result.bucket.label}と予想した試合は、これまで{result.bucket.n}試合中
             {result.bucket.correct}試合（{(result.bucket.rate * 100).toFixed(1)}%）が的中しています。

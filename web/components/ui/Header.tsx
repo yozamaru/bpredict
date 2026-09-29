@@ -8,7 +8,7 @@ export function Header() {
       <div className="flex items-center justify-between">
         <Link href="/" className="flex min-h-11 items-center text-[19px] font-extrabold">
           B.PREDICT
-          <span className="ml-1.5 text-[10px] font-bold tracking-wider text-text-2">仮称</span>
+          <span className="ml-1.5 text-[10px] font-bold tracking-wider text-ink-2">仮称</span>
         </Link>
         <ThemeToggle />
       </div>

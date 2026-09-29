@@ -10,7 +10,7 @@ function Shooting({ value }: { value: { m: number; a: number; pct: number | null
     <span>
       {value.m.toFixed(1)} / {value.a.toFixed(1)}
       {value.pct !== null && (
-        <span className="text-text-2"> （{(value.pct * 100).toFixed(1)}%）</span>
+        <span className="text-ink-2"> （{(value.pct * 100).toFixed(1)}%）</span>
       )}
     </span>
   );
@@ -19,7 +19,7 @@ function Shooting({ value }: { value: { m: number; a: number; pct: number | null
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-2 py-0.5">
-      <dt className="text-[12px] text-text-2">{label}</dt>
+      <dt className="text-[12px] text-ink-2">{label}</dt>
       <dd className="text-[13px]">{children}</dd>
     </div>
   );
@@ -37,7 +37,7 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
   return (
     <section className="mt-6">
       <h3 className="text-[15px] font-extrabold">個人スタッツ予測</h3>
-      <p className="mt-1 text-[11px] leading-relaxed text-text-3">
+      <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
         出場確率50%以上の選手を表示しています。± は直近の試合における誤差の目安です。
       </p>
       <ul className="mt-2 flex flex-col gap-1.5">
@@ -45,28 +45,28 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
           // 導出はサーバが済ませている。画面では計算しない（ui-implementation スキル）
           const d = player.derived;
           return (
-            <li key={player.playerId} className="rounded-xl border border-border bg-surface">
+            <li key={player.playerId} className="rounded-xl border border-rule bg-panel">
               <details>
                 <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-2">
                   <span className="w-24 shrink-0 truncate text-[13px] font-bold">{player.name}</span>
-                  <span className="w-7 shrink-0 text-[11px] text-text-2">{player.position}</span>
+                  <span className="w-7 shrink-0 text-[11px] text-ink-2">{player.position}</span>
                   <span className="flex-1 text-right text-[13px]">{player.minutes.toFixed(1)}分</span>
                   <span className="w-11 text-right text-[13px] font-bold">{d.pts.toFixed(1)}</span>
                   <span className="w-9 text-right text-[13px]">{d.reb.toFixed(1)}</span>
                   <span className="w-9 text-right text-[13px]">{player.ast.toFixed(1)}</span>
                   <span
                     aria-hidden="true"
-                    className="disclosure-marker w-3 text-right text-[11px] text-text-2"
+                    className="disclosure-marker w-3 text-right text-[11px] text-ink-2"
                   >
                     ▾
                   </span>
                 </summary>
-                <dl className="border-t border-border px-3 py-2">
+                <dl className="border-t border-rule px-3 py-2">
                   <Row label="出場時間">
-                    {player.minutes.toFixed(1)}分 <span className="text-text-2">±{player.err.minutes.toFixed(1)}</span>
+                    {player.minutes.toFixed(1)}分 <span className="text-ink-2">±{player.err.minutes.toFixed(1)}</span>
                   </Row>
                   <Row label="得点">
-                    {d.pts.toFixed(1)} <span className="text-text-2">±{player.err.pts.toFixed(1)}</span>
+                    {d.pts.toFixed(1)} <span className="text-ink-2">±{player.err.pts.toFixed(1)}</span>
                   </Row>
                   <Row label="FG">
                     <Shooting value={d.fg} />
@@ -81,14 +81,14 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
                     <Shooting value={d.ft} />
                   </Row>
                   <Row label="リバウンド">
-                    {d.reb.toFixed(1)} <span className="text-text-2">±{player.err.reb.toFixed(1)}</span>
-                    <span className="text-text-2">
+                    {d.reb.toFixed(1)} <span className="text-ink-2">±{player.err.reb.toFixed(1)}</span>
+                    <span className="text-ink-2">
                       {' '}
                       （OR {player.oreb.toFixed(1)} / DR {player.dreb.toFixed(1)}）
                     </span>
                   </Row>
                   <Row label="アシスト">
-                    {player.ast.toFixed(1)} <span className="text-text-2">±{player.err.ast.toFixed(1)}</span>
+                    {player.ast.toFixed(1)} <span className="text-ink-2">±{player.err.ast.toFixed(1)}</span>
                   </Row>
                   <Row label="ターンオーバー">{player.tov.toFixed(1)}</Row>
                   <Row label="スティール">{player.stl.toFixed(1)}</Row>
@@ -105,11 +105,11 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
         })}
       </ul>
       {/* ST / BS は MAE が平均値と同水準になる。隠さずに書く（要件 6.8.6） */}
-      <p className="mt-2 text-[11px] leading-relaxed text-text-3">
+      <p className="mt-2 text-[11px] leading-relaxed text-ink-3">
         スティールとブロックは1試合あたりの回数が少なく、予測はその選手の平均に近い値になります。
       </p>
       {/* 固定注記。**省略しない**（ui-implementation スキル / 要件 4.5.4） */}
-      <p className="mt-1 text-[11px] leading-relaxed text-text-3">
+      <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
         個人予測は過去の公式記録から算出した統計的推定値であり、選手の能力や評価を示すものではありません。
       </p>
     </section>

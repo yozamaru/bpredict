@@ -58,7 +58,7 @@ export function CalibrationChart({ points }: { points: CalibrationPoint[] }) {
           </text>
         </g>
       </svg>
-      <figcaption className="mt-1 text-[11px] leading-relaxed text-text-3">
+      <figcaption className="mt-1 text-[11px] leading-relaxed text-ink-3">
         横軸が予想した勝率、縦軸が実際に勝った割合です。点線に近いほど、数字どおりに当たっています。
       </figcaption>
     </figure>

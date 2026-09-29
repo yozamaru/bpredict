@@ -36,8 +36,8 @@ export function Tabs() {
             aria-current={active ? 'page' : undefined}
             className={`flex min-h-11 items-center px-3 text-[13px] font-bold ${
               active
-                ? 'border-b-2 border-accent text-text'
-                : 'border-b-2 border-transparent text-text-2'
+                ? 'border-b-2 border-ink text-ink'
+                : 'border-b-2 border-transparent text-ink-2'
             }`}
           >
             {tab.label}

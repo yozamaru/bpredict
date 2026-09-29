@@ -37,6 +37,13 @@ export type GameView = {
 export type AccuracyView = {
   /** 的中率 0〜1 */
   rate: number;
+  /**
+   * ベースライン「ホームが必ず勝つ」の的中率 0〜1。
+   *
+   * **同じ大きさで隣に置く**（要件 8.3 / 基本設計 5.2）。自分の成績だけを見せない。
+   * 実測はリーグ戦4シーズン（n=1,829）で 52.7%（要件 付録B）。
+   */
+  baselineRate: number;
   /** 母数。必ず併記する（要件 8.3） */
   n: number;
 };
@@ -50,6 +57,27 @@ export function isTossUp(homeWinProb: number): boolean {
 export function percentPair(homeWinProb: number): { home: number; away: number } {
   const home = Math.round(homeWinProb * 100);
   return { home, away: 100 - home };
+}
+
+/**
+ * 50% からの隔たり（ポイント）。中央基準バーが伸ばす量そのもの（詳細設計 5.3）。
+ *
+ * **表示の百分率から導く。** バーの長さと画面の数値がずれないようにするため、
+ * 生の確率ではなく `percentPair` の丸め後の値を使う。
+ */
+export function deviation(homeWinProb: number): number {
+  return Math.abs(percentPair(homeWinProb).home - 50);
+}
+
+/**
+ * 優勢な側。バーはこちらへ伸びる。
+ *
+ * **ちょうど 50 対 50 のときはホーム側に置く。** 隔たりが 0 なので描かれる幅は
+ * 最小値（2px）で、向きは見えない。どちらに置くかは表示に影響しないが、
+ * 実装ごとに揺れないよう固定する。
+ */
+export function favoredSide(homeWinProb: number): 'home' | 'away' {
+  return percentPair(homeWinProb).home >= 50 ? 'home' : 'away';
 }
 
 export type ReasonView = {

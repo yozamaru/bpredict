@@ -30,10 +30,11 @@ from batch.loader.payload import SeasonRef, games_payload, series_numbers, stats
 from batch.parser.boxscore_parser import parse_boxscore
 from batch.parser.errors import (
     DataUnavailable,
+    OutOfScopeCompetitionError,
+    OutOfScopeError,
     ParseError,
     ParseErrorStreak,
     ParseFailureTracker,
-    UnknownClubError,
     ValidationError,
 )
 from batch.parser.schedule_parser import (
@@ -211,10 +212,18 @@ def run(
         except ScrapingStopped:
             result.degrade("PARTIAL", "429/503 により取得区間を中止した")
             break
-        except UnknownClubError:
-            # **リーグ戦ではない**（選抜チーム・海外クラブ・下位リーグ）。
-            # データの欠陥ではないので `不正` に数えず、連続失敗にも入れない
+        except OutOfScopeError as error:
+            # **リーグ戦ではない。** チームが解決できない（選抜チーム・海外クラブ・
+            # 下位リーグ）か、日程と試合詳細の大会区分が食い違う（オールスター等が
+            # `event=2` に混ざる）。どちらもデータの欠陥ではないので `不正` に
+            # 数えず、連続失敗にも入れない（詳細設計 4.4）。
             result.skipped_non_league += 1
+            # **大会区分の食い違いは試合IDを出す。** チームの不一致は
+            # `クラブ一覧にない相手` に名前が出るので追えるが、大会区分は
+            # 試合IDがないと調べられない。2023-24 の `502494` は skip 行の
+            # 試合IDから運営者がページを開いて「アジアライジングスターゲーム」と判明した
+            if isinstance(error, OutOfScopeCompetitionError):
+                result.skip(game.game_id, error)
             continue
         except LoaderError as error:
             # **D1 への書き込みが失敗したら、その場で止めて記録を残す。**

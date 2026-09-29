@@ -4,7 +4,13 @@ from collections.abc import Mapping
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-from .errors import DataUnavailable, ParseError, UnknownClubError, ValidationError
+from .errors import (
+    DataUnavailable,
+    OutOfScopeCompetitionError,
+    ParseError,
+    UnknownClubError,
+    ValidationError,
+)
 from .extract import extract_embedded_json
 from .fields import COUNT_FIELDS
 from .models import BoxScore, Counts, GameRecord, PlayerStats, TeamStats
@@ -126,7 +132,9 @@ def parse_boxscore(
             raise ValidationError("試合IDの階層間不一致")
         if (container.get("Event") not in (None, "")
                 and required_integer(container["Event"]) != event):
-            raise ValidationError("日程と試合詳細の大会区分が一致しない")
+            # **データの欠陥ではなく対象外である**（詳細設計 4.4）。オールスター等が
+            # `event=2` の日程に混ざる。`不正` に数えず、打ち切り counter にも入れない
+            raise OutOfScopeCompetitionError("日程と試合詳細の大会区分が一致しない")
     year = required_integer(required(game, "Year"), minimum=1, maximum=9999)
     tipoff = timestamp(required(game, "GameDateTime"))
     jst_date = tipoff.astimezone(ZoneInfo("Asia/Tokyo")).date()

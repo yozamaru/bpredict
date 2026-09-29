@@ -6,6 +6,8 @@ import pytest
 from batch.parser.boxscore_parser import parse_boxscore
 from batch.parser.errors import (
     DataUnavailable,
+    OutOfScopeCompetitionError,
+    OutOfScopeError,
     ParseError,
     ParseErrorStreak,
     ParseFailureTracker,
@@ -198,7 +200,7 @@ def test_unknown_team_id_is_not_a_data_defect():
 @pytest.mark.parametrize("place,key,value", [
     ("game", "AwayTeamID", 101),
     ("row", "TeamID", "102"), ("row", "ScheduleKey", "other-game"),
-    ("game", "ScheduleKey", "other-game"), ("game", "Event", 5),
+    ("game", "ScheduleKey", "other-game"),
     ("game", "GameEndTime", "1700000000"), ("game", "Year", 2016),
 ])
 def test_identity_and_time_conflicts(place, key, value):
@@ -207,6 +209,30 @@ def test_identity_and_time_conflicts(place, key, value):
     target[key] = value
     with pytest.raises((ParseError, ValidationError)):
         parse(data)
+
+
+def test_competition_mismatch_is_out_of_scope_not_invalid():
+    """日程と試合詳細の大会区分が食い違う試合は**対象外**であり、データの欠陥ではない。
+
+    2023-24 の `502494` が実例で、運営者が公式ページを確認した結果
+    **オールスターの「アジアライジングスターゲーム」**だった（2026-09-29）。
+    `event=2`（そのシーズンの日程）に出ていながら、試合詳細は別の区分を返していた。
+
+    `不正` に数えると「再実行すれば直るもの」と混ざり、連続失敗の打ち切りに
+    入れると**対象外の試合が3つ並んだだけでシーズンが止まる**（詳細設計 4.4）。
+    """
+    data = boxscore_data()
+    data["Game"]["Event"] = 5          # オールスターゲーム
+    with pytest.raises(OutOfScopeCompetitionError):
+        parse(data)
+
+    # チームの不一致と**同じ扱い**にする。入口は2つだが扱いは1つ
+    assert issubclass(OutOfScopeCompetitionError, OutOfScopeError)
+    assert issubclass(UnknownClubError, OutOfScopeError)
+    # 打ち切りに巻き込まないため、パース失敗とは別の型にする
+    assert not isinstance(OutOfScopeCompetitionError("x"), ParseError)
+    # `不正` に数えないため、値域の違反とも別の型にする
+    assert not isinstance(OutOfScopeCompetitionError("x"), ValidationError)
 
 
 def test_same_player_cannot_appear_on_both_teams():

@@ -334,6 +334,33 @@ def test_non_league_game_is_decided_by_team_id_not_by_name() -> None:
     assert result.skipped == []                # 調査対象として並べない
 
 
+def test_competition_mismatch_counts_as_non_league_and_is_listed() -> None:
+    """**大会区分の食い違いも「対象外」である**（詳細設計 4.4）。
+
+    2023-24 の `502494` が実例で、運営者が公式ページを確認した結果
+    **オールスターの「アジアライジングスターゲーム」**だった（2026-09-29）。
+    `event=2` の日程に出ていながら、試合詳細は別の区分を返していた。
+
+    チームの不一致との違いは**スキップ行を出すこと**だけである。チームは
+    `クラブ一覧にない相手` に名前が出るので追えるが、大会区分は**試合IDがないと
+    調べられない**。実際この1件は skip 行の試合IDから運営者がページを開いて判明した。
+    """
+    responses = schedule_responses("101", "102")
+    allstar: dict[str, Any] = extract_embedded_json(responses["ScheduleKey=101"])
+    allstar["Game"]["Event"] = 5               # オールスターゲーム
+    responses["ScheduleKey=101"] = page(allstar)
+    result, _, _ = run(responses)
+
+    assert result.status == "SUCCESS"
+    assert result.skipped_non_league == 1
+    assert result.skipped_invalid == 0         # データの欠陥ではない
+    assert result.ingested == 1                # シーズンは止まらない
+    # **試合IDと理由を出す。** 件数だけでは調べられない
+    assert [game_id for game_id, _, _ in result.skipped] == ["101"]
+    kind = result.skipped[0][1]
+    assert kind == "OutOfScopeCompetitionError"
+
+
 def test_limit_stops_after_the_requested_count() -> None:
     result, scraper, _ = run(schedule_responses("101", "102"), limit=1)
     assert result.ingested == 1

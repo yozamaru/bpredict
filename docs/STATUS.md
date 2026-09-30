@@ -208,6 +208,26 @@ Elo には結果を渡せる**。しかし1試合ぶんの損失は小さく（5
 | 2016-17〜2019-20 | 0（2016-17 の7件は原因が判明して回収済み） |
 | 2020-21 | **2**（`5868` / `5890`） |
 
+## Dependabot の残り6件は上流待ち（2026-09-30）
+
+**`api/package-lock.json` の undici@7.29.0 に6件（高1 / 中2 / 低3）が open のまま
+残っている。** すべて同じ1本のコピーで、経路は
+`@cloudflare/vitest-pool-workers@0.22.0`（**これが最新**）→
+`miniflare@5.20260815.0-alpha` → `undici@7.29.0`。修正版は 7.29.1 で、
+**miniflare が厳密固定しているため上流が上げるまで動かせない**。
+
+| 対象 | 状態 |
+|---|---|
+| `web/` | **0件。** `wrangler` を 4.144.0 に上げ undici 7.29.1 になった。`@opennextjs/cloudflare`（採用していない構成）を dependencies から外し、本番依存の木からも出た（詳細設計 8.1） |
+| `api/` | wrangler 側は 7.29.1。**vitest-pool-workers 側の1本が残る**（テスト実行器の中だけ。配信物にも `wrangler dev` の経路にも入らない） |
+
+**`overrides` で押し破らない。** 固定した版で動作確認している上流の判断を、
+こちらの都合で覆すことになる。`@cloudflare/vitest-pool-workers` が新しい
+miniflare を引く版を出したら消える。**Dependabot の PR が来たら peer
+（vitest の版）を確認してから通す** — 以前の PR は vitest 5 を要求して閉じている。
+
+**この6件を dismiss しない。** 運営者の判断であり、解消の道筋がある。
+
 ## 気をつけること（実データで踏んだもの）
 
 `verification/RESULTS.md` に詳細がある。**同じ罠を二度踏まないために、ここには見出しだけ置く。**

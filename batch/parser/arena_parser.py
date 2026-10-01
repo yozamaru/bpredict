@@ -41,6 +41,32 @@ def prefecture_of(address: str) -> str | None:
     return None
 
 
+#: 市区町村の末尾に来る字。**最初に現れたところで切る**
+_MUNICIPALITY_SUFFIXES = ("市", "区", "町", "村")
+
+
+def municipality_of(address: str) -> str | None:
+    """住所の先頭から、最初に現れる `市` / `区` / `町` / `村` までを返す。
+
+    都道府県が入っていない住所（公式サイトに実在する。詳細設計 4.10）で、
+    国土地理院の候補が別の市区町村でないことを照合するために使う。
+
+    **政令市では市までしか取れないが、検証としては足りる**
+    （`大阪市此花区北港緑地` からは `大阪市`）。都道府県が付いていれば
+    それを剥がしてから探す（`東京都渋谷区…` → `渋谷区`）。
+
+    読めなければ None を返す（推測で埋めない）。
+    """
+    rest = address
+    prefecture = prefecture_of(address)
+    if prefecture is not None:
+        rest = address[len(prefecture) :]
+    positions = [rest.find(s) for s in _MUNICIPALITY_SUFFIXES if s in rest]
+    if not positions:
+        return None
+    return rest[: min(positions) + 1]
+
+
 class _AddressReader(HTMLParser):
     """住所の見出しを見つけたら、次の `dd.definition-content` の文字を集める。"""
 

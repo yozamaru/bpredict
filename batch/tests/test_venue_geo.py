@@ -156,22 +156,87 @@ def test_geocode_errors_never_leak_the_url() -> None:
 def test_candidate_with_a_different_prefecture_is_not_taken() -> None:
     """**1件目を無条件に採らない。** 別の都道府県の座標が入りうる（詳細設計 4.10）。"""
     found = [Candidate("東京都架空C区", 35.0, 139.0), Candidate("千葉県架空A市", 36.0, 140.0)]
-    assert resolve_venue_geo.pick(found, "千葉県").lat == 36.0
+    best, prefecture = resolve_venue_geo.pick(found, "千葉県架空A市1-1")
+    assert best.lat == 36.0
+    assert prefecture == "千葉県"
 
 
 def test_no_matching_prefecture_raises() -> None:
     with pytest.raises(GeocodeError, match="食い違う"):
-        resolve_venue_geo.pick([Candidate("東京都架空C区", 35.0, 139.0)], "千葉県")
+        resolve_venue_geo.pick([Candidate("東京都架空C区", 35.0, 139.0)], "千葉県架空A市1-1")
 
 
 def test_no_candidates_raises() -> None:
     with pytest.raises(GeocodeError, match="候補を返さなかった"):
-        resolve_venue_geo.pick([], "架空県")
+        resolve_venue_geo.pick([], "架空県架空A市1-1")
 
 
-def test_unknown_prefecture_raises_instead_of_taking_the_first() -> None:
-    with pytest.raises(GeocodeError, match="都道府県が読めない"):
-        resolve_venue_geo.pick([Candidate("千葉県架空A市", 35.0, 139.0)], None)
+# --- 住所に都道府県がないとき（詳細設計 4.10。実データで14件あった） ---
+
+def test_prefecture_is_read_from_the_candidate_when_the_address_omits_it() -> None:
+    """**候補の `title` から読む。** 公式サイトの住所は都道府県を省くことがある。"""
+    found = [Candidate("千葉県架空A市架空町一丁目１番", 36.0, 140.0)]
+    best, prefecture = resolve_venue_geo.pick(found, "架空A市架空町1-1")
+    assert best.lat == 36.0
+    assert prefecture == "千葉県"
+
+
+def test_candidate_without_the_municipality_is_not_taken() -> None:
+    """市区町村が候補に現れないものは採らない。**1件目に飛びつかない。**"""
+    found = [Candidate("東京都架空C区架空町一丁目", 35.0, 139.0)]
+    with pytest.raises(GeocodeError, match="市区町村が現れない"):
+        resolve_venue_geo.pick(found, "架空A市架空町1-1")
+
+
+def test_the_right_candidate_is_chosen_by_municipality() -> None:
+    """同名の町が複数の市にあっても、市区町村で選び分ける。"""
+    found = [
+        Candidate("東京都架空C区架空町一丁目", 35.0, 139.0),
+        Candidate("千葉県架空A市架空町一丁目", 36.0, 140.0),
+    ]
+    best, prefecture = resolve_venue_geo.pick(found, "架空A市架空町1-1")
+    assert (best.lat, prefecture) == (36.0, "千葉県")
+
+
+def test_candidate_without_a_prefecture_is_not_taken() -> None:
+    """候補の `title` からも都道府県が読めなければ採らない（推測で埋めない）。
+
+    **「市区町村が現れない」と混ぜない。** 市区町村は現れているので、調べる先が違う。
+    """
+    found = [Candidate("架空A市架空町一丁目", 36.0, 140.0)]
+    with pytest.raises(GeocodeError, match="候補から都道府県が読めない"):
+        resolve_venue_geo.pick(found, "架空A市架空町1-1")
+
+
+def test_address_without_a_municipality_raises() -> None:
+    """照合する手がかりがないため採らない。"""
+    with pytest.raises(GeocodeError, match="市区町村が読めない"):
+        resolve_venue_geo.pick([Candidate("千葉県架空A市", 36.0, 140.0)], "架空1-1")
+
+
+# --- 市区町村の切り出し ---
+
+@pytest.mark.parametrize(
+    ("address", "expected"),
+    [
+        ("架空A市架空町1-1", "架空A市"),
+        ("架空C区架空町2-1-1", "架空C区"),
+        # 政令市は市までしか取れないが、検証としては足りる
+        ("架空A市架空C区架空町2-2-15", "架空A市"),
+        # 都道府県が付いていれば剥がしてから探す
+        ("千葉県架空A市架空町1-1", "架空A市"),
+        ("東京都架空C区架空町2-1-1", "架空C区"),
+        ("架空郡架空町1-1", "架空郡架空町"),
+        ("架空村1-1", "架空村"),
+        # 読めないものは None（推測で埋めない）
+        ("架空1-1", None),
+        ("千葉県", None),
+    ],
+)
+def test_municipality_of(address: str, expected: str | None) -> None:
+    from batch.parser.arena_parser import municipality_of
+
+    assert municipality_of(address) == expected
 
 
 # --- ジョブ ---

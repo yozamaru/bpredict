@@ -24,7 +24,11 @@ from pathlib import Path
 from batch.geocode.gsi import Candidate, GeocodeError, candidates, sleep_between_requests
 from batch.loader.api import InternalApi, LoaderError
 from batch.loader.limits import chunks
-from batch.parser.arena_parser import parse_arena_address, prefecture_of
+from batch.parser.arena_parser import (
+    municipality_of,
+    parse_arena_address,
+    prefecture_of,
+)
 from batch.parser.errors import DataUnavailable, ParseError, ValidationError
 from batch.parser.terms import report_terms_change
 from batch.scraper.arena import arena_detail_url
@@ -73,19 +77,46 @@ def write_csv(rows: dict[str, dict[str, str]], path: Path = CSV_PATH) -> None:
             writer.writerow({key: rows[venue_id].get(key, "") for key in COLUMNS})
 
 
-def pick(found: list[Candidate], prefecture: str | None) -> Candidate:
-    """候補を選ぶ。**都道府県が食い違うものは採らない**（詳細設計 4.10）。
+def pick(found: list[Candidate], address: str) -> tuple[Candidate, str]:
+    """候補を選び、都道府県を決める（詳細設計 4.10）。
 
-    候補は関連度順に並ぶが、1件目を無条件に採ると別の市区町村の座標が入りうる。
+    候補は関連度順に並ぶが、**1件目を無条件に採ると別の市区町村の座標が入りうる**。
+    照合の手がかりは住所の書き方で変わる。
+
+    - 住所に都道府県がある → それと一致する候補を採る
+    - 住所に都道府県がない（公式サイトに実在する） → **候補の `title` から読む。**
+      ただし**住所の先頭の市区町村が候補に含まれること**を確認する
+
+    **都道府県を市区町村名から推測しない。** 同名の市区町村が複数の県にあると誤る。
+    出典（国土地理院の候補）に書いてある値を読むのであって、こちらで決めない。
     """
     if not found:
         raise GeocodeError("住所検索が候補を返さなかった")
-    if prefecture is None:
-        raise GeocodeError("住所から都道府県が読めない")
+
+    prefecture = prefecture_of(address)
+    if prefecture is not None:
+        for candidate in found:
+            if prefecture_of(candidate.title) == prefecture:
+                return candidate, prefecture
+        raise GeocodeError(f"住所検索の候補の都道府県が住所と食い違う（{prefecture}）")
+
+    municipality = municipality_of(address)
+    if municipality is None:
+        raise GeocodeError("住所から市区町村が読めない")
+
+    # **飛ばす理由を混ぜない**（詳細設計 4.4 と同じ方針）。市区町村が候補に現れない
+    # のと、現れたのに候補から都道府県が読めないのは、調べる先が違う。
+    matched_without_prefecture = False
     for candidate in found:
-        if prefecture_of(candidate.title) == prefecture:
-            return candidate
-    raise GeocodeError(f"住所検索の候補の都道府県が住所と食い違う（{prefecture}）")
+        if municipality not in candidate.title:
+            continue
+        resolved = prefecture_of(candidate.title)
+        if resolved is not None:
+            return candidate, resolved
+        matched_without_prefecture = True
+    if matched_without_prefecture:
+        raise GeocodeError(f"候補から都道府県が読めない（{municipality}）")
+    raise GeocodeError(f"住所検索の候補に市区町村が現れない（{municipality}）")
 
 
 def resolve(
@@ -123,7 +154,7 @@ def resolve(
             result.skipped.append((venue_id, f"{type(error).__name__}: {error}"))
             continue
         try:
-            best = pick(geocode(found.address), found.prefecture)
+            best, prefecture = pick(geocode(found.address), found.address)
         except GeocodeError as error:
             result.skipped.append((venue_id, f"GeocodeError: {error}"))
             continue
@@ -132,7 +163,9 @@ def resolve(
         known[venue_id] = {
             "venue_id": venue_id,
             "name": str(row.get("name", "")),
-            "prefecture": found.prefecture or "",
+            # **候補から読んだ値を入れる。** 住所に都道府県がない会場では
+            # `found.prefecture` は None だが、候補の `title` には入っている（4.10）
+            "prefecture": prefecture,
             "lat": f"{best.lat:.6f}",
             "lng": f"{best.lng:.6f}",
             "address": found.address,

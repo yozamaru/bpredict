@@ -6,6 +6,7 @@
 | `requirements.md` | 要件定義。スコープ、制約、特徴量の採否、法務、受け入れ基準 |
 | `design-basic.md` | 基本設計。構成、データフロー、サブシステム、画面、テスト戦略 |
 | `design-detail.md` | 詳細設計。DDL、API仕様、特徴量定義、学習手順、テスト、運用 |
+| [`db-schema.md`](db-schema.md) | **DB の現状。** 表の一覧、列ごとの型と値が入っている割合、空の表とその理由。**`scripts/describe_schema.py` が生成する（手で編集しない）**。構造の出典は `db/migrations/*.sql`、行数の出典はD1 の実データ。**定義と設計の理由は `design-detail.md` 1章**であり、この文書では繰り返さない |
 | [`scraping-sources.md`](scraping-sources.md) | B.LEAGUE取得元の調査・AI間の引き継ぎ。対象URL、確認した構造、未確認事項、設計との差（仕様変更の承認ではない） |
 | [`scraper-parser.md`](scraper-parser.md) | 工程5の実装の利用方法。取得前確認の設定、カナリアの運用、解析の契約、確認コマンド |
 | [`mockups/`](mockups/README.md) | 画面デザインの検討記録。**方向性A「データ密度型」で確定**（2026-09-29、15案から）。**実装の出典は `design-basic.md` 6章 と `design-detail.md` 5.3〜5.4** であって、この文書ではない。モックの HTML は追跡しない（`.html` の追跡禁止は緩めない） |

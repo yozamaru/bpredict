@@ -1,0 +1,99 @@
+# 派生テーブル（`team_ratings` / `venue_revisions`）を全期間洗い替えて
+# D1 へ書き戻す（詳細設計 4.1 の「手動の保守ジョブを2本のワークフローに分ける」）。
+#
+# **外部アクセスをしない。** 入力はスナップショット（`batch/snapshot/*.parquet`）で、
+# 出力は Workers の `/internal/*` への POST である。したがってスクレイピングの関門
+# （robots / 利用規約のハッシュ照合）は要らず、規約の変更でこのジョブは止まらない。
+#
+# **`contents: read` のままにする**（基本設計 7.3）。`recompute_ratings` が書く
+# `team_ratings.parquet` はコミットしない。スナップショットの正本を更新する経路は
+# 詳細設計 8.1 の手順6（手元で再構築してコミット）か `daily_ingest` である。
+# 入力が同じなら replay は決定論的なので、送る値はコミット済みの parquet と一致する。
+#
+# **`seed_master` を流さない。** このジョブはクラブ解決をしないため、
+# 1回あたり約200行の書き込み枠を使う理由がない（backfill とは事情が違う。4.8）。
+name: rebuild-derived
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_date:
+        description: 'この日付以降を D1 へ書き戻す（YYYY-MM-DD）。空なら全期間'
+        required: false
+        type: string
+      dry_run:
+        description: '計算はするが D1 には書かない'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# D1 へ書き込むジョブの同時実行を禁止する（詳細設計 4.1）。
+# **走行中を殺さない。** 殺されたジョブは `batch()` の途中で止まり
+# `ingestion_logs` が RUNNING のまま残る。
+concurrency:
+  group: d1-write
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    # 手動実行も既定ブランチだけに限る。別ブランチのコードで本番 D1 へ書かない。
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # 未設定のまま走らせない。**skip ではなく fail にする。** 手動実行なので、
+      # 黙って通り過ぎるよりその場で気づける方がよい（backfill と同じ扱い）。
+      #
+      # `--dry-run` でも `API_BASE_URL` は要る。`InternalApi` が形式を検証する
+      # （何も送らないが、設定の誤りを本番実行まで持ち越さないため）。
+      - name: 設定の確認
+        shell: bash
+        run: |
+          missing=()
+          for name in API_BASE_URL INGEST_TOKEN; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::未設定: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r batch/requirements.txt
+
+      # inputs を `run:` に直接展開しない。シェルに解釈される前に env へ渡す
+      # （展開だと値がそのままコマンドとして走る余地が残る）。
+      - name: Elo の洗い替え
+        env:
+          FROM_DATE: ${{ inputs.from_date }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          if [[ -n "$FROM_DATE" ]]; then
+            args+=(--from-date "$FROM_DATE")
+          else
+            args+=(--full)
+          fi
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          python -m batch.jobs.recompute_ratings "${args[@]}"
+
+      # 会場の名称履歴。`team_ratings` と同じ「全期間を再計算して洗い替える」型で、
+      # 順序の依存はない（詳細設計 4.9）。
+      - name: 会場の名称履歴
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          python -m batch.jobs.build_venue_revisions "${args[@]}"

@@ -26,6 +26,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from schema_notes import (
+    describe_column,
+    describe_table,
+    source_field,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS_DIR = REPO_ROOT / "db" / "migrations"
 
@@ -67,7 +74,29 @@ class Column:
     notnull: bool
     default: str | None
     pk: int
+    #: DDL の `--` コメント。**あればこれを優先する**
     comment: str
+    #: CHECK から読んだ許容値（`status IN ('SCHEDULED',...)`）
+    allowed: tuple[str, ...] = ()
+    #: CHECK から読んだ値域（`BETWEEN 0 AND 1`）
+    span: tuple[str, str] | None = None
+    #: 表の役割から決まる説明（`scripts/schema_notes.py`）
+    note: str = ""
+    #: 取得元のフィールド名（詳細設計 4.4 の対応表）
+    source: str = ""
+    #: FK から自動で導いた参照先
+    refers: str = ""
+
+    @property
+    def description(self) -> str:
+        """DDL コメント → 注記 → FK 由来 の順で決める。**無ければ空。**"""
+        if self.comment:
+            return self.comment
+        if self.note:
+            return self.note
+        if self.refers:
+            return f"`{self.refers}` への参照"
+        return ""
 
 
 def migration_of(table: str) -> tuple[str, str]:
@@ -112,17 +141,42 @@ def comments_of(ddl: str, names: list[str]) -> dict[str, str]:
     return {name: " ".join(parts) for name, parts in out.items()}
 
 
+def allowed_of(ddl: str, column: str) -> tuple[str, ...]:
+    """`CHECK (col IN ('A','B'))` の許容値。**何を取り込むかが列から読める。**"""
+    m = re.search(rf"CHECK\s*\(\s*{re.escape(column)}\s+IN\s*\(([^)]*)\)", ddl)
+    if not m:
+        return ()
+    return tuple(v.strip().strip("'") for v in m.group(1).split(",") if v.strip())
+
+
+def span_of(ddl: str, column: str) -> tuple[str, str] | None:
+    """`CHECK (col BETWEEN 0 AND 1)` の値域。"""
+    m = re.search(
+        rf"{re.escape(column)}\s+BETWEEN\s+([^\s]+)\s+AND\s+([^\s)]+)", ddl,
+    )
+    return (m.group(1), m.group(2)) if m else None
+
+
 def columns_of(con: sqlite3.Connection, table: str) -> list[Column]:
     rows = con.execute(f"PRAGMA table_info({table})").fetchall()
     ddl = con.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,),
     ).fetchone()[0]
     comments = comments_of(ddl, [str(r[1]) for r in rows])
+    fks = {
+        str(row[3]): f"{row[2]}.{row[4]}"
+        for row in con.execute(f"PRAGMA foreign_key_list({table})")
+    }
     return [
         Column(
             name=str(r[1]), type=str(r[2]) or "—", notnull=bool(r[3]),
             default=None if r[4] is None else str(r[4]), pk=int(r[5]),
             comment=comments.get(str(r[1]), ""),
+            allowed=allowed_of(ddl, str(r[1])),
+            span=span_of(ddl, str(r[1])),
+            note=describe_column(table, str(r[1])),
+            source=source_field(table, str(r[1])),
+            refers=fks.get(str(r[1]), ""),
         )
         for r in rows
     ]
@@ -183,22 +237,16 @@ def render(con: sqlite3.Connection, data: sqlite3.Connection | None, *, source: 
         "",
         "## 表の一覧",
         "",
-        "| 表 | 分類 | 列数 | 行数 | 索引 | トリガ |",
-        "|---|---|---:|---:|---:|---:|",
+        "| 表 | 分類 | 列数 | 行数 | 役割 |",
+        "|---|---|---:|---:|---|",
     ]
     for table in tables:
         _, category = migration_of(table)
         total, _ = measured[table]
-        n_idx = con.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL",
-            (table,),
-        ).fetchone()[0]
-        n_trg = con.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND tbl_name=?", (table,),
-        ).fetchone()[0]
         rows = "—" if total is None else f"{total:,}"
         out.append(
-            f"| [`{table}`](#{table}) | {category} | {len(cols[table])} | {rows} | {n_idx} | {n_trg} |",
+            f"| [`{table}`](#{table}) | {category} | {len(cols[table])} | {rows} | "
+            f"{describe_table(table)} |",
         )
 
     filled_tables = [t for t in tables if (measured[t][0] or 0) > 0]
@@ -244,19 +292,28 @@ def render(con: sqlite3.Connection, data: sqlite3.Connection | None, *, source: 
             + ("行数 —" if total is None else f"**{total:,} 行**"),
             "",
         ]
+        if describe_table(table):
+            out += [describe_table(table), ""]
         if total == 0 and table in EMPTY_REASON:
             out += [f"> {EMPTY_REASON[table]}", ""]
         out += [
-            "| 列 | 型 | NULL | 既定値 | 値あり | 説明（DDL のコメント） |",
+            "| 列 | 型 | NULL | 既定値 | 値あり | 説明 |",
             "|---|---|---|---|---:|---|",
         ]
         for c in cols[table]:
             null = "不可" if (c.notnull or c.pk) else "可"
             default = f"`{c.default}`" if c.default is not None else "—"
             key = " 🔑" if c.pk else ""
+            desc = c.description
+            if c.allowed:
+                desc += " 許容値: " + " / ".join(f"`{v}`" for v in c.allowed)
+            if c.span:
+                desc += f" 値域: `{c.span[0]}`〜`{c.span[1]}`"
+            if c.source:
+                desc += f" 取得元: `{c.source}`"
             out.append(
                 f"| `{c.name}`{key} | {c.type} | {null} | {default} | "
-                f"{fill_label(total, filled.get(c.name, 0))} | {c.comment} |",
+                f"{fill_label(total, filled.get(c.name, 0))} | {desc.strip()} |",
             )
         out.append("")
 
@@ -484,6 +541,13 @@ details[open]>summary{border-bottom:1px solid var(--rule-soft);background:var(--
   font-size:12px;border-radius:2px}
 .cols{padding:4px 0 8px}
 .er{padding:4px 12px 12px}
+.role{color:var(--ink-2);font-size:12px;margin:10px 12px 0}
+.rolemini{color:var(--ink-3);font-size:11px;line-height:1.45;margin-top:2px;
+  font-family:var(--f-sans)}
+.chip.src{color:var(--data);border-color:var(--data);font-family:var(--f-mono);
+  font-weight:400;letter-spacing:0}
+.chip.val{background:var(--tint);color:var(--ink-2);font-family:var(--f-mono);
+  font-weight:400;letter-spacing:0}
 pre.mermaid{margin:8px 0 0;overflow-x:auto;background:var(--tint);border-radius:2px;
   padding:8px;font-family:var(--f-mono);font-size:11px;line-height:1.5}
 .col{padding:8px 12px;border-top:1px solid var(--rule-soft)}
@@ -613,6 +677,8 @@ def render_html(con: sqlite3.Connection, data: sqlite3.Connection | None, *, sou
         ]
         if is_empty and t in EMPTY_REASON:
             out.append(f'<div class="why">{esc(EMPTY_REASON[t])}</div>')
+        if describe_table(t):
+            out.append(f'<p class="role">{esc(describe_table(t))}</p>')
         out.append('<div class="cols">')
         for c in cols[t]:
             chips = [f'<span class="chip">{c.type}</span>']
@@ -620,8 +686,16 @@ def render_html(con: sqlite3.Connection, data: sqlite3.Connection | None, *, sou
                 chips.append('<span class="chip nn">NOT NULL</span>')
             if c.default is not None:
                 chips.append(f'<span class="chip def">= {esc(c.default)}</span>')
+            if c.source:
+                chips.append(f'<span class="chip src">取得元 {esc(c.source)}</span>')
+            for value in c.allowed:
+                chips.append(f'<span class="chip val">{esc(value)}</span>')
+            if c.span:
+                chips.append(
+                    f'<span class="chip def">{esc(c.span[0])}〜{esc(c.span[1])}</span>',
+                )
             key = ' <span class="pk">🔑</span>' if c.pk else ""
-            cmt = f'<div class="cmt">{esc(c.comment)}</div>' if c.comment else ""
+            cmt = f'<div class="cmt">{esc(c.description)}</div>' if c.description else ""
             out += [
                 f'<div class="col" data-col="{c.name}">',
                 f'<div class="cname">{c.name}{key}</div>',

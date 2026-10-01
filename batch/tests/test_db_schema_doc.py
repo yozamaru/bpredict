@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pathlib
 import sqlite3
+from typing import Any
 
 import pytest
 
@@ -139,3 +140,92 @@ def test_self_reference_is_listed_outside_the_diagram() -> None:
             parts = line.strip().split()
             if len(parts) >= 3:
                 assert parts[0] != parts[2], f"自己参照が図に入っている: {line.strip()}"
+
+
+# --- 表と列の説明（`scripts/schema_notes.py`） ---
+
+def notes_modules() -> tuple[Any, Any]:
+    """`scripts/` は パッケージでないため、パスを足して読む。"""
+    import sys
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import describe_schema
+    import schema_notes
+    return describe_schema, schema_notes
+
+
+def test_every_table_has_a_role() -> None:
+    """**表を足したら役割を書く。** 書かないと一覧の意味が落ちる。"""
+    _, notes = notes_modules()
+    missing = sorted(set(schema()) - set(notes.TABLES))
+    assert not missing, (
+        f"役割が未記載の表: {missing}。scripts/schema_notes.py の TABLES に足す"
+    )
+
+
+def test_notes_have_no_entry_for_a_table_that_does_not_exist() -> None:
+    """**消えた表の説明を残さない。** 残ると実在しない表の話が文書に出る。"""
+    _, notes = notes_modules()
+    stale = sorted(set(notes.TABLES) - set(schema()))
+    assert not stale, f"実在しない表の説明がある: {stale}"
+
+
+def test_every_column_has_a_description() -> None:
+    """DDL コメント・注記・FK 由来・接頭辞からの導出 のいずれかが当たること。
+
+    **列を足したら説明を書く**という強制になる。書けないなら、それは設計が
+    その列を定義していないという合図である（推測で埋めない）。
+    """
+    describe_schema, _ = notes_modules()
+    con = describe_schema.structure()
+    blank = [
+        f"{t}.{c.name}"
+        for t in sorted(schema())
+        for c in describe_schema.columns_of(con, t)
+        if not c.description
+    ]
+    assert not blank, (
+        f"説明のない列: {blank}。scripts/schema_notes.py に足す"
+        "（設計に定義がないなら、まず設計を直す）"
+    )
+
+
+def test_stale_column_notes_are_not_left_behind() -> None:
+    """**消えた列の説明を残さない。**"""
+    _, notes = notes_modules()
+    cols = schema()
+    stale = [
+        f"{t}.{c}" for (t, c) in notes.SPECIFIC
+        if t not in cols or c not in cols[t]
+    ]
+    assert not stale, f"実在しない列の説明がある: {stale}"
+
+
+def test_allowed_values_come_from_the_check_constraints() -> None:
+    """許容値は DDL の CHECK から読む。**手で並べない。**"""
+    describe_schema, _ = notes_modules()
+    con = describe_schema.structure()
+    found = {
+        c.name: c.allowed
+        for c in describe_schema.columns_of(con, "games")
+        if c.allowed
+    }
+    assert found["status"] == ("SCHEDULED", "FINISHED", "POSTPONED", "CANCELLED")
+    assert found["competition"] == ("REGULAR", "PLAYOFF")
+
+
+def test_source_fields_are_only_on_the_box_score_tables() -> None:
+    """取得元のフィールド名は、ボックススコアの表にだけ付ける。"""
+    describe_schema, notes = notes_modules()
+    con = describe_schema.structure()
+    for table in sorted(schema()):
+        for c in describe_schema.columns_of(con, table):
+            if c.source:
+                assert table in notes.SOURCE_FIELD_TABLES, f"{table}.{c.name}"
+
+
+def test_the_doc_shows_descriptions_and_allowed_values() -> None:
+    body = DOC.read_text(encoding="utf-8")
+    assert "許容値: `SCHEDULED`" in body
+    assert "取得元: `PT2M`" in body
+    # 表の役割が一覧と各節の両方に出る
+    assert body.count("恒久的なクラブ") >= 2

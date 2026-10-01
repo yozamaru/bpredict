@@ -216,6 +216,23 @@ def render(con: sqlite3.Connection, data: sqlite3.Connection | None, *, source: 
         for table in empty_tables:
             out.append(f"| `{table}` | {EMPTY_REASON.get(table, '**理由が未記載**')} |")
 
+    out += ["", "## 関連（ER図）", ""]
+    out += [
+        "**手で描かない。** 図は `db/migrations/*.sql` の FK 定義そのものである。",
+        "多重度も DDL から導く — 親側は子の FK 列が NOT NULL なら `||`、NULL 可なら `|o`。",
+        "子側は FK 列が子の主キーそのものなら `||`（1:1）、そうでなければ `o{`。",
+        "",
+        "**24表を1枚にしない。** 分類ごとに3枚へ分け、各図はその群の子テーブルと",
+        "その親（別の群にあっても）を含む。したがって図をまたいで同じ表が現れる。",
+        "",
+    ]
+    for title, note, body, loops in er_diagrams(con):
+        out += [f"### {title}", "", note, "", "```mermaid", body, "```", ""]
+        if loops:
+            out += ["**自己参照**（図には入れていない）", "", "| 表 | 列 | 参照先 |", "|---|---|---|"]
+            out += [f"| `{c}` | `{col}` | `{par}.id` |" for c, col, par in loops]
+            out.append("")
+
     out += ["", "## 表ごとの列", ""]
     for table in tables:
         total, filled = measured[table]
@@ -258,6 +275,113 @@ def render(con: sqlite3.Connection, data: sqlite3.Connection | None, *, source: 
         out.append(f"| `{name}` | `{tbl}` |")
     out.append("")
     return "\n".join(out)
+
+
+
+# --- ER図（Mermaid）。FK は `PRAGMA foreign_key_list` から取る ---
+#
+# **関連を手で描かない。** 図は DDL の FK 定義そのものである。
+# **24表を1枚にしない** — 分類（基本設計 3.1）ごとに3枚に分け、各図はその群の
+# 子テーブルと、その親（別の群にあっても）を含む自己完結の形にする。
+
+#: 図の単位。マイグレーションの番号で分ける（基本設計 3.1 の分類に対応する）
+ER_GROUPS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    (
+        "マスタ", ("0001",),
+        ("恒久エンティティ（`clubs` / `players` / `venues` / `seasons`）と、"
+        "年度断面・履歴・名寄せ。**時間で変わるものを単一行の属性として持たない**"
+        ),
+    ),
+    (
+        "ファクトと派生", ("0002", "0003"),
+        ("試合ごとに増える表と、バッチが全期間を再計算する派生表。"
+        "`team_games` は `games` への JOIN を消すためにある"
+        ),
+    ),
+    (
+        "予測と評価", ("0004", "0005", "0006", "0007"),
+        "予測は**追記のみ**で、`is_final = 1` の行とその子は凍結される（詳細設計 1.8）",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class Relation:
+    parent: str
+    child: str
+    column: str
+    optional: bool
+    one_to_one: bool
+
+    def mermaid(self) -> str:
+        """`親 <親側>--<子側> 子` の形。
+
+        **左の記号は「子1件に対して親が何件か」**、右は「親1件に対して子が何件か」。
+        Mermaid の `CUSTOMER ||--o{ ORDER` が「注文1件には顧客がちょうど1人、
+        顧客1人には注文が0件以上」と読む規約に従う。
+
+        **1:1 の子側は `||` ではなく `|o` である。** FK が子の主キーなら子は
+        最大1件だが、**親に子が無いこともある**（`predictions` に対応する
+        `prediction_results` は照合前には存在しない）。
+        """
+        left = "|o" if self.optional else "||"
+        right = "|o" if self.one_to_one else "o{"
+        return f'    {self.parent} {left}--{right} {self.child} : "{self.column}"'
+
+
+def relations(con: sqlite3.Connection, tables: list[str]) -> list[Relation]:
+    """FK の一覧。**多重度は DDL から導く**（推測しない）。
+
+    - 親側: 子の FK 列が NOT NULL なら `||`（必ず1つ）、NULL 可なら `|o`
+    - 子側: FK 列が子の主キーそのものなら `|o`（最大1件）、そうでなければ `o{`
+
+    **主キーの列は NOT NULL として扱う。** SQLite は非 INTEGER の主キー列に
+    NULL を許すが（`notnull` が 0 で返る）、主キーに NULL を入れる運用はしない。
+    そのまま読むと「親のない子がありうる」という誤った図になる。
+    """
+    out: list[Relation] = []
+    for child in tables:
+        info = {str(r[1]): r for r in con.execute(f"PRAGMA table_info({child})")}
+        pk = {name for name, r in info.items() if int(r[5]) > 0}
+        for row in con.execute(f"PRAGMA foreign_key_list({child})"):
+            parent, column = str(row[2]), str(row[3])
+            if column not in info:
+                continue
+            out.append(Relation(
+                parent=parent, child=child, column=column,
+                optional=not (bool(info[column][3]) or int(info[column][5]) > 0),
+                one_to_one=pk == {column},
+            ))
+    return out
+
+
+def er_diagrams(con: sqlite3.Connection) -> list[tuple[str, str, str, list[tuple[str, str, str]]]]:
+    """(見出し, 説明, Mermaid の本文, 自己参照の一覧) を群ごとに返す。"""
+    tables = [
+        str(r[0]) for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+    ]
+    rels = relations(con, tables)
+    out = []
+    for title, numbers, note in ER_GROUPS:
+        members = [t for t in tables if migration_of(t)[0] in numbers]
+        # その群の子テーブルに関わる関連だけを引く（親は別の群でも含める）
+        picked = [r for r in rels if r.child in members]
+        # **自己参照は図に入れない。** Mermaid の描画が不安定で、
+        # 1件の自己ループで図全体が出なくなる事故を避ける（別表で示す）
+        loops = [(r.child, r.column, r.parent) for r in picked if r.parent == r.child]
+        picked = [r for r in picked if r.parent != r.child]
+        entities = sorted({r.parent for r in picked} | {r.child for r in picked} | set(members))
+        lines = ["erDiagram"]
+        # FK を持たない表は**名前だけ**で宣言する。空の属性ブロック（`{ }`）は
+        # Mermaid の構文として危うく、1箇所で図全体が出なくなる
+        lines += [f"    {name}" for name in entities if not any(
+            r.parent == name or r.child == name for r in picked
+        )]
+        lines += [r.mermaid() for r in sorted(picked, key=lambda r: (r.child, r.column))]
+        out.append((title, note, "\n".join(lines), loops))
+    return out
 
 
 # --- HTML（スマホで読むための1枚。Markdown と同じ測定値から作る） ---
@@ -359,6 +483,9 @@ details[open]>summary{border-bottom:1px solid var(--rule-soft);background:var(--
 .why{margin:10px 12px;padding:8px 10px;background:var(--warn-bg);color:var(--warn);
   font-size:12px;border-radius:2px}
 .cols{padding:4px 0 8px}
+.er{padding:4px 12px 12px}
+pre.mermaid{margin:8px 0 0;overflow-x:auto;background:var(--tint);border-radius:2px;
+  padding:8px;font-family:var(--f-mono);font-size:11px;line-height:1.5}
 .col{padding:8px 12px;border-top:1px solid var(--rule-soft)}
 .col:first-child{border-top:none}
 .cname{font-family:var(--f-mono);font-size:13px;font-weight:600;overflow-wrap:anywhere}
@@ -451,6 +578,25 @@ def render_html(con: sqlite3.Connection, data: sqlite3.Connection | None, *, sou
             f'<td class="r num">{len(cols[t])}</td><td class="r num">{rows}</td></tr>',
         )
     out.append("</tbody></table>")
+
+    out.append("<h2>関連（ER図）</h2>")
+    out.append(
+        '<p class="note"><strong>手で描かない。</strong>図は <code>db/migrations/*.sql</code> の'
+        " FK 定義そのものである。多重度も DDL から導く。"
+        "<strong>24表を1枚にせず</strong>、分類ごとに3枚へ分けてある"
+        "（図をまたいで同じ表が現れる）。</p>",
+    )
+    for title, note, body, loops in er_diagrams(con):
+        out.append(f'<details class="tbl" open><summary><span class="tname">{title}</span></summary>')
+        out.append(f'<div class="er"><p class="note">{esc(note)}</p>')
+        out.append(f'<pre class="mermaid">{esc(body)}</pre>')
+        if loops:
+            out.append('<p class="note"><strong>自己参照</strong>（図には入れていない）: ')
+            out.append(
+                " / ".join(f"<code>{c}.{col}</code> → <code>{par}.id</code>" for c, col, par in loops),
+            )
+            out.append("</p>")
+        out.append("</div></details>")
 
     out.append("<h2>表ごとの列</h2>")
     for t in tables:

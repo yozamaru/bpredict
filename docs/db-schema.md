@@ -59,6 +59,87 @@
 | `team_ratings` | **スナップショット側には 12,532 行ある。** D1 への書き戻しが未実施（詳細設計 4.1 の `rebuild-derived`） |
 | `venue_revisions` | **スナップショット側には 173 区間ある。** D1 への書き戻しが未実施（同上の `rebuild-derived`） |
 
+## 関連（ER図）
+
+**手で描かない。** 図は `db/migrations/*.sql` の FK 定義そのものである。
+多重度も DDL から導く — 親側は子の FK 列が NOT NULL なら `||`、NULL 可なら `|o`。
+子側は FK 列が子の主キーそのものなら `||`（1:1）、そうでなければ `o{`。
+
+**24表を1枚にしない。** 分類ごとに3枚へ分け、各図はその群の子テーブルと
+その親（別の群にあっても）を含む。したがって図をまたいで同じ表が現れる。
+
+### マスタ
+
+恒久エンティティ（`clubs` / `players` / `venues` / `seasons`）と、年度断面・履歴・名寄せ。**時間で変わるものを単一行の属性として持たない**
+
+```mermaid
+erDiagram
+    clubs ||--o{ club_seasons : "club_id"
+    venues |o--o{ club_seasons : "primary_venue_id"
+    seasons ||--o{ club_seasons : "season_id"
+    clubs ||--o{ club_source_ids : "club_id"
+    clubs ||--o{ player_seasons : "club_id"
+    players ||--o{ player_seasons : "player_id"
+    seasons ||--o{ player_seasons : "season_id"
+    venues ||--o{ venue_revisions : "venue_id"
+    venues ||--o{ venue_source_keys : "venue_id"
+```
+
+### ファクトと派生
+
+試合ごとに増える表と、バッチが全期間を再計算する派生表。`team_games` は `games` への JOIN を消すためにある
+
+```mermaid
+erDiagram
+    games ||--o{ game_entries : "game_id"
+    players ||--o{ game_entries : "player_id"
+    clubs ||--o{ games : "away_club_id"
+    clubs ||--o{ games : "home_club_id"
+    seasons ||--o{ games : "season_id"
+    venues |o--o{ games : "venue_id"
+    clubs ||--o{ player_game_stats : "club_id"
+    games ||--o{ player_game_stats : "game_id"
+    players ||--o{ player_game_stats : "player_id"
+    clubs ||--o{ team_game_stats : "club_id"
+    games ||--o{ team_game_stats : "game_id"
+    clubs ||--o{ team_games : "club_id"
+    games ||--o{ team_games : "game_id"
+    clubs ||--o{ team_games : "opponent_id"
+    seasons ||--o{ team_games : "season_id"
+    clubs ||--o{ team_ratings : "club_id"
+    seasons ||--o{ team_ratings : "season_id"
+```
+
+**自己参照**（図には入れていない）
+
+| 表 | 列 | 参照先 |
+|---|---|---|
+| `games` | `rescheduled_to` | `games.id` |
+
+### 予測と評価
+
+予測は**追記のみ**で、`is_final = 1` の行とその子は凍結される（詳細設計 1.8）
+
+```mermaid
+erDiagram
+    accuracy_summary
+    ingestion_logs
+    clubs ||--o{ player_predictions : "club_id"
+    games ||--o{ player_predictions : "game_id"
+    players ||--o{ player_predictions : "player_id"
+    predictions ||--o{ player_predictions : "prediction_id"
+    model_versions ||--o{ prediction_model_bundle : "model_version"
+    predictions ||--o{ prediction_model_bundle : "prediction_id"
+    predictions ||--o{ prediction_reasons : "prediction_id"
+    games ||--o{ prediction_results : "game_id"
+    predictions ||--|o prediction_results : "prediction_id"
+    clubs ||--o{ prediction_team_targets : "club_id"
+    predictions ||--o{ prediction_team_targets : "prediction_id"
+    games ||--o{ predictions : "game_id"
+    model_versions ||--o{ predictions : "model_version"
+```
+
+
 ## 表ごとの列
 
 ### accuracy_summary

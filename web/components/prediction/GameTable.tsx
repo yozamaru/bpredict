@@ -100,14 +100,18 @@ function GameRows({ game }: { game: GameView }) {
 
         <ClubCell side="home" name={game.home.name} />
         <PercentCell value={home} leading />
-        {/* 一覧は 1ポイント = 1px の等倍。圧縮も強調もしない */}
-        <td rowSpan={2} className="border-x border-rule-soft align-middle">
+        {/* 軸はセルの全高に通す（`axis-column`）。バーの内側だけだと、塗りの隣に
+            互角帯の片側が見えるだけになり「2色の積み上げバー」に読める（詳細設計 5.3） */}
+        <td rowSpan={2} className="axis-column border-x border-rule-soft align-middle">
           <span role="img" aria-label={label} className="flex h-11 flex-col items-center justify-center gap-[3px]">
+            {/* **縮尺は % にする。** 1ポイント = 1px では、確率がクランプの上限（95%）に
+                寄ったとき隔たり45ポイント = 45px となり、半幅 31px を越えて隣の列へ溢れる。
+                % ならバーの半分が 50ポイントに対応し、構造的に収まる */}
             <AxisBar
               homeWinProb={game.homeWinProb}
-              className="h-3 w-[62px]"
-              bandHalf="5px"
-              devScale="1px"
+              className="h-3 w-full"
+              bandHalf="5%"
+              devScale="1%"
             />
             {/* 色だけでなく文字でも示す（要件 8.3 / 8.6） */}
             <span aria-hidden="true" className="h-[11px] text-[9px] font-bold leading-[11px] tracking-[0.06em] text-ink-2">

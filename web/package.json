@@ -13,7 +13,8 @@
     "test:tokens": "node scripts/check-contrast.mjs",
     "test:budget": "node scripts/check-js-budget.mjs",
     "test:links": "node scripts/check-links.mjs",
-    "test:nav": "node scripts/check-nav.mjs"
+    "test:nav": "node scripts/check-nav.mjs",
+    "test:bar": "node scripts/check-bar.mjs"
   },
   "dependencies": {
     "next": "^16.3.8",

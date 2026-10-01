@@ -20,6 +20,9 @@ extend-select = ["I", "B", "UP", "SIM"]
 python_version = "3.12"
 files = ["batch"]
 exclude = "^\\.venv/"
+# `scripts/` はパッケージではない（単体で実行する生成スクリプト）。
+# `batch/tests/test_db_schema_doc.py` がそこから読むため、探索先に足す。
+mypy_path = "scripts"
 # 段階的に厳しくする。いまは「型が付いている関数は正しく検査する」水準。
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

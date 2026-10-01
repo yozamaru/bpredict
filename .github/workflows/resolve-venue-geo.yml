@@ -1,0 +1,132 @@
+# 会場の座標を1回だけ解決して CSV に固定し、D1 へ送る（詳細設計 4.10）。
+#
+# **`mode` で2段に分かれる。** 必要な秘密も外部アクセスの有無も違う。
+#
+#   resolve : 公式サイトの `/arena_detail/` から住所を取り、国土地理院で
+#             ジオコーディングして `db/seeds/master/venues_geo.csv` を作る。
+#             **CSV は artifact で取り出す**（`contents: read` を崩さないため。
+#             基本設計 7.3）。内容を見てから人（または AI）がコミットする
+#   load    : **コミット済みの** CSV を D1 へ送る。取得しないため
+#             スクレイピングの関門（robots / 利用規約）を通らない
+#
+# **座標の CSV を自動でコミットしない。** 「1回だけ解決して固定する」設計であり
+# （詳細設計 1.2）、候補の都道府県が住所と食い違う行は採らずに報告するという
+# 4.10 の規則を、人が確かめる余地を残す。
+name: resolve-venue-geo
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'resolve = 取得して CSV を作る / load = コミット済みの CSV を D1 へ送る'
+        required: true
+        type: choice
+        options:
+          - resolve
+          - load
+        default: resolve
+      dry_run:
+        description: 'resolve のとき、解決するが CSV に書かない'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# `load` は D1 へ書く。`resolve` は書かないが、同じ群に入れて直列化する
+# （取得中に backfill と重なると相手サイトへの同時アクセスになる）。
+# **走行中を殺さない**（詳細設計 4.1）。
+concurrency:
+  group: d1-write
+  cancel-in-progress: false
+
+jobs:
+  geo:
+    # 手動実行も既定ブランチだけに限る。別ブランチのコードで本番 D1 へ書かない。
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+      SCRAPER_USER_AGENT: ${{ vars.SCRAPER_USER_AGENT }}
+      SCRAPER_ROBOTS_SHA256: ${{ vars.SCRAPER_ROBOTS_SHA256 }}
+      SCRAPER_TERMS_SHA256: ${{ vars.SCRAPER_TERMS_SHA256 }}
+      SCRAPER_STATE_PATH: batch/.scraper-state/state.json
+    steps:
+      - uses: actions/checkout@v7
+
+      # 未設定のまま走らせない。**skip ではなく fail にする**（手動実行のため）。
+      # **`load` では scraper 系を要求しない** — 取得しないので空でも作法を破らない。
+      - name: 設定の確認
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          names=(API_BASE_URL INGEST_TOKEN)
+          if [[ "$MODE" == 'resolve' ]]; then
+            names+=(SCRAPER_USER_AGENT SCRAPER_ROBOTS_SHA256 SCRAPER_TERMS_SHA256)
+          fi
+          missing=()
+          for name in "${names[@]}"; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::未設定: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r batch/requirements.txt
+
+      - id: state-date
+        if: ${{ inputs.mode == 'resolve' }}
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      # 日次リクエスト上限3,000と429/503後の停止を実行間で引き継ぐ。
+      # backfill とカナリアと同じキー空間を共有し、合計で上限を守る（絶対ルール6）。
+      - id: state-restore
+        if: ${{ inputs.mode == 'resolve' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: batch/.scraper-state/state.json
+          key: scraper-state-v1-${{ runner.os }}-${{ steps.state-date.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            scraper-state-v1-${{ runner.os }}-${{ steps.state-date.outputs.day }}-
+
+      # inputs を `run:` に直接展開しない（env 経由にする）。
+      - name: 座標の解決
+        if: ${{ inputs.mode == 'resolve' }}
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          python -m batch.jobs.resolve_venue_geo "${args[@]}"
+
+      # **CSV はコミットせず artifact で渡す。** 内容を見てから固定する。
+      - name: CSV を取り出す
+        if: ${{ inputs.mode == 'resolve' && !inputs.dry_run }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: venues-geo-csv
+          path: db/seeds/master/venues_geo.csv
+          if-no-files-found: error
+
+      - name: D1 へ投入
+        if: ${{ inputs.mode == 'load' }}
+        run: python -m batch.jobs.resolve_venue_geo --load
+
+      # 取得が 429 で中止されても、消費した件数と停止状態は必ず残す。
+      - id: state-save-date
+        if: always() && steps.state-restore.outcome == 'success' && hashFiles('batch/.scraper-state/state.json') != ''
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - if: always() && steps.state-save-date.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: batch/.scraper-state/state.json
+          key: scraper-state-v1-${{ runner.os }}-${{ steps.state-save-date.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}

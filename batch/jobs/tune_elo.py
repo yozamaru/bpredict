@@ -21,7 +21,6 @@
 from __future__ import annotations
 
 import argparse
-import bisect
 import itertools
 import json
 import sys
@@ -35,6 +34,7 @@ import pandas as pd
 from numpy.typing import NDArray
 
 from batch.features.dataset import Dataset, load_snapshot
+from batch.features.prepared import EloIndex
 from batch.model.dataset import TrainingData
 from batch.model.evaluate import walk_forward
 from batch.model.params import MAX_FOLDS
@@ -54,43 +54,6 @@ DEFAULT_SNAPSHOT = Path("batch/snapshot")
 
 class TuneError(RuntimeError):
     """探索を組めない入力。"""
-
-
-class EloIndex:
-    """`as_of_date < 対象試合日` の最新の Elo を速く引く。
-
-    **`batch/features/team_strength.py` の `elo()` と同じ意味である。** あちらは
-    呼び出しごとに `team_ratings` の全行を走査するため、12,540回の参照で
-    1億5千万行の比較になる（特徴量生成が43分かかる主因）。探索では300通りを
-    回すので、同じ意味を保ったまま二分探索にする。
-
-    **一致はテストで固定する**（`test_job_tune_elo.py`）。意味がずれたら、
-    探索で選んだパラメータが本番で別の値を出すことになる。
-    """
-
-    def __init__(self, ratings: pd.DataFrame) -> None:
-        self._dates: dict[str, list[str]] = {}
-        self._elos: dict[str, list[float]] = {}
-        if ratings.empty:
-            return
-        ordered = ratings.sort_values(["club_id", "as_of_date"], kind="stable")
-        for club_id, group in ordered.groupby("club_id", sort=False):
-            self._dates[str(club_id)] = [str(v) for v in group["as_of_date"]]
-            self._elos[str(club_id)] = [float(v) for v in group["elo"]]
-
-    def at(self, club_id: str, game_date: str) -> float | None:
-        """`as_of_date < game_date` の最新行。無ければ None（0埋めしない）。
-
-        **不等号は `<` である。** `team_ratings` の1行はその試合日の終了時点の
-        値なので、`<=` にすると当日の結果が混入する（詳細設計 1.4）。
-        """
-        dates = self._dates.get(club_id)
-        if dates is None:
-            return None
-        position = bisect.bisect_left(dates, game_date)
-        if position == 0:
-            return None
-        return self._elos[club_id][position - 1]
 
 
 @dataclass(frozen=True)

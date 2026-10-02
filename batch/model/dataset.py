@@ -14,6 +14,7 @@ from numpy.typing import NDArray
 
 from batch.features.builder import FEATURE_KEYS, build_features
 from batch.features.dataset import Dataset
+from batch.features.prepared import prepare
 from batch.model.params import TIME_DECAY_LAMBDA_INITIAL
 
 type Floats = NDArray[np.float64]
@@ -75,6 +76,11 @@ def build_matrix(ds: Dataset) -> TrainingData:
         raise MatrixError("終了した試合が1件もない")
     finished = finished.sort_values(["tipoff_at", "id"], kind="stable")
 
+    # **索引は1回だけ組む。** 試合ごとに組み直すと 6,270試合で43分かかる
+    # （2026-10-02 の実測）。索引を渡しても値は変わらない — `as_of` の
+    # 絞り込みは `build_context` が行う（`batch/features/prepared.py`）
+    prepared = prepare(ds)
+
     rows: list[dict[str, float]] = []
     home_win: list[float] = []
     margin: list[float] = []
@@ -90,7 +96,8 @@ def build_matrix(ds: Dataset) -> TrainingData:
         # pandas の itertuples は列の型を Any にしないため、ここで数値へ寄せる
         home = float(str(game.home_score))
         away = float(str(game.away_score))
-        rows.append(build_features(str(game.id), as_of=_as_of(game.tipoff_at), ds=ds))
+        rows.append(build_features(
+            str(game.id), as_of=_as_of(game.tipoff_at), ds=ds, prepared=prepared))
         home_win.append(1.0 if home > away else 0.0)
         margin.append(home - away)
         total.append(home + away)

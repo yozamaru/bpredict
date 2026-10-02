@@ -20,12 +20,7 @@ def _recent_minutes(context: Context, club_id: str) -> pd.Series:
     所属は `player_game_stats.club_id`（その試合で実際にどのクラブで出たか）で判定する。
     当季に限るのは、前季の別クラブでの出場時間を混ぜないため。
     """
-    stats = context.finished_player_stats
-    if stats.empty:
-        return pd.Series(dtype="float64")
-    season_games = context.finished_team_games
-    season_game_ids = set(season_games[season_games["season_id"] == context.season_id]["game_id"])
-    rows = stats[(stats["club_id"] == club_id) & (stats["game_id"].isin(season_game_ids))]
+    rows = context.player_history(club_id, season_only=True)
     if rows.empty:
         return pd.Series(dtype="float64")
     rows = rows.sort_values("game_date", ascending=False)
@@ -42,8 +37,7 @@ def _absent_players(context: Context, club_id: str) -> set[str]:
     entries = context.entries
     if entries.empty:
         return set()
-    stats = context.finished_player_stats
-    club_players = set(stats[stats["club_id"] == club_id]["player_id"])
+    club_players = set(context.player_history(club_id, season_only=False)["player_id"])
     entered = set(entries[entries["status"] == "ENTRY"]["player_id"])
     listed = set(entries["player_id"])
     # 登録の記載がある選手のうち、ENTRY でないもの。記載のない選手は判断材料がない
@@ -77,10 +71,9 @@ def entry_is_official(context: Context) -> int:
     entries = context.entries
     if entries.empty or (entries["source"] != "OFFICIAL").any():
         return 0
-    stats = context.finished_player_stats
     listed = set(entries["player_id"])
     for club_id in (context.home_club_id, context.away_club_id):
-        club_players = set(stats[stats["club_id"] == club_id]["player_id"])
+        club_players = set(context.player_history(club_id, season_only=False)["player_id"])
         if club_players and not (club_players & listed):
             return 0
     return 1

@@ -52,7 +52,6 @@ def production_context(ratings: pd.DataFrame, game_date: str) -> Context:
         game_date=game_date,
         dataset=Dataset(tables={"team_ratings": ratings}),
         finished_team_games=empty,
-        finished_player_stats=empty,
         entries=empty,
     )
 

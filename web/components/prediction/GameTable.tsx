@@ -113,8 +113,21 @@ function GameRows({ game }: { game: GameView }) {
               bandHalf="5%"
               devScale="1%"
             />
-            {/* 色だけでなく文字でも示す（要件 8.3 / 8.6） */}
-            <span aria-hidden="true" className="h-[11px] text-[9px] font-bold leading-[11px] tracking-[0.06em] text-ink-2">
+            {/* 色だけでなく文字でも示す（要件 8.3 / 8.6）。
+
+                **軸は背景でセルの全高に通るため、この文字の下を線が走る。** 1px の線が
+                2文字の間に出て「文字が割れている」ように読めた（2026-10-02 に運営者が
+                実機で指摘）。文字の地を**行と同じ `--tint`** で塗り、文字の分だけ線を
+                隠す（図のラベルが罫線をまたぐときの作法）。
+
+                地と文字はどちらも `tossUp` で出し入れするので、片方だけ残らない。
+                互角でない行では**地も塗らない** — 空の帯が残ると罫線のように見える。 */}
+            <span
+              aria-hidden="true"
+              className={`h-[11px] text-[9px] font-bold leading-[11px] tracking-[0.06em] text-ink-2 ${
+                tossUp ? 'bg-tint px-1' : ''
+              }`}
+            >
               {tossUp ? '互角' : ''}
             </span>
           </span>

@@ -4062,11 +4062,20 @@ UPDATE model_versions SET is_active = 1 WHERE version = 'winner-v1.0.0';
 | 4a | **Workers API の土台と `POST /internal/masters`。** Hono / Zod / vitest（Workers ランタイム）/ ESLint Flat Config / `wrangler.toml` / `batch-limits.ts` / Bearer 認証（2キー方式・定数時間比較） | Bearer なしで401、汎用テーブル指定で400、`test_batch_size_within_query_limit` と `test_batch_limits_match_schema` が通る。`POST /internal/masters` がローカル D1 にマスタを投入でき、2回流しても行数が増えない |
 | 4b | 残りの `/internal/*`（`predictions` / `finalize` / `evaluate` / `summary` / `log` / `ratings` / `games` / `stats` / `entries` / `models` と GET 群）。**freeze の Cron Trigger（毎時）もここで置く** | tipoff 経過後に409、freeze が子 → 親の順で通る、`GET /internal/games/ingested`（工程6が使う）と `GET /internal/models/active`（工程9が使う）が応答する |
 | 5 | スクレイパとパーサ（値域検証を含む） | 合成 fixture でテストが通る。**完了した** — `batch/scraper/`（HTTP・取得前確認・URL構築）と `batch/parser/`（日程・終了済みボックススコア）を**標準ライブラリのみ**で実装し、batch のテストは 371 件。取得前確認は robots / 利用規約のハッシュが未設定・不一致なら試合データを取得しない。日次3,000件と 429/503 の停止はプロセス再起動を跨いで保たれる。**実サイトの取得は `SCRAPER_USER_AGENT` / `SCRAPER_ROBOTS_SHA256` / `SCRAPER_TERMS_SHA256` を設定するまで行わない**（カナリアは警告を残してスキップする）。利用方法は [スクレイパ・パーサ](scraper-parser.md) |
-| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**取り込みは完了した。2026-10-01**）。会場は `StadiumCD` を見て未知なら `venues` に登録してから試合を入れる。座標と収容人数は CSV から後入れする。`venue_revisions` の作り方は 1.2 で確定済み（U-10 解決） | **取り込みは満たした。** 11シーズン・**`games` 6,270行**が D1 に入り、スナップショットを 8.1 の手順6 で全期間作り直して**事実データとマスタ11テーブルの行数が D1 と一致**することを実データで確認した（`player_game_stats` 146,463 / `team_games` 12,540 / `venues` 149 / `club_seasons` 238）。Elo は全期間 replay で **12,532行**（2016-09-22〜2026-09-27）、会場の名称履歴は 173区間 / 149会場。**残り2つは `INGEST_TOKEN` が要るため未実施** — 派生テーブルの D1 への書き戻し（`/internal/ratings` / `/internal/venue-revisions`。D1 側はいずれも0行）と、会場の座標の解決（4.10）。**どちらも実行経路が未定**（下記） |
+| 6 | backfill による過去データ取り込み **＋ `club_seasons` と会場マスタの構築 ＋ スナップショット書き出し**（**完了した。2026-10-02**） | **完了条件を満たした。** 11シーズン・**`games` 6,270行**が D1 に入り、スナップショットを 8.1 の手順6 で全期間作り直して**事実データとマスタ11テーブルの行数が D1 と一致**することを実データで確認した（`player_game_stats` 146,463 / `team_games` 12,540 / `venues` 149 / `club_seasons` 238）。派生テーブルも D1 へ書き戻した（`team_ratings` **12,532行** / `venue_revisions` **173区間**）。会場の座標は **140 / 149件**（残り9件は住所がない8・候補なし1で埋められない）。**公開APIで端から端まで検算した** — `/teams` が26クラブ、`/teams/:slug` が Elo 1275.67、`/games/1` が当時の会場名を返す |
 
-**工程6に残っている2つは、走らせる経路がない。** ジョブ（`recompute_ratings` / `build_venue_revisions` / `resolve_venue_geo`）は実装も検証も済んでいるが、いずれも `INGEST_TOKEN` を要し、**手元にはない**（GitHub Secrets にあり、AI は Secrets を読めない。設計どおり）。8.1 の運用手順は運営者が手元で流す前提で書かれているが、backfill は 2026-09-25 から AI が `gh workflow run` で起動する運用に変わっている（`docs/STATUS.md`）。**同じ形の手動ワークフローを置くかは運営者の判断であり、推測で作らない。**
+**工程6で踏んだことを残す。** いずれも「設計どおりに実装したのに通らない」型である。
 
-**学習（工程8）はこの2つを待たない。** 特徴量が読むのはスナップショット側であり（基本設計 2.2）、D1 の `team_ratings` は公開API の表示用の複製である。影響が出るのは `/teams/:slug` の Elo 表示と、過去試合の会場名（revision がないため `venues.name` にフォールバックする。1.2）だけである。
+| 事象 | 直し方 |
+|---|---|
+| `--dry-run` でも `API_BASE_URL` の形式検証を通る | 何も送らないが値を渡す（`InternalApi` の設計） |
+| 4.10 の段5（座標だけを送る）が 3.4 の `min(1)` と矛盾し 400 | `games` を省略可にした（v1.56） |
+| 住所に都道府県がない会場が14件 | 候補の `title` から読み、市区町村で照合する（v1.53） |
+
+**D1 を入力として読む経路は作らなかった。** スナップショットの再構築は 8.1 の手順6
+（`wrangler d1 export` → SQLite → `scripts/rebuild_snapshot.py`）で行い、これは
+**復旧手段であって日常の学習経路ではない**（基本設計 2.2）。
+
 | 7 | 特徴量生成とリーク検証テスト（入力はスナップショット） | DB撹乱法のテストが通る。ミューテーション試験も通る。`test_training_reads_no_d1` が通る。**完了した** — `batch/features/`（`dataset` / `base` / `team_strength` / `schedule_ctx` / `player` / `builder`）と採用16キー、`db/seeds/test/`（架空8クラブ × 2シーズン / 224試合の決定論的シード）、`scripts/rebuild_snapshot.py`。batch のテストは 404 件で、リーク検証10件・スナップショット9件・特徴量10件を含む |
 | 8 | 勝敗モデルの学習と評価（**経路A・Bの両方**）。**P0-11**（採用経路と σ の実測）と **P0-16**（ECE ノイズフロアを実データの予測分布で再計算）をここで消化する | Elo単体ロジスティック回帰を Brier で上回る。P0-11 で採用経路と `margin_sigma` が決まり、P0-16 で ECE ゲートの閾値が確定する |
 | 9a | **静的JSON の書き出し**（`batch/static_json/`、契約ファイル、CI の `data/` ファイル数検査）。U-09 は 3.7 で解決済み | **完了した** — 組み立て・書き出し・窓から出たファイルの削除を実装し、batch のテストは 671 件（静的JSON 27件）。**キー構造を `contracts/public-shapes.json` に固定し、api（243件）と batch の両方が読む**。変異試験で片側だけを直すと両側が落ちることを確認した |

@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
+from batch.features.builder import FEATURE_KEYS
 from batch.features.dataset import Dataset, load_snapshot
 from batch.model.baselines import fit_logistic, home_always
 from batch.model.criteria import Decision, Inputs, passes_criteria
@@ -95,11 +96,25 @@ def home_always_learner() -> Learner:
 # --- 特徴量のキャッシュ ---
 
 def manifest_digest(snapshot: Path) -> str:
-    """スナップショットの MANIFEST のハッシュ。キャッシュの鍵になる。"""
+    """スナップショットの MANIFEST のハッシュ。キャッシュの鍵の片方になる。"""
     path = snapshot / "MANIFEST.json"
     if not path.exists():
         raise TrainError("MANIFEST.json がない")
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def feature_digest() -> str:
+    """特徴量のキー一覧のハッシュ。**キャッシュの鍵のもう片方**。
+
+    **スナップショットだけを鍵にすると、特徴量を増やしたときに古い行列が読まれる。**
+    特徴量を1つ足してもスナップショットは変わらないため digest が一致し、
+    **増やす前の特徴量で評価した結果が「増やした後の結果」として出てしまう。**
+    しかも落ちないため気づけない（2026-10-02 に工程8の続きへ入る前に判明）。
+
+    順序も鍵に含める。`load_cached` は列名ではなく位置で特徴量を取り出すため、
+    キーの並びが変わっただけでも作り直す必要がある。
+    """
+    return hashlib.sha256("\n".join(FEATURE_KEYS).encode("utf-8")).hexdigest()
 
 
 def load_cached(cache: Path, digest: str) -> TrainingData | None:
@@ -109,6 +124,8 @@ def load_cached(cache: Path, digest: str) -> TrainingData | None:
         return None
     meta = json.loads(side.read_text(encoding="utf-8"))
     if meta.get("manifest_sha256") != digest:
+        return None
+    if meta.get("feature_sha256") != feature_digest():
         return None
     frame = pd.read_parquet(cache)
     targets = ("home_win", "margin", "total")
@@ -140,7 +157,15 @@ def save_cache(cache: Path, digest: str, data: TrainingData) -> None:
     cache.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(cache, index=False)
     cache.with_suffix(".json").write_text(
-        json.dumps({"manifest_sha256": digest, "rows": len(data)}, ensure_ascii=False),
+        json.dumps(
+            {
+                "manifest_sha256": digest,
+                "feature_sha256": feature_digest(),
+                "feature_keys": list(FEATURE_KEYS),
+                "rows": len(data),
+            },
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
 

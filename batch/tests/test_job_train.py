@@ -123,6 +123,41 @@ def test_cache_is_ignored_when_the_snapshot_changed(tmp_path: Path) -> None:
     assert train.load_cached(cache, "digest-b") is None
 
 
+def test_cache_is_ignored_when_the_feature_list_changed(tmp_path: Path, monkeypatch) -> None:
+    """**特徴量を増やしたら作り直すこと。**
+
+    スナップショットだけを鍵にすると、特徴量を1つ足しても MANIFEST は変わらないため
+    鍵が一致し、**増やす前の特徴量で評価した結果が「増やした後の結果」として出る**。
+    しかも落ちないため気づけない。工程8は「1つ足して測る」を繰り返す工程であり、
+    ここが抜けていると**測定そのものが無意味になる**。
+    """
+    cache = tmp_path / "m.parquet"
+    train.save_cache(cache, "digest-a", fake_data(per_season=5))
+    assert train.load_cached(cache, "digest-a") is not None
+
+    monkeypatch.setattr(train, "FEATURE_KEYS", (*train.FEATURE_KEYS, "new_feature"))
+    assert train.load_cached(cache, "digest-a") is None
+
+
+def test_cache_is_ignored_when_the_feature_order_changed(tmp_path: Path, monkeypatch) -> None:
+    """**並びも鍵に含める。** `load_cached` は位置で特徴量を取り出す。"""
+    cache = tmp_path / "m.parquet"
+    train.save_cache(cache, "digest-a", fake_data(per_season=5))
+    monkeypatch.setattr(train, "FEATURE_KEYS", tuple(reversed(train.FEATURE_KEYS)))
+    assert train.load_cached(cache, "digest-a") is None
+
+
+def test_cache_records_the_feature_keys(tmp_path: Path) -> None:
+    """何で測ったかを後から読めるようにする（横の JSON に一覧を残す）。"""
+    import json
+
+    cache = tmp_path / "m.parquet"
+    train.save_cache(cache, "digest-a", fake_data(per_season=5))
+    meta = json.loads(cache.with_suffix(".json").read_text(encoding="utf-8"))
+    assert meta["feature_keys"] == list(train.FEATURE_KEYS)
+    assert meta["feature_sha256"] == train.feature_digest()
+
+
 def test_cache_is_rebuilt_when_the_manifest_changes(tmp_path: Path, monkeypatch) -> None:
     """スナップショットが変わったら作り直すこと（鍵は MANIFEST のハッシュ）。"""
     snapshot = tmp_path / "snap"

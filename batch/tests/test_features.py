@@ -194,3 +194,4 @@ def test_minutes_lost_grows_when_a_regular_is_out(seeded_db: sqlite3.Connection)
     after = minutes_lost(_context(seeded_db, game_id, as_of), club)
     assert after is not None
     assert after > before
+

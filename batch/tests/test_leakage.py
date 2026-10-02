@@ -151,15 +151,25 @@ def test_features_exclude_in_progress_game(seeded_db: sqlite3.Connection) -> Non
     `tipoff_at <= as_of < finished_at` の試合を作る。`tipoff_at` で絞る実装だと
     この試合が確定情報として混入する。
     """
-    game_id, as_of = _target(seeded_db)
+    # **最終試合を選ばない。** `_target()` の既定（`offset_from_end=0`）は最後の試合で、
+    # 後続の試合が存在しない。**この検査は対象試合自身を撹乱して通っていた** —
+    # 自分を除外した途端に撹乱対象が無くなり、本来の「他の進行中の試合」を
+    # 一度も試していなかったことが分かった（2026-10-02）。
+    game_id, as_of = _target(seeded_db, offset_from_end=30)
     baseline = _features(seeded_db, game_id, as_of)
 
+    # **対象試合自身を選ばない。** 対象試合は `finished_at > as_of` を満たす
+    # （自分の開始時刻の時点では終わっていない）ため、この条件だけだと自分が選ばれる。
+    # すると撹乱が対象試合の `tipoff_at` を書き換えることになり、
+    # `tipoff_hour`（日程の属性。規約3 が禁じるのは対象試合の**スタッツ**である）が
+    # 追従して「リーク」と判定された。**本番では `as_of` = 対象試合の `tipoff_at`
+    # であり、片方だけが動く状態は起こらない。**
     in_progress = seeded_db.execute(
-        "SELECT id FROM games WHERE finished_at > ? ORDER BY tipoff_at LIMIT 1",
-        (as_of.isoformat(timespec="seconds").replace("+00:00", "Z"),),
+        "SELECT id FROM games WHERE finished_at > ? AND id <> ? ORDER BY tipoff_at LIMIT 1",
+        (as_of.isoformat(timespec="seconds").replace("+00:00", "Z"), game_id),
     ).fetchone()
-    if in_progress is None:
-        pytest.skip("as_of 以降の試合がない")
+    # **skip にしない。** 撹乱対象が無いまま通ると、この検査は黙って空振りする。
+    assert in_progress is not None, "撹乱対象がない。テストが空振りしている"
     started = (as_of - timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
     ends = (as_of + timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
     seeded_db.execute(

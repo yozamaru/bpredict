@@ -34,3 +34,4 @@ ELO_DEFAULT = 1500.0
 # parser が features の定数に依存すると、責務の分離（CLAUDE.md）が崩れる。
 # P0-7 で値が変わるときは3箇所すべてを直す。
 FTA_COEFFICIENT = 0.44
+

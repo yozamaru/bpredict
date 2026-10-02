@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -297,3 +298,37 @@ def test_winner_learner_collects_one_gain_per_fold() -> None:
     result = train.walk_forward(data, train.winner_learner(collected), max_folds=2)
     assert len(collected) == len(result.folds)
     assert collected and set(collected[0]) == set(data.features.columns)
+
+
+# --- 予想スコアの MAE ---
+
+def test_team_score_mae_is_not_the_margin_mae() -> None:
+    """**チーム得点の MAE と得点差の MAE を混同しない。**
+
+    付録B の見立て「8〜10点」はチーム得点についてのものである。
+    `home = (total + margin) / 2` なので、両者は一致しない。
+    """
+    from batch.model.evaluate import Evaluation, Fold
+
+    def fold(pred, actual):
+        return Fold(
+            test_season="s", train_seasons=("a",), valid_season="b",
+            n_train=1, n_valid=1, n_test=len(pred), best_iteration=1,
+            probs=np.asarray(pred, dtype=np.float64),
+            actual=np.asarray(actual, dtype=np.float64),
+        )
+
+    # 得点差は 2点ずれ、合計得点は 4点ずれている
+    margin = Evaluation(folds=(fold([5.0, 5.0], [3.0, 7.0]),))
+    total = Evaluation(folds=(fold([160.0, 160.0], [156.0, 164.0]),))
+    assert margin.mae == pytest.approx(2.0)
+    assert total.mae == pytest.approx(4.0)
+    # ホーム = (合計 + 得点差)/2 の誤差は (4 ± 2)/2、アウェイは (4 ∓ 2)/2
+    # → |3|, |1|, |1|, |3| の平均 = 2.0
+    assert train.team_score_mae(margin, total) == pytest.approx(2.0)
+
+
+def test_team_score_mae_is_nan_without_folds() -> None:
+    from batch.model.evaluate import Evaluation
+
+    assert math.isnan(train.team_score_mae(Evaluation(), Evaluation()))

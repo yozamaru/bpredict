@@ -74,23 +74,60 @@ class Evaluation:
     def brier(self) -> float:
         """**fold をまとめてから測る。** fold ごとの Brier を平均すると、件数の違う
         fold が同じ重みになり、n の小さい fold のノイズが効きすぎる。"""
+        self._require_binary("brier")
         return brier(self.probs, self.actual)
 
     @property
     def accuracy(self) -> float:
+        self._require_binary("accuracy")
         return accuracy(self.probs, self.actual)
 
     @property
     def log_loss(self) -> float:
+        self._require_binary("log_loss")
         return log_loss(self.probs, self.actual)
 
     @property
     def ece(self) -> float | None:
+        self._require_binary("ece")
         return ece(self.probs, self.actual)
+
+    @property
+    def mae(self) -> float:
+        """平均絶対誤差。**得点差・合計得点の指標**（要件 6.4）。"""
+        if not self.folds:
+            return float("nan")
+        return float(np.abs(self.probs - self.actual).mean())
+
+    @property
+    def residual_sigma(self) -> float:
+        """残差の標準偏差。**経路B の `Φ(margin / σ)` の σ**（要件 6.1 / P0-11）。
+
+        **out-of-fold の残差から測る。** 学習データの残差で測ると σ が小さく出て、
+        経路B の確率が過信になる。
+        """
+        if not self.folds:
+            return float("nan")
+        return float(np.std(self.actual - self.probs, ddof=1))
 
     @property
     def best_iterations(self) -> list[int]:
         return [f.best_iteration for f in self.folds]
+
+    def _require_binary(self, name: str) -> None:
+        """**回帰の結果に分類の指標を呼ばせない。**
+
+        `Evaluation` は分割を1つに保つため分類と回帰で共用するが、`brier` や `ece` を
+        得点差の評価に対して呼ぶと**意味のない数字が黙って返る**。実測値が 0/1 で
+        ないときは落とす。
+        """
+        if not self.folds:
+            return
+        unique = np.unique(self.actual)
+        if not np.all((unique == 0.0) | (unique == 1.0)):
+            raise EvaluationError(
+                f"{name} は 0/1 の目的変数にしか意味がない（回帰の結果には mae を使う）",
+            )
 
 
 def folds_of(seasons: Sequence[str], *, max_folds: int = MAX_FOLDS) -> list[int]:
@@ -108,8 +145,16 @@ def folds_of(seasons: Sequence[str], *, max_folds: int = MAX_FOLDS) -> list[int]
 
 def walk_forward(
     data: TrainingData, learn: Learner, *,
+    target: Floats | None = None,
     weights: Floats | None = None, max_folds: int = MAX_FOLDS,
 ) -> Evaluation:
+    """`target` を省略すると勝敗（`home_win`）を学習する。
+
+    **分割器を2つ作らない。** 得点差・合計得点の回帰も同じこの関数を通す。
+    P0-11（勝率の経路 A / B の比較）は「**同一の walk-forward ウィンドウ**で
+    Brier と ECE を測る」ことを要件が定めており（要件 6.1）、分割の実装が2つあると
+    **片方だけ直したときに比較が成り立たなくなる。**
+    """
     seasons = data.seasons
     positions = folds_of(seasons, max_folds=max_folds)
     if not positions:
@@ -117,6 +162,9 @@ def walk_forward(
             f"walk-forward には3シーズン以上が必要（いまは {len(seasons)}）",
         )
     season_ids = np.asarray(data.season_ids)
+    y = data.home_win if target is None else np.asarray(target, dtype=np.float64)
+    if y.size != len(data):
+        raise EvaluationError("目的変数の件数が学習行列と合わない")
     w = np.ones(len(data)) if weights is None else np.asarray(weights, dtype=np.float64)
     if w.size != len(data):
         raise EvaluationError("重みの件数が学習行列と合わない")
@@ -132,8 +180,8 @@ def walk_forward(
         if not train.any() or not valid.any() or not test.any():
             raise EvaluationError("分割の一方が空になった")
         predict, best = learn(
-            data.features[train], data.home_win[train], w[train],
-            data.features[valid], data.home_win[valid],
+            data.features[train], y[train], w[train],
+            data.features[valid], y[valid],
         )
         results.append(Fold(
             test_season=test_season,
@@ -144,6 +192,6 @@ def walk_forward(
             n_test=int(test.sum()),
             best_iteration=best,
             probs=np.asarray(predict(data.features[test]), dtype=np.float64),
-            actual=data.home_win[test],
+            actual=y[test],
         ))
     return Evaluation(folds=tuple(results))

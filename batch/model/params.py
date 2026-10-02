@@ -50,3 +50,15 @@ WINNER_PARAMS: dict[str, object] = {
 #: 上限。artifact サイズが 1.5MB を超えないための制約でもある（詳細設計 4.7）
 NUM_BOOST_ROUND_MAX = 1200
 EARLY_STOPPING_ROUND = 100
+
+#: 得点差（Margin）と合計得点（Total）の回帰（基本設計 2.3）。
+#: **`WINNER_PARAMS` を写して目的関数だけ変える。** 詳細設計 4.7 は回帰用の別の
+#: グリッドを定めていないため、**こちらで別の木の形を作らない**。木を深くする前に
+#: 特徴量を見直す（同 4.7）。seed 系も同じ値で固定する。
+SCORE_PARAMS: dict[str, object] = {
+    **WINNER_PARAMS,
+    # L2（二乗誤差）。詳細設計 4.5 の擬似コードが回帰に `"regression"` を使っている
+    "objective": "regression",
+    # **MAE も出す。** 要件 6.4 が予想スコアの指標を MAE と定めている
+    "metric": ["l2", "l1"],
+}

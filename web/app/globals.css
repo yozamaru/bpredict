@@ -200,22 +200,22 @@
      見えるため、中央からの隔たりではなく「2色の積み上げバー」に見える。基準の線が
      無ければ、どこが 50% かも分からない（2026-10-02 に実機で判明）。
 
-     上下に 1px はみ出させて行グループの境界の罫線をまたぐ。はみ出す先は罫線の上で
-     あり、内容を覆わない。 */
-  .axis-column {
-    position: relative;
-  }
+     **絶対配置ではなく背景で描く。** `border-collapse: collapse` の表では、WebKit が
+     `<td>` の `position: relative` に包含ブロックを作らない。`::after` で描いていた
+     版は Chrome では出て **iOS Safari では1本も出なかった**（2026-10-02 に実機で判明）。
+     **目視しない環境の検査だけでは捕まらない種類の誤りである。**
 
-  .axis-column::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: -1px;
-    bottom: -1px;
-    width: 1px;
-    background: var(--axis);
-    /* **塗りより上に描く。** 中央がどこかは常に見えていなければならない */
-    z-index: 1;
+     **同じ列の互角帯は最初から背景グラデーションで描いており、Safari でも出ていた**
+     （`.axis-bar`）。軸もその仕組みに揃える。1px 幅・全高の画像を中央に置くので、
+     4段のグラデーションより端が鈍らない。
+
+     背景は内容の下に入るため、バーの塗り（12px）と重なる 1px だけは半分が隠れる。
+     **バーの外（セルの残りの高さ）では全幅が見えており、基準の線としては読める。** */
+  .axis-column {
+    background-image: linear-gradient(var(--axis), var(--axis));
+    background-repeat: no-repeat;
+    background-position: 50% 0;
+    background-size: 1px 100%;
   }
 
   .axis-fill {

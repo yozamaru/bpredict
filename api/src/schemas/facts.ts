@@ -102,7 +102,11 @@ export const clubSeasonSchema = z
 
 export const gamesBody = z
   .object({
-    games: z.array(gameSchema).min(1),
+    // **`games` は省略できる**（詳細設計 3.4）。会場の座標だけを送る経路
+    // （4.10 の段5）がこの口を使うためである。v1.55 まで `min(1)` だったため
+    // その経路が 400 で通らず、設計の中で矛盾していた。
+    // 全部空のリクエストは下の `refine` で拒否する
+    games: z.array(gameSchema).optional(),
     teamGames: z.array(teamGameSchema).optional(),
     // FK の順序で入れるため、すべて `games` より前に流す
     venues: z.array(venueSchema).optional(),
@@ -110,7 +114,20 @@ export const gamesBody = z
     players: z.array(playerSchema).optional(),
     clubSeasons: z.array(clubSeasonSchema).optional(),
   })
-  .strict();
+  .strict()
+  // **1行も書かないリクエストは呼び出し側の誤りである。** `DB.batch([])` を
+  // 投げる意味がなく、黙って 200 を返すと「書けたつもり」の事故になる
+  .refine(
+    (body) =>
+      (body.games?.length ?? 0) +
+        (body.teamGames?.length ?? 0) +
+        (body.venues?.length ?? 0) +
+        (body.venueSourceKeys?.length ?? 0) +
+        (body.players?.length ?? 0) +
+        (body.clubSeasons?.length ?? 0) >
+      0,
+    { message: '書き込む行が1つもない' },
+  );
 
 const countable = int(0, 250).nullable().optional();
 

@@ -6,7 +6,7 @@ import pytest
 from batch.model.criteria import (
     ECE_FLOOR_K,
     KNOWN_CONSTANT,
-    MAX_NULL_RATE,
+    MAX_FEATURE_NULL_RATE,
     MIN_EFFECT,
     MIN_EVAL_N,
     CriteriaError,
@@ -145,7 +145,7 @@ def test_null_rate_above_the_limit_fails() -> None:
 
 
 def test_null_rate_exactly_at_the_limit_passes() -> None:
-    assert passes_criteria(inputs(null_rates={"x": MAX_NULL_RATE})).adopt
+    assert passes_criteria(inputs(null_rates={"x": MAX_FEATURE_NULL_RATE})).adopt
 
 
 # --- 分散が0の列（欠損率では捕まらない） ---
@@ -213,3 +213,21 @@ def test_summary_of_an_adopted_model_carries_the_notes() -> None:
     decision = passes_criteria(inputs(constant_columns=["entry_is_official"]))
     assert decision.summary.startswith("採用基準を満たした")
     assert "entry_is_official" in decision.summary
+
+
+def test_thresholds_are_not_defined_twice() -> None:
+    """**閾値の出どころは `params.py` だけである。**
+
+    `criteria.py` が自分で数値を持つと、片方だけ直したときに
+    「設計どおりのはずのゲート」が静かにずれる。
+    """
+    import pathlib
+
+    from batch.model import params
+
+    body = (pathlib.Path(params.__file__).parent / "criteria.py").read_text(encoding="utf-8")
+    for name in ("MIN_EVAL_N", "MIN_EFFECT", "ECE_FLOOR_K", "MAX_FEATURE_NULL_RATE"):
+        assert f"{name} = " not in body, f"{name} を criteria.py で定義している"
+    assert (MIN_EVAL_N, MIN_EFFECT, ECE_FLOOR_K, MAX_FEATURE_NULL_RATE) == (
+        params.MIN_EVAL_N, params.MIN_EFFECT, params.ECE_FLOOR_K, params.MAX_FEATURE_NULL_RATE,
+    )

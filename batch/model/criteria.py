@@ -14,18 +14,27 @@ from dataclasses import dataclass, field
 
 from batch.model.metrics import Difference
 
-#: これ未満では**比較そのものを行わない**（要件 6.5。n=200 では Accuracy 差の
-#: SD が 0.041 あり、0.003 の実質差をノイズと区別できない）
-MIN_EVAL_N = 500
+# **閾値をここで定義しない。** `batch/model/params.py` が唯一の出どころである
+# （同ファイルの冒頭「値の出どころを1か所にまとめる」）。2箇所に置くと、
+# 片方だけ直したときに「設計どおりのはずのゲート」が静かにずれる。
+from batch.model.params import (
+    ECE_FLOOR_K,
+    MAX_FEATURE_NULL_RATE,
+    MIN_EFFECT,
+    MIN_EVAL_N,
+)
 
-#: 最小実質差（Brier）。点推定の差がこれ未満なら、有意でも採用しない
-MIN_EFFECT = 0.003
-
-#: ECE のノイズフロア95%点に対する倍率。**固定値 0.05 を使わない**（n 依存）
-ECE_FLOOR_K = 1.5
-
-#: 特徴量の欠損率の上限
-MAX_NULL_RATE = 0.30
+__all__ = [
+    "ECE_FLOOR_K",
+    "KNOWN_CONSTANT",
+    "MAX_FEATURE_NULL_RATE",
+    "MIN_EFFECT",
+    "MIN_EVAL_N",
+    "CriteriaError",
+    "Decision",
+    "Inputs",
+    "passes_criteria",
+]
 
 #: **分散が0でも採用を止めない列**と、その理由。
 #:
@@ -141,8 +150,8 @@ def passes_criteria(inputs: Inputs) -> Decision:
 
     # 4. 特徴量の欠損率
     worst = max(inputs.null_rates.items(), key=lambda kv: kv[1], default=None)
-    if worst is not None and worst[1] > MAX_NULL_RATE:
-        failures.append(f"欠損率が {MAX_NULL_RATE:.0%} を超える特徴量がある（{worst[0]}）")
+    if worst is not None and worst[1] > MAX_FEATURE_NULL_RATE:
+        failures.append(f"欠損率が {MAX_FEATURE_NULL_RATE:.0%} を超える特徴量がある（{worst[0]}）")
 
     # 5. 分散が0の列。**欠損率では捕まらない**（NULL ではなく定数のため）
     unexpected = [c for c in inputs.constant_columns if c not in KNOWN_CONSTANT]

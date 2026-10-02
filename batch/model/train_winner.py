@@ -41,12 +41,19 @@ def learn_winner(
     valid_x: pd.DataFrame, valid_y: Floats,
     *, params: dict[str, object] | None = None,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    on_gain: Callable[[dict[str, float]], None] | None = None,
 ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
     """1 fold を学習し、(予測関数, best_iteration) を返す。
 
     **検証セットを必ず渡す。** early stopping は検証セットがあって初めて成立する。
     `num_boost_round` の上限は 1,200 で、artifact サイズが 1.5MB を超えないための
     制約でもある（詳細設計 4.7）。
+
+    `on_gain` を渡すと、その fold の**列ごとの gain**（分割がもたらした損失の減少の
+    合計）を通知する。要件 6.2 は「寄与度（SHAP / gain）と欠損率を測定する」と定めて
+    おり、**特徴量の採否は全体の Brier だけでは判断できない**（1項目の効果は
+    walk-forward の CI の幅より小さい。付録B）。`Learner` の契約（予測関数と
+    `best_iteration` を返す）は変えないため、通知で外へ出す。
     """
     lgb = _booster()
     settings = dict(WINNER_PARAMS if params is None else params)
@@ -60,6 +67,11 @@ def learn_winner(
         callbacks=[lgb.early_stopping(EARLY_STOPPING_ROUND, verbose=False)],
     )
     best = int(booster.best_iteration or num_boost_round)
+
+    if on_gain is not None:
+        names = [str(v) for v in booster.feature_name()]
+        gains = [float(v) for v in booster.feature_importance(importance_type="gain")]
+        on_gain(dict(zip(names, gains, strict=True)))
 
     def predict(features: pd.DataFrame) -> Floats:
         return np.asarray(

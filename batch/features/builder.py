@@ -30,6 +30,9 @@ DEFAULTS: dict[str, float] = {
     "winrate_season_diff": 0.0,
     "margin_l5_diff": 0.0,
     "margin_season_diff": 0.0,
+    # 検証区分（詳細設計 2.2）。効かなければ落とす
+    "ortg_diff": 0.0,
+    "drtg_diff": 0.0,
     "series_game_no": 1.0,
     "prev_result_diff": 0.0,
     "prev_margin_diff": 0.0,
@@ -90,6 +93,8 @@ def build_features(
         "elo_away": team_strength.elo(context, context.away_club_id),
         "winrate_season_diff": _diff(context, team_strength.winrate_season_shrunk),
         "margin_season_diff": _diff(context, team_strength.margin_season),
+        "ortg_diff": _diff(context, team_strength.off_rating),
+        "drtg_diff": _diff(context, team_strength.def_rating),
         "series_game_no": schedule_ctx.series_game_no(context),
         "prev_result_diff": _diff(context, schedule_ctx.previous_result),
         "prev_margin_diff": _diff(context, schedule_ctx.previous_margin),

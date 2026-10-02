@@ -79,6 +79,45 @@ def logistic_learner(columns: Sequence[str] | None = None) -> Learner:
     return learn
 
 
+def winner_learner(collected: list[dict[str, float]]) -> Learner:
+    """`learn_winner` に gain の集計を足した `Learner`。
+
+    **fold ごとの gain を集めて平均する。** 1 fold の gain は学習データの量が違う
+    ため直接は比べられないが、**各 fold で列の合計を 100 に正規化**してから平均すれば
+    「その fold でモデルが何に依存したか」の割合として読める。
+    """
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        return learn_winner(
+            train_x, train_y, train_w, valid_x, valid_y,
+            on_gain=collected.append,
+        )
+
+    return learn
+
+
+def gain_share(collected: list[dict[str, float]]) -> dict[str, float]:
+    """fold ごとに合計100へ正規化した gain の平均（百分率）。
+
+    **合計が0の fold は飛ばす。** 木が1本も育たなかった fold を 0 として平均に
+    入れると、分母だけが増えて全列の割合が薄まる。
+    """
+    shares: dict[str, list[float]] = {}
+    used = 0
+    for fold in collected:
+        total = sum(fold.values())
+        if total <= 0:
+            continue
+        used += 1
+        for name, value in fold.items():
+            shares.setdefault(name, []).append(100.0 * value / total)
+    if used == 0:
+        return {}
+    return {name: sum(v) / used for name, v in shares.items()}
+
+
 def home_always_learner() -> Learner:
     """ベースライン1「ホームが必ず勝つ」。学習しない。"""
     def learn(
@@ -206,6 +245,9 @@ class Report:
     null_rates: dict[str, float]
     constant_columns: list[str]
     decision: Decision
+    #: 列ごとの gain の割合（fold ごとに合計100へ正規化した平均）。要件 6.2 が
+    #: 「寄与度（SHAP / gain）と欠損率を測定する」と定める寄与度にあたる
+    gain_share: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
@@ -234,6 +276,9 @@ class Report:
             },
             "constant_columns": self.constant_columns,
             "worst_null_rate": max(self.null_rates.values(), default=0.0),
+            # **何で測ったかを残す。** 次に特徴量を足したときに比べる相手になる
+            "feature_keys": list(FEATURE_KEYS),
+            "gain_share": self.gain_share,
             "adopt": self.decision.adopt,
             "failures": self.decision.failures,
             "decision_notes": self.decision.notes,
@@ -251,12 +296,13 @@ def evaluate_all(
     件数の違う fold が同じ重みになる。
     """
     weights = time_decay_weights(data.season_ids, data.seasons, lam=decay)
+    gains: list[dict[str, float]] = []
     runs: dict[str, Evaluation] = {}
     for name, learner in (
         ("home_always", home_always_learner()),
         ("elo_only", logistic_learner(ELO_ONLY)),
         ("all_feature", logistic_learner()),
-        ("winner", learn_winner),
+        ("winner", winner_learner(gains)),
     ):
         started = time.monotonic()
         runs[name] = walk_forward(data, learner, weights=weights, max_folds=max_folds)
@@ -288,7 +334,8 @@ def evaluate_all(
         winner=winner, home=runs["home_always"],
         elo=runs["elo_only"], full=runs["all_feature"],
         ece_floor=floor, difference=difference,
-        null_rates=nulls, constant_columns=constants, decision=decision,
+        null_rates=nulls, constant_columns=constants,
+        gain_share=gain_share(gains), decision=decision,
     )
 
 
@@ -325,6 +372,16 @@ def render(report: Report) -> str:
         + ("—" if report.ece_floor is None else f"{report.ece_floor * ECE_FLOOR_K:.4f}"),
         f"定数列: {' / '.join(report.constant_columns) or 'なし'}",
         f"欠損率の最大: {max(report.null_rates.values(), default=0.0):.1%}",
+    ]
+    if report.gain_share:
+        # **全体の Brier だけでは1項目の採否を判断できない**（1項目の効果は
+        # walk-forward の CI の幅より小さい。要件付録B）。モデルが実際にその列に
+        # 依存したかを gain で見る（要件 6.2）
+        lines += ["", "寄与度（gain の割合。fold ごとに合計100へ正規化した平均）"]
+        ordered = sorted(report.gain_share.items(), key=lambda kv: -kv[1])
+        for name, share in ordered:
+            lines.append(f"  {name:<24}{share:>7.2f}%")
+    lines += [
         "",
         f"採用判定: {report.decision.summary}",
     ]

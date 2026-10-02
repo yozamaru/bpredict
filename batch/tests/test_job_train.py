@@ -257,3 +257,43 @@ def test_render_names_every_baseline(report: train.Report) -> None:
     text = train.render(report)
     for name in ("ホーム必勝", "Elo差単体", "全特徴", "採用判定"):
         assert name in text
+
+
+# --- 寄与度（gain）---
+
+def test_gain_share_normalises_each_fold_to_one_hundred() -> None:
+    """**fold ごとに合計100へ正規化してから平均する。**
+
+    1 fold の gain の絶対値は学習データの量で変わるため直接は比べられない。
+    割合にすれば「その fold でモデルが何に依存したか」として読める。
+    """
+    collected = [
+        {"a": 30.0, "b": 10.0},      # 合計 40 → a 75% / b 25%
+        {"a": 300.0, "b": 100.0},    # 合計 400 → 同じ割合
+    ]
+    share = train.gain_share(collected)
+    assert share["a"] == pytest.approx(75.0)
+    assert share["b"] == pytest.approx(25.0)
+
+
+def test_gain_share_skips_folds_with_no_gain() -> None:
+    """**木が1本も育たなかった fold を 0 として平均に入れない。**
+
+    入れると分母だけが増え、全列の割合が理由なく薄まる。
+    """
+    share = train.gain_share([{"a": 1.0}, {"a": 0.0}])
+    assert share["a"] == pytest.approx(100.0)
+
+
+def test_gain_share_is_empty_without_any_usable_fold() -> None:
+    assert train.gain_share([]) == {}
+    assert train.gain_share([{"a": 0.0}]) == {}
+
+
+def test_winner_learner_collects_one_gain_per_fold() -> None:
+    """`Learner` の契約は変えず、通知で gain を外へ出すこと。"""
+    data = fake_data(per_season=300)
+    collected: list[dict[str, float]] = []
+    result = train.walk_forward(data, train.winner_learner(collected), max_folds=2)
+    assert len(collected) == len(result.folds)
+    assert collected and set(collected[0]) == set(data.features.columns)

@@ -18,6 +18,7 @@ from datetime import datetime
 from functools import cached_property
 from typing import TypeVar, cast
 
+import numpy as np
 import pandas as pd
 
 from batch.features.dataset import Dataset
@@ -130,6 +131,39 @@ class Context:
             & (index.player_game_ids[positions] != self.game_id)
         ]
         return index.player_stats.take(picked)
+
+    def stats_of(self, games: pd.DataFrame, club_id: str) -> pd.DataFrame:
+        """与えた試合における、あるクラブの `team_game_stats` の行。
+
+        **`as_of` の絞り込みをここで行わない。** 渡す `games` は
+        `club_history()` の戻り値であり、既に絞り込まれている。2つ目の絞り込みを
+        書かないための約束である（このクラスの冒頭を参照）。
+
+        **スタッツが無い試合は落ちる。** `possessions` が値域外で NULL の試合や、
+        取り込みがスタッツまで届いていない試合が実在する（詳細設計 1.3 / 4.8）。
+        行数が合わないことを欠陥として扱わず、**ある分だけで集計する**。
+        """
+        return self._stats_at(
+            games, [club_id] * len(games) if len(games) else [])
+
+    def stats_of_opponents(self, games: pd.DataFrame) -> pd.DataFrame:
+        """同じ試合の**相手**の行。行ごとに `opponent_id` を引く。"""
+        if games.empty:
+            return self.index.team_stats.iloc[:0]
+        return self._stats_at(games, [str(v) for v in games["opponent_id"]])
+
+    def _stats_at(self, games: pd.DataFrame, clubs: list[str]) -> pd.DataFrame:
+        index = self.index
+        if games.empty or not clubs:
+            return index.team_stats.iloc[:0]
+        picked = [
+            position
+            for game_id, club in zip(games["game_id"].astype(str), clubs, strict=True)
+            if (position := index.team_stats_at.get((game_id, club))) is not None
+        ]
+        if not picked:
+            return index.team_stats.iloc[:0]
+        return index.team_stats.take(np.asarray(picked, dtype=np.intp))
 
     @cached_property
     def finished_player_stats(self) -> pd.DataFrame:

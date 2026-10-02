@@ -155,6 +155,12 @@ class Prepared:
     entries_by_game: dict[str, pd.DataFrame]
     #: `team_ratings` の二分探索。`elo_home` / `elo_away` が引く
     elo_index: EloIndex
+    #: `team_game_stats` の本体
+    team_stats: pd.DataFrame
+    #: (試合ID, クラブ) → `team_game_stats` の行位置。
+    #: **`as_of` の絞り込みはここに持たない** — 渡す試合は `club_history()` が
+    #: 既に絞り込んだものである（`batch/features/base.py` の1経路を保つ）
+    team_stats_at: dict[tuple[str, str], int]
     #: クラブ → `team_games` の行位置。**`(finished_at, game_id)` の降順**
     club_positions: dict[str, Positions] = field(default_factory=dict)
     #: (クラブ, シーズン) → 同
@@ -179,6 +185,7 @@ def prepare(dataset: Dataset) -> Prepared:
     games = dataset.table("games")
     entries = dataset.table("game_entries")
     ratings = dataset.table("team_ratings")
+    team_stats = dataset.table("team_game_stats")
 
     indexed = games.set_index(games["id"].astype(str), drop=False)
     if indexed.index.has_duplicates:
@@ -239,6 +246,13 @@ def prepare(dataset: Dataset) -> Prepared:
         player_game_ids=player_game_ids,
         games_indexed=indexed,
         elo_index=EloIndex(ratings),
+        team_stats=team_stats,
+        team_stats_at={
+            (str(gid), str(cid)): position
+            for position, (gid, cid) in enumerate(
+                zip(team_stats["game_id"], team_stats["club_id"], strict=True),
+            )
+        } if len(team_stats) else {},
         entries_by_game={
             str(key): group for key, group in entries.groupby("game_id", sort=False)
         } if len(entries) else {},

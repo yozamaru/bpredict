@@ -3,7 +3,7 @@
 **選手ごとに独立予測した値をそのまま表示してはならない。** 5人の得点合計がチームの
 予想スコアと一致せず、同じ画面に矛盾した数字が並ぶ。
 
-この版では**前段（チーム目標の整合化）だけ**を持つ。選手側の整合化は工程12c。
+前段（チーム目標の整合化）と、選手側の整合化の両方を持つ。
 
 ## 前段がなぜ必要か
 
@@ -29,10 +29,14 @@ TeamRates から導出した得点が予想スコアと一致する保証がな�
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy.optimize import brentq
+
+type Floats = NDArray[np.float64]
 
 #: 試投数（カウント）。**整合化で動かさない**
 ATTEMPTS: tuple[str, ...] = ("fg2a", "fg3a", "fta")
@@ -138,4 +142,161 @@ def derived_points(targets: Mapping[str, float]) -> float:
     return sum(
         POINT_WEIGHT[att] * float(targets[pct]) * float(targets[att])
         for pct, att in PCTS
+    )
+
+
+# --- 選手側の整合化（要件 6.8.5 / 詳細設計 2.4） ---
+#
+# **選手ごとに独立予測した値をそのまま表示してはならない。** 5人の得点合計がチームの
+# 予想スコアと一致せず、同じ画面に矛盾した数字が並ぶ。
+#
+# 手順は6つ。**4〜5 を3回反復する**（設計の実測で、2回では最大誤差 3.51% が許容
+# ±2% を超える）。
+#
+#   1. 期待出場時間 `m = P(出場) × E[MIN | 出場]`
+#   2. 総出場時間を正規化（5人 × 40分 = 200分。延長は +25分/回）
+#   3. レート × 出場時間 → カウント
+#   4. 試投数・その他カウントをチーム目標へ比例スケール
+#   5. 成功率をチーム目標へ**ロジット空間シフト**
+#   6. 得点・成功数は恒等式で導出（独立に持たない）
+
+#: 反復回数（詳細設計 2.4 の実測表）。**2回では足りない** —
+#: 項目誤差の最大が 3.51% で、許容 ±2% を超える
+ITERATIONS = 3
+
+#: 1チームの総出場時間（5人 × 40分）
+TEAM_MINUTES = 200.0
+
+#: 延長1回あたりの追加分。**予測時点で延長を仮定しない**（既定は 0 回）
+OVERTIME_MINUTES = 25.0
+
+
+@dataclass(frozen=True)
+class PlayerRates:
+    """1人ぶんの予測。整合化の入力。
+
+    **シュートは「試投数のレート + 成功率」で持つ。** 成功数を独立に持つと、
+    整合化の段階で `成功数 > 試投数` が生じ、それを防ぐクリップが収束を壊す
+    （実測で失敗ケースの73%が FT 成功率）。
+    """
+
+    player_id: str
+    avail_prob: float
+    #: 出場する場合の出場時間（分）
+    minutes_if_plays: float
+    #: 単位時間あたりのレート。`ATTEMPTS` と `COUNTS` の11項目
+    rate: Mapping[str, float]
+    #: 成功率3項目。レートではなくそのまま使う
+    pct: Mapping[str, float]
+
+
+@dataclass(frozen=True)
+class Reconciled:
+    """整合化の結果。**得点と成功数は恒等式で導出した値**であり、独立に持たない。
+
+    詳細設計 2.4 の擬似コードは `(m, x, pct, pts)` のタプルを返すが、
+    中身は同じである（呼び出し側が位置で取り違えないよう名前を付けた）。
+    """
+
+    player_ids: tuple[str, ...]
+    minutes: Floats
+    #: 試投数とカウント（11項目）
+    counts: Mapping[str, Floats]
+    #: 成功率（3項目）
+    pcts: Mapping[str, Floats]
+    points: Floats
+
+    def made(self, pct: str, attempt: str) -> Floats:
+        """成功数 = 率 × 試投数。**構造的に `成功数 ≤ 試投数` が成立する。**"""
+        return self.pcts[pct] * self.counts[attempt]
+
+
+def shift_to_target(pct: Floats, att: Floats, target_made: float) -> Floats:
+    """成功率をロジット空間で一律シフトし `Σ(pct × att) = target_made` を満たす。
+
+    **クリップを使わない。** ロジットは `(0,1)` を `(-∞,∞)` に写すため、どれだけ
+    シフトしても `[0,1]` を出ない。`f(d)` は `d` について単調増加なので解は一意。
+
+    **試投数が 0 の項目は触らない**（割る相手がない）。
+    """
+    attempts = float(np.asarray(att, dtype=np.float64).sum())
+    if attempts <= 0:
+        return np.asarray(pct, dtype=np.float64)
+    base = np.log(
+        np.clip(np.asarray(pct, dtype=np.float64), EPS, 1.0 - EPS)
+        / (1.0 - np.clip(np.asarray(pct, dtype=np.float64), EPS, 1.0 - EPS)),
+    )
+    weights = np.asarray(att, dtype=np.float64)
+
+    def made(shift: float) -> float:
+        return float((_sigmoid_array(base + shift) * weights).sum()) - target_made
+
+    if made(-SHIFT_BOUND) > 0 or made(SHIFT_BOUND) < 0:
+        raise InfeasibleTargetError(target_made, attempts)
+    solved = float(brentq(made, -SHIFT_BOUND, SHIFT_BOUND))
+    return _sigmoid_array(base + solved)
+
+
+def _sigmoid_array(z: Floats) -> Floats:
+    """**桁溢れしない書き方にする。** シフト量は ±50 まで動く。"""
+    out = np.empty_like(z, dtype=np.float64)
+    positive = z >= 0
+    out[positive] = 1.0 / (1.0 + np.exp(-z[positive]))
+    exp_z = np.exp(z[~positive])
+    out[~positive] = exp_z / (1.0 + exp_z)
+    return out
+
+
+def reconcile(
+    players: Sequence[PlayerRates], target: Mapping[str, float],
+    *, overtime: int = 0, iterations: int = ITERATIONS,
+) -> Reconciled:
+    """選手予測をチーム目標に整合させる（詳細設計 2.4）。
+
+    `target` は `reconcile_team_targets()` を通した**後**の値である。生の TeamRates を
+    渡すと「選手の合計＝チーム目標」は満たされるが「チーム目標＝予想スコア」が崩れる。
+
+    **延長を仮定しない。** `overtime` の既定は 0 回。
+    """
+    if not players:
+        raise ValueError("選手が1人もいない")
+
+    minutes = np.array(
+        [float(p.avail_prob) * float(p.minutes_if_plays) for p in players],
+        dtype=np.float64,
+    )
+    total_minutes = float(minutes.sum())
+    if total_minutes <= 0:
+        raise ValueError("期待出場時間の合計が 0（全員が欠場）")
+    minutes = minutes * (TEAM_MINUTES + OVERTIME_MINUTES * overtime) / total_minutes
+
+    counts: dict[str, Floats] = {
+        stat: np.array([float(p.rate[stat]) for p in players], dtype=np.float64) * minutes
+        for stat in (*ATTEMPTS, *COUNTS)
+    }
+    pcts: dict[str, Floats] = {
+        pct: np.clip(
+            np.array([float(p.pct[pct]) for p in players], dtype=np.float64),
+            EPS, 1.0 - EPS,
+        )
+        for pct, _ in PCTS
+    }
+
+    for _ in range(iterations):
+        for stat in (*ATTEMPTS, *COUNTS):
+            current = float(counts[stat].sum())
+            if current > 0:
+                counts[stat] = counts[stat] * float(target[stat]) / current
+        for pct, attempt in PCTS:
+            # チームの成功数 = チームの率 × チームの試投数
+            target_made = float(target[pct]) * float(target[attempt])
+            pcts[pct] = shift_to_target(pcts[pct], counts[attempt], target_made)
+
+    made = {pct: pcts[pct] * counts[attempt] for pct, attempt in PCTS}
+    points = (
+        made["fg2_pct"] * 2.0 + made["fg3_pct"] * 3.0 + made["ft_pct"]
+    )
+    return Reconciled(
+        player_ids=tuple(p.player_id for p in players),
+        minutes=minutes, counts=counts, pcts=pcts, points=points,
     )

@@ -6,6 +6,8 @@ Elo は**スナップショットの `team_ratings` を読む**。その場で�
 
 from __future__ import annotations
 
+import pandas as pd
+
 from batch.features.base import Context
 from batch.features.constants import SEASON_REGRESSION_INITIAL, SHRINK_K
 
@@ -48,6 +50,53 @@ def margin_season(context: Context, club_id: str) -> float | None:
     """当季の平均得失点差。"""
     margins = context.club_history(club_id, season_only=True)["margin"].dropna()
     return None if margins.empty else float(margins.mean())
+
+
+def off_rating(context: Context, club_id: str) -> float | None:
+    """当季の 100ポゼッションあたり得点（詳細設計 2.2 の `ortg_diff`・**検証区分**）。
+
+    **窓は当季とする。** 詳細設計 1.4 は「集計窓は本文書で定義されていない。工程8で
+    採否を判断するときに決める」としている。採用済みの類似物（`margin_season_diff`）に
+    合わせ、**新しい定数を増やさない**。縮約も入れない — `margin_season` も入れていない。
+
+    **合計で割る**（試合ごとのレートを平均しない）。ORtg は「得点 ÷ ポゼッション」で
+    あり、試合ごとの率の単純平均は、ポゼッションの少ない試合を過大に重みづける。
+
+    `possessions` が NULL の試合は分母に入らない（詳細設計 1.3 の値域外は NULL）。
+    1試合も残らなければ None を返す（関数内で0埋めしない。規約5）。
+    """
+    history = context.club_history(club_id, season_only=True)
+    rows = context.stats_of(history, club_id)
+    return _per_hundred(rows)
+
+
+def def_rating(context: Context, club_id: str) -> float | None:
+    """当季に**相手へ**許した 100ポゼッションあたり得点（詳細設計 2.2 の `drtg_diff`）。
+
+    窓と集計の仕方は `off_rating` と同じ。**相手のポゼッションで割る** — 同じ試合の
+    両チームのポゼッションはほぼ等しいが、推定値であり厳密には一致しないため、
+    分子（相手の得点）と分母を同じ行から取る。
+
+    要件 6.2 は #05 を「オフェンス/ディフェンスレーティング」として**1項目**で
+    扱っている。採否は `ortg_diff` と対で判断する（片方だけでは、既にある
+    `margin_season_diff` が純収支を持っているため増分が出ない）。
+    """
+    history = context.club_history(club_id, season_only=True)
+    rows = context.stats_of_opponents(history)
+    return _per_hundred(rows)
+
+
+def _per_hundred(rows: pd.DataFrame) -> float | None:
+    """`100 × Σ得点 ÷ Σポゼッション`。どちらかが欠ける行は落とす。"""
+    if rows.empty:
+        return None
+    usable = rows[rows["pts"].notna() & rows["possessions"].notna()]
+    if usable.empty:
+        return None
+    possessions = float(usable["possessions"].sum())
+    if possessions <= 0:
+        return None
+    return 100.0 * float(usable["pts"].sum()) / possessions
 
 
 def _previous_season_winrate(context: Context, club_id: str) -> float | None:

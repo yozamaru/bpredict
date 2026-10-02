@@ -123,6 +123,41 @@ def test_cache_is_ignored_when_the_snapshot_changed(tmp_path: Path) -> None:
     assert train.load_cached(cache, "digest-b") is None
 
 
+def test_cache_is_ignored_when_the_feature_list_changed(tmp_path: Path, monkeypatch) -> None:
+    """**特徴量を増やしたら作り直すこと。**
+
+    スナップショットだけを鍵にすると、特徴量を1つ足しても MANIFEST は変わらないため
+    鍵が一致し、**増やす前の特徴量で評価した結果が「増やした後の結果」として出る**。
+    しかも落ちないため気づけない。工程8は「1つ足して測る」を繰り返す工程であり、
+    ここが抜けていると**測定そのものが無意味になる**。
+    """
+    cache = tmp_path / "m.parquet"
+    train.save_cache(cache, "digest-a", fake_data(per_season=5))
+    assert train.load_cached(cache, "digest-a") is not None
+
+    monkeypatch.setattr(train, "FEATURE_KEYS", (*train.FEATURE_KEYS, "new_feature"))
+    assert train.load_cached(cache, "digest-a") is None
+
+
+def test_cache_is_ignored_when_the_feature_order_changed(tmp_path: Path, monkeypatch) -> None:
+    """**並びも鍵に含める。** `load_cached` は位置で特徴量を取り出す。"""
+    cache = tmp_path / "m.parquet"
+    train.save_cache(cache, "digest-a", fake_data(per_season=5))
+    monkeypatch.setattr(train, "FEATURE_KEYS", tuple(reversed(train.FEATURE_KEYS)))
+    assert train.load_cached(cache, "digest-a") is None
+
+
+def test_cache_records_the_feature_keys(tmp_path: Path) -> None:
+    """何で測ったかを後から読めるようにする（横の JSON に一覧を残す）。"""
+    import json
+
+    cache = tmp_path / "m.parquet"
+    train.save_cache(cache, "digest-a", fake_data(per_season=5))
+    meta = json.loads(cache.with_suffix(".json").read_text(encoding="utf-8"))
+    assert meta["feature_keys"] == list(train.FEATURE_KEYS)
+    assert meta["feature_sha256"] == train.feature_digest()
+
+
 def test_cache_is_rebuilt_when_the_manifest_changes(tmp_path: Path, monkeypatch) -> None:
     """スナップショットが変わったら作り直すこと（鍵は MANIFEST のハッシュ）。"""
     snapshot = tmp_path / "snap"
@@ -222,3 +257,43 @@ def test_render_names_every_baseline(report: train.Report) -> None:
     text = train.render(report)
     for name in ("ホーム必勝", "Elo差単体", "全特徴", "採用判定"):
         assert name in text
+
+
+# --- 寄与度（gain）---
+
+def test_gain_share_normalises_each_fold_to_one_hundred() -> None:
+    """**fold ごとに合計100へ正規化してから平均する。**
+
+    1 fold の gain の絶対値は学習データの量で変わるため直接は比べられない。
+    割合にすれば「その fold でモデルが何に依存したか」として読める。
+    """
+    collected = [
+        {"a": 30.0, "b": 10.0},      # 合計 40 → a 75% / b 25%
+        {"a": 300.0, "b": 100.0},    # 合計 400 → 同じ割合
+    ]
+    share = train.gain_share(collected)
+    assert share["a"] == pytest.approx(75.0)
+    assert share["b"] == pytest.approx(25.0)
+
+
+def test_gain_share_skips_folds_with_no_gain() -> None:
+    """**木が1本も育たなかった fold を 0 として平均に入れない。**
+
+    入れると分母だけが増え、全列の割合が理由なく薄まる。
+    """
+    share = train.gain_share([{"a": 1.0}, {"a": 0.0}])
+    assert share["a"] == pytest.approx(100.0)
+
+
+def test_gain_share_is_empty_without_any_usable_fold() -> None:
+    assert train.gain_share([]) == {}
+    assert train.gain_share([{"a": 0.0}]) == {}
+
+
+def test_winner_learner_collects_one_gain_per_fold() -> None:
+    """`Learner` の契約は変えず、通知で gain を外へ出すこと。"""
+    data = fake_data(per_season=300)
+    collected: list[dict[str, float]] = []
+    result = train.walk_forward(data, train.winner_learner(collected), max_folds=2)
+    assert len(collected) == len(result.folds)
+    assert collected and set(collected[0]) == set(data.features.columns)

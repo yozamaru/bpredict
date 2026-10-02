@@ -23,7 +23,7 @@ from batch.features.prepared import NEVER, Prepared, _utc_ns, prepare
 
 
 def dataset(**tables: pd.DataFrame) -> Dataset:
-    """索引が読む5表。与えなかったものは空で埋める。"""
+    """索引が読む6表。与えなかったものは空で埋める。"""
     empty = {
         "games": pd.DataFrame(columns=[
             "id", "season_id", "game_date", "finished_at",
@@ -35,6 +35,7 @@ def dataset(**tables: pd.DataFrame) -> Dataset:
         "player_game_stats": pd.DataFrame(columns=["game_id", "player_id", "club_id"]),
         "game_entries": pd.DataFrame(columns=["game_id", "player_id"]),
         "team_ratings": pd.DataFrame(columns=["club_id", "as_of_date", "elo"]),
+        "team_game_stats": pd.DataFrame(columns=["game_id", "club_id", "pts", "possessions"]),
     }
     return Dataset(tables={**empty, **tables})
 

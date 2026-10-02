@@ -82,8 +82,21 @@ def test_future_game_mutation_does_not_change_features(seeded_db: sqlite3.Connec
     seeded_db.execute(
         "UPDATE games SET home_score = 199, away_score = 1 WHERE finished_at > ?", (boundary,)
     )
+    # **ボックススコアも撹乱する。** `ortg_diff` ほかの検証区分は
+    # `team_game_stats` を読む（詳細設計 2.2）。`team_games` だけを撹乱していると、
+    # そちらの経路でのリークをこのテストが見逃す
+    stats = seeded_db.execute(
+        # 成功数も一緒に動かす。**DDL の CHECK（成功数 ≤ 試投数）を満たすこと** —
+        # 試投数だけを下げると制約違反で落ち、リークの有無が見えなくなる
+        "UPDATE team_game_stats SET pts = 199, possessions = 200,"
+        " fg2m = 1, fg2a = 1, fg3m = 1, fg3a = 1, ftm = 1, fta = 1,"
+        " oreb = 99, dreb = 99, tov = 99 WHERE game_id IN"
+        " (SELECT id FROM games WHERE finished_at > ?)",
+        (boundary,),
+    ).rowcount
     seeded_db.commit()
     assert changed > 0, "撹乱対象がない。テストが空振りしている"
+    assert stats > 0, "ボックススコアの撹乱対象がない。テストが空振りしている"
 
     _assert_same(before, _features(seeded_db, game_id, as_of))
 

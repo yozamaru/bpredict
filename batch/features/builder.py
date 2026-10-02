@@ -18,6 +18,7 @@ from batch.features import player, schedule_ctx, team_strength
 from batch.features.base import Context, build_context
 from batch.features.constants import ELO_DEFAULT, RECENT_WINDOWS
 from batch.features.dataset import Dataset
+from batch.features.prepared import Prepared
 
 #: 欠損時の既定値（詳細設計 2.2 の表）。**キーの集合はこの辞書が正**。
 DEFAULTS: dict[str, float] = {
@@ -68,14 +69,21 @@ def _margin_window(window: int) -> Callable[[Context, str], float | None]:
     return compute
 
 
-def build_features(game_id: str, as_of: datetime, ds: Dataset) -> dict[str, float]:
+def build_features(
+    game_id: str, as_of: datetime, ds: Dataset,
+    prepared: Prepared | None = None,
+) -> dict[str, float]:
     """`as_of` 時点で確定している情報のみから特徴量を生成する。
 
-    as_of : 参照してよい情報の上限時刻（= `games.tipoff_at`）
-    ds    : `batch/snapshot/*.parquet` から読み込んだメモリ内データセット
-            （**D1 は読まない**。CLAUDE.md 絶対ルール3）
+    as_of    : 参照してよい情報の上限時刻（= `games.tipoff_at`）
+    ds       : `batch/snapshot/*.parquet` から読み込んだメモリ内データセット
+               （**D1 は読まない**。CLAUDE.md 絶対ルール3）
+    prepared : 前処理の索引（`prepare(ds)`）。**多数の試合を回すときは外で1回
+               作って渡す。** 省略すると試合ごとに組み直すため、6,270試合で
+               43分かかる（2026-10-02 の実測）。渡しても**値は変わらない**
+               （絞り込みは `build_context` が行う）
     """
-    context = build_context(game_id, as_of, ds)
+    context = build_context(game_id, as_of, ds, prepared)
     raw: dict[str, float | int | None] = {
         "elo_diff": _diff(context, team_strength.elo),
         "elo_home": team_strength.elo(context, context.home_club_id),

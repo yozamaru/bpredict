@@ -15,7 +15,13 @@ def elo(context: Context, club_id: str) -> float | None:
 
     `team_ratings` の1行はその試合日の**終了時点**の値なので、不等号は `<` で正しい
     （詳細設計 1.4）。`<=` にすると当日の結果が混入する。
+
+    **索引があれば二分探索で引く**（`EloIndex`）。無い場合（索引を持たない
+    `Context` を直接作ったテストなど）は同じ意味の走査で同じ値を返す。
     """
+    if context.prepared is not None:
+        return context.prepared.elo_index.at(club_id, context.game_date)
+
     ratings = context.dataset.table("team_ratings")
     rows = ratings[(ratings["club_id"] == club_id) & (ratings["as_of_date"] < context.game_date)]
     if rows.empty:

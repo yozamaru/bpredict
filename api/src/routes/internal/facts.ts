@@ -60,7 +60,8 @@ facts.post('/games', async (c) => {
   const parsed = gamesBody.safeParse(raw);
   if (!parsed.success) return failValidation(c, parsed.error.issues);
   const {
-    games,
+    // `games` は省略できる（詳細設計 3.4）。座標だけを送る経路が同じ口を使う
+    games = [],
     teamGames = [],
     venues = [],
     venueSourceKeys = [],

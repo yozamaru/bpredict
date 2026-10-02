@@ -480,3 +480,39 @@ describe('座標を解決する会場の一覧（詳細設計 3.4 / 4.10）', ()
     expect(res.status).toBe(401);
   });
 });
+
+describe('会場だけの投入（座標の固定。詳細設計 3.4 / 4.10）', () => {
+  it('`games` を省略して会場だけ送れる', async () => {
+    // **v1.55 まで `games` が必須だったため、この経路は 400 で通らなかった。**
+    // 設計（4.10 の段5）は `POST /internal/games` の `venues` 配列で送ると
+    // 定めており、文書の中で矛盾していた（2026-10-02 に実機で判明）。
+    const res = await post('/internal/games', {
+      venues: [{ id: 'v1', name: '架空アリーナ', prefecture: '千葉県', lat: 35.7, lng: 140.0 }],
+    });
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare('SELECT name, prefecture, lat, lng FROM venues WHERE id = ?')
+      .bind('v1').first<{ name: string; prefecture: string; lat: number; lng: number }>();
+    expect(row).toEqual({ name: '架空アリーナ', prefecture: '千葉県', lat: 35.7, lng: 140.0 });
+  });
+
+  it('既存の会場の名称を上書きしない（座標だけ入る）', async () => {
+    // `venues.name` は初出の名称で固定する（詳細設計 1.2）。当時の名称は
+    // `venue_revisions` が持つため、座標の投入で現在名を書き換えてはならない
+    await post('/internal/games', { venues: [{ id: 'v2', name: '初出の名称' }] });
+    const res = await post('/internal/games', {
+      venues: [{ id: 'v2', name: '別の名称', prefecture: '東京都', lat: 35.6, lng: 139.7 }],
+    });
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare('SELECT name, prefecture FROM venues WHERE id = ?')
+      .bind('v2').first<{ name: string; prefecture: string }>();
+    expect(row).toEqual({ name: '初出の名称', prefecture: '東京都' });
+  });
+
+  it('1行も書かないリクエストは 400', async () => {
+    // **黙って 200 を返すと「書けたつもり」の事故になる**
+    for (const body of [{}, { venues: [] }, { games: [], venues: [] }]) {
+      const res = await post('/internal/games', body);
+      expect(res.status).toBe(400);
+    }
+  });
+});

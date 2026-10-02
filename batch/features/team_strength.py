@@ -9,7 +9,11 @@ from __future__ import annotations
 import pandas as pd
 
 from batch.features.base import Context
-from batch.features.constants import SEASON_REGRESSION_INITIAL, SHRINK_K
+from batch.features.constants import (
+    FTA_COEFFICIENT,
+    SEASON_REGRESSION_INITIAL,
+    SHRINK_K,
+)
 
 
 def elo(context: Context, club_id: str) -> float | None:
@@ -84,6 +88,77 @@ def def_rating(context: Context, club_id: str) -> float | None:
     history = context.club_history(club_id, season_only=True)
     rows = context.stats_of_opponents(history)
     return _per_hundred(rows)
+
+
+# --- Four Factors のうち2つ（要件 6.2 の #07） ---
+#
+# **4指標のうち TOV% と ORB% だけを残した。** 要件 6.2 の注記
+# 「eFG% は #04 と重複するが、TOV% と ORB% は独立成分を持つ」が実測で当たった。
+#
+# | 構成 | Brier | Accuracy | ECE |
+# |---|---|---|---|
+# | 4指標すべて | 0.2026 | 0.6853 | 0.0246 |
+# | **TOV% と ORB% だけ** | **0.2020** | **0.6895** | **0.0201** |
+#
+# **eFG% と FTレートは実装ごと消した。** 入れると Brier が 0.0006 悪化し、
+# `ortg_diff` の寄与度を 2.89% → 2.32% に薄めた（同じボックススコアから攻撃効率を
+# 測るため）。**「念のため残す」をしない**（feature-engineering スキル）。
+# 再実装するなら、まず `verification/RESULTS.md` のこの測定を読むこと。
+#
+# **公式は設計文書に書かれていない。** 「Four Factors」は Dean Oliver が定義した
+# 専門用語であり、**標準の式を採る**（こちらで作らない）。採った式は詳細設計 2.2 に
+# 明記した。集計は `off_rating` と同じく**分子と分母をそれぞれ合計してから割る**
+# （試合ごとの率の平均にしない）。
+
+
+def _summed(rows: pd.DataFrame, columns: tuple[str, ...]) -> dict[str, float] | None:
+    """列の合計。**1つでも全行が欠けていたら None**（0埋めしない。規約5）。"""
+    if rows.empty:
+        return None
+    out: dict[str, float] = {}
+    for column in columns:
+        usable = rows[column].dropna()
+        if usable.empty:
+            return None
+        out[column] = float(usable.sum())
+    return out
+
+
+def _season(context: Context, club_id: str) -> pd.DataFrame:
+    return context.stats_of(context.club_history(club_id, season_only=True), club_id)
+
+
+def turnover_rate(context: Context, club_id: str) -> float | None:
+    """TOV% = `TOV ÷ (FGA + 0.44 × FTA + TOV)`（詳細設計 2.2 の `tov_rate_diff`）。
+
+    **分母はポゼッション（詳細設計 1.3）ではない。** あちらは `oreb` を引くが、
+    Four Factors の TOV% は引かない。**標準の式をそのまま使う。**
+    """
+    totals = _summed(_season(context, club_id), ("tov", "fg2a", "fg3a", "fta"))
+    if totals is None:
+        return None
+    attempts = totals["fg2a"] + totals["fg3a"]
+    denominator = attempts + FTA_COEFFICIENT * totals["fta"] + totals["tov"]
+    if denominator <= 0:
+        return None
+    return totals["tov"] / denominator
+
+
+def offensive_reb_rate(context: Context, club_id: str) -> float | None:
+    """ORB% = `OREB ÷ (OREB + 相手の DREB)`（詳細設計 2.2 の `oreb_rate_diff`）。
+
+    **相手の守備リバウンドが分母に入る。** 自分の試投数で割るのではなく
+    「取れたはずのうち何割を取ったか」を測るのが標準の式である。
+    """
+    history = context.club_history(club_id, season_only=True)
+    own = _summed(context.stats_of(history, club_id), ("oreb",))
+    opponent = _summed(context.stats_of_opponents(history), ("dreb",))
+    if own is None or opponent is None:
+        return None
+    chances = own["oreb"] + opponent["dreb"]
+    if chances <= 0:
+        return None
+    return own["oreb"] / chances
 
 
 def _per_hundred(rows: pd.DataFrame) -> float | None:

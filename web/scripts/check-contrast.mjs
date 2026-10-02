@@ -84,8 +84,12 @@ const TEXT_PAIRS = [
 // ── 意味を持つ非テキスト: 3:1 以上 ──────────────────────────────
 // **`--axis` は `--band` に対して測る。** 50%軸は必ず帯の上を通る。
 // バーの塗り（`--home` / `--away`）も帯の上に乗るため、帯に対して検査する。
+// 較正グラフ（CalibrationChart）の対角線も `--axis` で、こちらは地の上を通る。
+// 「この線に近いほど数字どおりに当たっている」という判定基準そのものなので、
+// 帯の上と同じく 3:1 を課す。
 const GRAPHIC_PAIRS = [
   ['--axis', '--band'],
+  ['--axis', '--paper'],
   ['--home', '--band'],
   ['--away', '--band'],
 ];
@@ -171,10 +175,31 @@ for (const path of sources) {
 
 // 旧トークンが残っていないことも見る。廃止したものが復活すると、
 // Tailwind の橋渡しに無い名前なので**無色で描かれて気づけない**。
-const REMOVED = /\b(text|bg|border)-(text|text-2|text-3|text-4|accent|accent-bg|track|surface)\b/;
+//
+// **`stroke-` と `fill-` を必ず含める。** 旧版の走査は `text|bg|border` だけを
+// 見ており、`CalibrationChart` の `stroke-text-4` / `fill-accent` が素通りしていた
+// （2026-10-02 に判明）。結果として較正グラフの軸線と対角線が描かれず、点が
+// 既定の黒になっていた。**走査はあったのに、SVG の塗りだけが対象外だった。**
+const PREFIX = '(?:text|bg|border|stroke|fill|outline|ring|decoration|divide|from|via|to)';
+const REMOVED = new RegExp(
+  `\\b${PREFIX}-(?:text|text-2|text-3|text-4|accent|accent-bg|track|surface)\\b`,
+);
 for (const path of sources) {
   if (REMOVED.test(readFileSync(path, 'utf8'))) {
     console.error(`NG  廃止したトークンを使っている: ${path.replace(/.*\/web\//, '')}`);
+    failed += 1;
+  }
+}
+
+// 線のトークンを文字に使う誤用は、`text-` だけでなく `fill-` でも起きる
+// （SVG の文字は fill で塗る）。同じ系列の誤用なので同じ基準で止める。
+const BANNED_TEXT_FILL = /\bfill-(rule|rule-soft|band|axis)\b/;
+for (const path of sources) {
+  const body = readFileSync(path, 'utf8');
+  if (path.endsWith('globals.css')) continue;
+  // 図形の塗りに使う場合もありうるため、`<text` を含むファイルだけを見る
+  if (body.includes('<text') && BANNED_TEXT_FILL.test(body)) {
+    console.error(`NG  線のトークンを SVG の文字に使っている: ${path.replace(/.*\/web\//, '')}`);
     failed += 1;
   }
 }

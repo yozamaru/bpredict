@@ -12,6 +12,17 @@
 // **2 は目で見ても分からない。** 溢れる確率のデータが画面に無いためである。
 // 縮尺が % であれば、バーの半分が 50ポイントに対応するので構造的に収まる。
 //
+// そして 1 の直し方そのものが3つめの誤りだった。
+//
+//   3. 軸を `<td>` の `::after`（絶対配置）で描いた。`border-collapse: collapse` の
+//      表では **WebKit が `<td>` の `position: relative` に包含ブロックを作らない**
+//      ため、Chrome では出て **iOS Safari では1本も出なかった**（運営者が実機で指摘）。
+//
+// **3 はクラスの有無を見るだけでは捕まらない。** `axis-column` は付いていたのに
+// 描かれていなかった。したがって**描き方（CSS）も検査する** — 背景で描いていること、
+// 絶対配置に戻っていないこと。同じ列の互角帯は最初から背景グラデーションであり、
+// Safari でも出ていた（`.axis-bar`）。
+//
 // E2E は工程15であり、それまでこの種の誤りを捕まえるものがない。
 // **静的出力なら、生成物を読めば機械で判定できる。**
 //
@@ -21,6 +32,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const OUT = resolve(import.meta.dirname, '..', 'out');
+const CSS_SOURCE = resolve(import.meta.dirname, '..', 'app', 'globals.css');
 
 /** 一覧を出すページ。`/schedule/<date>/` は代表1枚で足りる */
 const PAGES = ['index.html', 'results/index.html'];
@@ -83,6 +95,24 @@ for (const page of PAGES) {
   }
 }
 
+// 3. 軸の**描き方**を検査する。クラスが付いていても描かれないことがある
+const css = await readFile(CSS_SOURCE, 'utf8');
+const rule = css.slice(css.indexOf('.axis-column'));
+const block = rule.slice(0, rule.indexOf('}') + 1);
+if (!block.includes('background-image')) {
+  problems.push('globals.css: .axis-column が背景で軸を描いていない');
+}
+if (!/background-size:\s*1px\s+100%/.test(block)) {
+  problems.push('globals.css: .axis-column の軸が全高（1px 100%）でない');
+}
+// `::after` + `position: relative` に戻すと iOS Safari で1本も出なくなる
+if (css.includes('.axis-column::after') || /\.axis-column\s*\{[^}]*position:\s*relative/.test(css)) {
+  problems.push(
+    'globals.css: .axis-column を絶対配置で描いている' +
+      '（border-collapse の表では WebKit が包含ブロックを作らない）',
+  );
+}
+
 if (bars === 0) {
   console.error('check-bar: 優勢バーが1つも見つからない（out/ を作ったか？）');
   process.exit(1);
@@ -93,4 +123,4 @@ if (problems.length > 0) {
   for (const problem of problems) console.error(`NG  ${problem}`);
   process.exit(1);
 }
-console.log('OK  軸が列を貫き、どの確率でも塗りが列に収まる。');
+console.log('OK  軸が背景で列の全高に通り、どの確率でも塗りが列に収まる。');

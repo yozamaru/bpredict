@@ -26,3 +26,11 @@ MINUTES_LOST_WINDOW = 5
 
 # Elo の既定値（詳細設計 2.2 の欠損時の値）
 ELO_DEFAULT = 1500.0
+
+# フリースロー試投の係数（詳細設計 1.3 のポゼッション式と同じ値）。
+# **NBA 由来であり、要件 P0-7 で日本のデータから再推定することになっている。**
+# 同じ値が `batch/parser/validators.py`（ポゼッション）と
+# `batch/static_json/builder.py`（TS%）にもある。**層をまたいで共有しない** —
+# parser が features の定数に依存すると、責務の分離（CLAUDE.md）が崩れる。
+# P0-7 で値が変わるときは3箇所すべてを直す。
+FTA_COEFFICIENT = 0.44

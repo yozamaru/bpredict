@@ -33,6 +33,8 @@ DEFAULTS: dict[str, float] = {
     # 検証区分（詳細設計 2.2）。効かなければ落とす
     "ortg_diff": 0.0,
     "drtg_diff": 0.0,
+    "tov_rate_diff": 0.0,
+    "oreb_rate_diff": 0.0,
     "series_game_no": 1.0,
     "prev_result_diff": 0.0,
     "prev_margin_diff": 0.0,
@@ -95,6 +97,8 @@ def build_features(
         "margin_season_diff": _diff(context, team_strength.margin_season),
         "ortg_diff": _diff(context, team_strength.off_rating),
         "drtg_diff": _diff(context, team_strength.def_rating),
+        "tov_rate_diff": _diff(context, team_strength.turnover_rate),
+        "oreb_rate_diff": _diff(context, team_strength.offensive_reb_rate),
         "series_game_no": schedule_ctx.series_game_no(context),
         "prev_result_diff": _diff(context, schedule_ctx.previous_result),
         "prev_margin_diff": _diff(context, schedule_ctx.previous_margin),

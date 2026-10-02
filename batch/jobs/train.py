@@ -21,7 +21,7 @@ import json
 import sys
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -41,7 +41,13 @@ from batch.model.dataset import (
 )
 from batch.model.evaluate import Evaluation, Learner, walk_forward
 from batch.model.metrics import Difference, brier_difference, ece_noise_floor
-from batch.model.params import ECE_FLOOR_K, MAX_FOLDS, TIME_DECAY_LAMBDA_INITIAL
+from batch.model.params import (
+    ECE_FLOOR_K,
+    MAX_FOLDS,
+    MIN_EFFECT,
+    TIME_DECAY_LAMBDA_INITIAL,
+)
+from batch.model.train_score import learn_score, win_prob_from_margin
 from batch.model.train_winner import learn_winner
 
 type Floats = NDArray[np.float64]
@@ -248,6 +254,15 @@ class Report:
     #: 列ごとの gain の割合（fold ごとに合計100へ正規化した平均）。要件 6.2 が
     #: 「寄与度（SHAP / gain）と欠損率を測定する」と定める寄与度にあたる
     gain_share: dict[str, float] = field(default_factory=dict)
+    #: 得点差・合計得点の評価（工程12）。**同一の分割で測る**
+    margin: Evaluation | None = None
+    total: Evaluation | None = None
+    #: 経路B（`Φ(margin / σ)`）の評価と、実測した σ（P0-11）
+    route_b: Evaluation | None = None
+    margin_sigma: float | None = None
+    #: **採用する経路**の Elo単体に対する Brier 差。A-09 の判定はこれで行う
+    adopted_route: str = "A"
+    adopted_difference: Difference | None = None
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
@@ -279,10 +294,60 @@ class Report:
             # **何で測ったかを残す。** 次に特徴量を足したときに比べる相手になる
             "feature_keys": list(FEATURE_KEYS),
             "gain_share": self.gain_share,
+            "score": None if self.margin is None or self.total is None else {
+                "margin_mae": self.margin.mae,
+                "total_mae": self.total.mae,
+                "margin_sigma": self.margin_sigma,
+                "team_score_mae": team_score_mae(self.margin, self.total),
+            },
+            "adopted_route": self.adopted_route,
+            "adopted_difference": None if self.adopted_difference is None else {
+                "point": self.adopted_difference.point,
+                "ci_low": self.adopted_difference.ci_low,
+                "ci_high": self.adopted_difference.ci_high,
+                "significant": self.adopted_difference.significant,
+            },
+            "route_b": None if self.route_b is None else {
+                "brier": self.route_b.brier,
+                "accuracy": self.route_b.accuracy,
+                "ece": self.route_b.ece,
+            },
             "adopt": self.decision.adopt,
             "failures": self.decision.failures,
             "decision_notes": self.decision.notes,
         }
+
+
+def team_score_mae(margin: Evaluation, total: Evaluation) -> float:
+    """**チーム得点**の MAE。要件 6.4 と付録B が言う「予想スコアの MAE」。
+
+    `home = (total + margin) / 2` なので、ホームの誤差は
+    `((total の誤差) + (margin の誤差)) / 2` になる。アウェイは margin の符号が
+    反転するだけで、**両チームをまとめた MAE は同じ式の平均で出る。**
+
+    **得点差の MAE（10.27点）と混同しない。** 付録B の見立て「8〜10点」は
+    チーム得点についてのものである。
+    """
+    if not margin.folds or not total.folds:
+        return float("nan")
+    dm = margin.probs - margin.actual
+    dt = total.probs - total.actual
+    if dm.shape != dt.shape:
+        return float("nan")
+    home = np.abs((dt + dm) / 2.0)
+    away = np.abs((dt - dm) / 2.0)
+    return float(np.concatenate([home, away]).mean())
+
+
+def _home_win_of(data: TrainingData, season: str) -> Floats:
+    """あるシーズンの `home_win`。**経路B の実測値に使う。**
+
+    `margin` の fold が持つ `actual` は得点差であって勝敗ではない。
+    経路B の Brier は「勝ったか」に対して測る必要がある。
+    """
+    picked = np.asarray(data.season_ids) == season
+    actual: Floats = data.home_win[picked]
+    return actual
 
 
 def evaluate_all(
@@ -308,9 +373,36 @@ def evaluate_all(
         runs[name] = walk_forward(data, learner, weights=weights, max_folds=max_folds)
         log(f"train: {name} を評価した（{time.monotonic() - started:.1f}秒）")
 
+    # --- 得点差と合計得点（工程12）。**同じ `walk_forward` を通す** ---
+    # P0-11 は「同一の walk-forward ウィンドウで Brier と ECE を測る」ことを
+    # 要件としており（要件 6.1）、分割を共有しないと経路A と B の比較が成立しない
+    margin = walk_forward(
+        data, learn_score, target=data.margin, weights=weights, max_folds=max_folds)
+    total = walk_forward(
+        data, learn_score, target=data.total, weights=weights, max_folds=max_folds)
+    log(f"train: margin / total を評価した（MAE {margin.mae:.2f} / {total.mae:.2f}）")
+
+    # --- 経路B（`Φ(margin / σ)`）。σ は out-of-fold の残差から実測する ---
+    sigma = margin.residual_sigma
+    route_b = Evaluation(folds=tuple(
+        replace(fold, probs=win_prob_from_margin(fold.probs, sigma),
+                actual=_home_win_of(data, fold.test_season))
+        for fold in margin.folds
+    ))
+    log(f"train: 経路B を評価した（σ {sigma:.2f} / Brier {route_b.brier:.4f}）")
+
+    # **採用する経路を先に決め、有意性はその経路で測る。** 要件 6.1 の規則は
+    # 「B の Brier が A より 0.003 以上悪ければ A、差が 0.003 未満なら B」。
+    # A に対して測った有意性を B の採用根拠にすると、**判定の対象がずれる**
+    # （受け入れ基準 A-09 は「Brier が Elo単体より有意に良い」ことを求める）
+    adopted_route = "A" if route_b.brier - runs["winner"].brier >= MIN_EFFECT else "B"
+    adopted = runs["winner"] if adopted_route == "A" else route_b
+
     winner = runs["winner"]
     floor = ece_noise_floor(winner.probs)
     difference = brier_difference(runs["elo_only"].probs, winner.probs, winner.actual)
+    adopted_difference = brier_difference(
+        runs["elo_only"].probs, adopted.probs, adopted.actual)
     nulls = null_rates(data.features)
     constants = constant_columns(data.features)
     decision = passes_criteria(Inputs(
@@ -336,6 +428,8 @@ def evaluate_all(
         ece_floor=floor, difference=difference,
         null_rates=nulls, constant_columns=constants,
         gain_share=gain_share(gains), decision=decision,
+        margin=margin, total=total, route_b=route_b, margin_sigma=sigma,
+        adopted_route=adopted_route, adopted_difference=adopted_difference,
     )
 
 
@@ -373,6 +467,41 @@ def render(report: Report) -> str:
         f"定数列: {' / '.join(report.constant_columns) or 'なし'}",
         f"欠損率の最大: {max(report.null_rates.values(), default=0.0):.1%}",
     ]
+    if report.margin is not None and report.total is not None:
+        # 要件 6.4 は予想スコアの指標を MAE と定める。付録B の見立ては 8〜10点
+        lines += [
+            "",
+            "予想スコア（得点差と合計得点から導出。各チーム得点を独立に回帰しない）",
+            (f"  得点差 MAE   {report.margin.mae:>7.2f}点"
+             f"（残差 σ {report.margin.residual_sigma:.2f}）"),
+            f"  合計得点 MAE {report.total.mae:>7.2f}点",
+            (f"  **チーム得点 MAE {team_score_mae(report.margin, report.total):>5.2f}点**"
+             "（要件 6.4 / 付録B の見立ては 8〜10点）"),
+        ]
+    if report.route_b is not None and report.margin_sigma is not None:
+        a, b = report.winner, report.route_b
+        gap = b.brier - a.brier
+        lines += [
+            "",
+            "勝率の導出経路（P0-11。**同一の分割で測る**）",
+            f"{'経路':<28}{'Brier':>9}{'Accuracy':>11}{'ECE':>9}",
+            (f"{'A: Winner 直接':<28}{a.brier:>9.4f}{a.accuracy:>11.4f}"
+             + ("—" if a.ece is None else f"{a.ece:>9.4f}")),
+            (f"{'B: Φ(margin / σ)':<28}{b.brier:>9.4f}{b.accuracy:>11.4f}"
+             + ("—" if b.ece is None else f"{b.ece:>9.4f}")),
+            "",
+            f"実測した σ: {report.margin_sigma:.2f}点（out-of-fold の残差）",
+            (f"B − A の Brier 差: {gap:+.4f}  →  "
+             + ("**A を採用**（B が 0.003 以上悪い）" if gap >= MIN_EFFECT
+                else "**B を採用**（差が 0.003 未満。整合が保証される）")),
+        ]
+        if report.adopted_difference is not None:
+            d2 = report.adopted_difference
+            lines.append(
+                f"採用する経路（{report.adopted_route}）の Elo単体との差: "
+                f"{d2.point:+.4f}（95%CI {d2.ci_low:+.4f}, {d2.ci_high:+.4f} / "
+                f"{'有意' if d2.significant else '有意でない'}）  ← A-09 の判定",
+            )
     if report.gain_share:
         # **全体の Brier だけでは1項目の採否を判断できない**（1項目の効果は
         # walk-forward の CI の幅より小さい。要件付録B）。モデルが実際にその列に

@@ -37,3 +37,16 @@ strict_equality = true
 module = "batch.tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+# scipy は型スタブを同梱していない（`scipy-stubs` は別パッケージ）。
+#
+# **スタブを開発依存として足さない。** 使っているのは `brentq` 1本で
+# （整合化。要件 6.8.5 / 詳細設計 2.4）、CLAUDE.md「依存を追加するとき」の1番目
+# （本当に必要か）に照らすと、1関数のために依存を増やす理由が弱い。
+# 戻り値は呼び出し側で `float()` に通してあり、`warn_return_any` も効いている。
+#
+# **scipy の利用が増えたら見直す。** 工程12c（選手側の整合化）も `brentq` を使うが、
+# 同じ1関数である。別の API を使い始めたらスタブの導入を検討する。
+module = "scipy.*"
+ignore_missing_imports = true

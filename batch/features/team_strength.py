@@ -74,6 +74,25 @@ def off_rating(context: Context, club_id: str) -> float | None:
     return _per_hundred(rows)
 
 
+def pace(context: Context, club_id: str) -> float | None:
+    """当季の1試合あたりポゼッション（詳細設計 2.2 の `pace_home` / `pace_away`）。
+
+    **TeamRate の共有列として使う**（2.2.1 の `pace_own` / `pace_opp`）。2.2 が
+    これを「検証区分」に置いているのは**勝敗モデルについての分類**であり、
+    TeamRate を縛らない。あちらは `ortg_diff` が既に効率を持っているため増分が
+    問われるが、TeamRate ではテンポが分からないとカウントの水準が決まらない。
+
+    窓は当季とする（`off_rating` と同じ。新しい定数を増やさない）。
+    `possessions` が NULL の試合は落ちる。1試合も残らなければ None を返す。
+    """
+    rows = context.stats_of(
+        context.club_history(club_id, season_only=True), club_id)
+    if rows.empty:
+        return None
+    usable = rows["possessions"].dropna()
+    return None if usable.empty else float(usable.mean())
+
+
 def def_rating(context: Context, club_id: str) -> float | None:
     """当季に**相手へ**許した 100ポゼッションあたり得点（詳細設計 2.2 の `drtg_diff`）。
 

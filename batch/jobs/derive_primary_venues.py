@@ -1,6 +1,8 @@
 """本拠会場を導出して CSV に固定し、D1 へ送る（詳細設計 1.2 / 4.11）。
 
-    python -m batch.jobs.derive_primary_venues [--dry-run] [--load]
+    python -m batch.jobs.derive_primary_venues [--dry-run]      導出して CSV に書く
+    python -m batch.jobs.derive_primary_venues --sync-snapshot  CSV をスナップショットに反映する
+    python -m batch.jobs.derive_primary_venues --load           反映して D1 にも送る
 
 **入力はスナップショットの `games` と手入力の CSV だけ。** D1 を入力として読まない
 （CLAUDE.md 絶対ルール3）。
@@ -24,7 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from batch.features.dataset import load_snapshot
+from batch.features.dataset import Dataset, load_snapshot, write_snapshot
 from batch.loader.api import InternalApi, LoaderError
 from batch.loader.limits import max_rows_per_request
 from batch.masters.primary_venues import (
@@ -90,6 +92,41 @@ def _text(value: object) -> str | None:
     return None if text in ("nan", "NaT", "<NA>", "") else text
 
 
+def sync_snapshot(
+    snapshot_dir: Path = DEFAULT_SNAPSHOT, csv_path: Path = PRIMARY_VENUE_CSV,
+) -> int:
+    """CSV の本拠会場をスナップショットの `club_seasons` に反映する（詳細設計 4.11 の段4）。
+
+    **D1 を要しない。** 出典はコミット済みの CSV で、適用は決定論的である。
+
+    **この段を飛ばすと、特徴量 #15 からは本拠会場が見えない。** スナップショットが
+    特徴量・学習・推論の唯一の入力であり（絶対ルール3）、D1 は公開APIの表示用の
+    複製である（基本設計 2.2）。
+    """
+    rows = load_csv(csv_path)
+    if not rows:
+        raise PrimaryVenueError(f"{csv_path} が空である（先に導出する）")
+    primary = primary_of(rows)
+    dataset = load_snapshot(snapshot_dir)
+    seasons = dataset.table("club_seasons").copy()
+    if "primary_venue_id" not in seasons.columns:
+        raise PrimaryVenueError("スナップショットの club_seasons に primary_venue_id がない")
+    keys = list(zip(
+        seasons["season_id"].astype(str), seasons["club_id"].astype(str), strict=True))
+    values = [primary.get(key) for key in keys]
+    # **CSV に行がない組は触らない。** 既にある値を None で上書きしない
+    seasons["primary_venue_id"] = [
+        new if new is not None else old
+        for new, old in zip(values, seasons["primary_venue_id"], strict=True)
+    ]
+    write_snapshot(
+        Dataset(tables={**dataset.tables, "club_seasons": seasons}),
+        snapshot_dir,
+        tables=["club_seasons"],
+    )
+    return sum(1 for value in values if value is not None)
+
+
 def load(
     *, api: InternalApi, snapshot_dir: Path = DEFAULT_SNAPSHOT,
     csv_path: Path = PRIMARY_VENUE_CSV,
@@ -102,6 +139,8 @@ def load(
     rows = load_csv(csv_path)
     if not rows:
         raise PrimaryVenueError(f"{csv_path} が空である（先に導出する）")
+    # **スナップショットを先に書く**（基本設計 2.2 の順序）
+    sync_snapshot(snapshot_dir, csv_path)
     dataset = load_snapshot(snapshot_dir)
     payload = _club_season_payload(dataset.table("club_seasons"), primary_of(rows))
     for start in range(0, len(payload), ROWS_PER_REQUEST):
@@ -148,10 +187,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")
     parser.add_argument(
         "--load", action="store_true",
-        help="導出せず、コミット済みの CSV を D1 へ送る")
+        help="導出せず、コミット済みの CSV を反映して D1 へ送る")
+    parser.add_argument(
+        "--sync-snapshot", action="store_true",
+        help="CSV をスナップショットに反映するだけ（D1 に送らない。導出もしない）")
     args = parser.parse_args(argv)
 
     try:
+        if args.sync_snapshot:
+            # **D1 を要しないため内部APIを作らない**（`--load` と同じ理由）
+            print(f"スナップショットに反映した club_seasons: {sync_snapshot(args.snapshot, args.csv)}行")
+            return 0
         if args.load:
             # **導出モードでは内部APIを作らない。** `InternalApi` は生成時に
             # `API_BASE_URL` の形式を検証するため、作るだけで落ちる。導出は D1 に

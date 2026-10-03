@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -404,3 +405,107 @@ def test_duplicate_rows_in_the_csv_are_rejected(tmp_path: Path) -> None:
         "3,B,千葉県,36.1,140.1,千葉県架空B市2-2,x\n", encoding="utf-8")
     with pytest.raises(Exception, match="重複"):
         resolve_venue_geo.read_csv(path)
+
+
+# --- スナップショットへの反映（詳細設計 4.10 の段5） ---
+#
+# **この段を飛ばすと座標は特徴量から見えない。** スナップショットが唯一の入力であり
+# （絶対ルール3）、D1 は公開APIの表示用の複製である。2026-10-03 までこの段がなく、
+# D1 に 140件あるのにスナップショットは 0件だった（基本設計 2.2）。
+
+def _snapshot(tmp_path: Path, db: sqlite3.Connection) -> Path:
+    from batch.features.dataset import export_sqlite, write_snapshot
+
+    write_snapshot(export_sqlite(db), tmp_path)
+    return tmp_path
+
+
+def _geo_csv(tmp_path: Path, rows: list[tuple[str, str, str, str]]) -> Path:
+    path = tmp_path / "venues_geo.csv"
+    lines = ["venue_id,name,prefecture,lat,lng,address,source"]
+    lines += [f"{v},会場,{pref},{lat},{lng},住所,出典" for v, pref, lat, lng in rows]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_sync_snapshot_writes_the_coordinates(
+    tmp_path: Path, seeded_db: sqlite3.Connection,
+) -> None:
+    from batch.features.dataset import load_snapshot
+    from batch.jobs.resolve_venue_geo import sync_snapshot
+
+    snapshot = _snapshot(tmp_path / "snap", seeded_db)
+    target = str(load_snapshot(snapshot).table("venues")["id"].iloc[0])
+    csv_path = _geo_csv(tmp_path, [(target, "東京都", "35.5", "139.5")])
+
+    assert sync_snapshot(csv_path, snapshot) == 1
+    venues = load_snapshot(snapshot).table("venues")
+    row = venues[venues["id"].astype(str) == target].iloc[0]
+    assert (row["prefecture"], float(row["lat"]), float(row["lng"])) == ("東京都", 35.5, 139.5)
+
+
+def test_sync_snapshot_leaves_venues_absent_from_the_csv_alone(
+    tmp_path: Path, seeded_db: sqlite3.Connection,
+) -> None:
+    """**CSV に行がない会場は触らない。** 既にある値を None で上書きしない。"""
+    from batch.features.dataset import load_snapshot
+    from batch.jobs.resolve_venue_geo import sync_snapshot
+
+    snapshot = _snapshot(tmp_path / "snap", seeded_db)
+    before = load_snapshot(snapshot).table("venues")
+    ids = [str(v) for v in before["id"]]
+    assert len(ids) >= 2
+    kept = before[before["id"].astype(str) == ids[1]].iloc[0]
+    csv_path = _geo_csv(tmp_path, [(ids[0], "大阪府", "34.5", "135.5")])
+
+    sync_snapshot(csv_path, snapshot)
+    sync_snapshot(csv_path, snapshot)  # 2回流しても同じ（冪等）
+    venues = load_snapshot(snapshot).table("venues")
+    other = venues[venues["id"].astype(str) == ids[1]].iloc[0]
+    assert (other["prefecture"], other["lat"], other["lng"]) == (
+        kept["prefecture"], kept["lat"], kept["lng"])
+
+
+def test_sync_snapshot_skips_rows_without_both_coordinates(
+    tmp_path: Path, seeded_db: sqlite3.Connection,
+) -> None:
+    """**座標が揃っていない行は使わない。**
+
+    都道府県だけ入れて座標を空にすると、#16 が「座標がある会場」と誤って数える
+    余地が生まれる。
+    """
+    from batch.features.dataset import load_snapshot
+    from batch.jobs.resolve_venue_geo import sync_snapshot
+
+    snapshot = _snapshot(tmp_path / "snap", seeded_db)
+    before = load_snapshot(snapshot).table("venues")
+    target = str(before["id"].iloc[0])
+    kept = before.iloc[0]
+    # 都道府県だけがあり座標が空の行
+    csv_path = _geo_csv(tmp_path, [(target, "沖縄県", "", "")])
+
+    assert sync_snapshot(csv_path, snapshot) == 0
+    venues = load_snapshot(snapshot).table("venues")
+    row = venues[venues["id"].astype(str) == target].iloc[0]
+    assert row["prefecture"] == kept["prefecture"] != "沖縄県"
+
+
+def test_sync_snapshot_does_not_build_the_internal_api(
+    tmp_path: Path, seeded_db: sqlite3.Connection, monkeypatch,
+) -> None:
+    """**D1 を要しない。** `--sync-snapshot` で内部APIを作らない（環境変数も要らない）。"""
+    from batch.jobs import resolve_venue_geo
+
+    snapshot = _snapshot(tmp_path / "snap", seeded_db)
+    target = str(resolve_venue_geo.load_snapshot(snapshot).table("venues")["id"].iloc[0])
+    csv_path = _geo_csv(tmp_path, [(target, "東京都", "35.5", "139.5")])
+
+    def explode(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("内部APIを作ってはならない")
+
+    monkeypatch.setattr(resolve_venue_geo, "InternalApi", explode)
+    monkeypatch.setattr(resolve_venue_geo, "CSV_PATH", csv_path)
+    monkeypatch.setattr(resolve_venue_geo, "DEFAULT_SNAPSHOT", snapshot)
+    monkeypatch.delenv("API_BASE_URL", raising=False)
+    monkeypatch.delenv("INGEST_TOKEN", raising=False)
+    assert resolve_venue_geo.main(["--sync-snapshot"]) == 0

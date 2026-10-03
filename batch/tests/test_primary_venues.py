@@ -303,3 +303,78 @@ def test_feature_reads_the_master_not_the_column(seeded_db: sqlite3.Connection) 
     seeded_db.commit()
     context = build_context(game_id, as_of, export_sqlite(seeded_db))
     assert feature_is_primary(context) == 0.0, "列が 1 でもマスタに従う"
+
+
+# --- スナップショットへの反映（詳細設計 4.11 の段4） ---
+
+def test_sync_snapshot_writes_the_primary_venue(
+    tmp_path: Path, seeded_db: sqlite3.Connection,
+) -> None:
+    from batch.features.dataset import export_sqlite, load_snapshot, write_snapshot
+    from batch.jobs.derive_primary_venues import sync_snapshot
+
+    snapshot = tmp_path / "snap"
+    write_snapshot(export_sqlite(seeded_db), snapshot)
+    seasons = load_snapshot(snapshot).table("club_seasons")
+    first = seasons.iloc[0]
+    venue = str(load_snapshot(snapshot).table("venues")["id"].iloc[0])
+
+    csv_path = tmp_path / "primary.csv"
+    csv_path.write_text(
+        "season_id,club_id,venue_id,games,share,source\n"
+        f"{first['season_id']},{first['club_id']},{venue},24,0.8000,\n",
+        encoding="utf-8",
+    )
+
+    assert sync_snapshot(snapshot, csv_path) == 1
+    after = load_snapshot(snapshot).table("club_seasons")
+    row = after[
+        (after["season_id"] == first["season_id"]) & (after["club_id"] == first["club_id"])
+    ].iloc[0]
+    assert str(row["primary_venue_id"]) == venue
+
+
+def test_sync_snapshot_leaves_rows_absent_from_the_csv_alone(
+    tmp_path: Path, seeded_db: sqlite3.Connection,
+) -> None:
+    """**CSV に行がない組は触らない。** 既にある値を None で上書きしない。"""
+    from batch.features.dataset import export_sqlite, load_snapshot, write_snapshot
+    from batch.jobs.derive_primary_venues import sync_snapshot
+
+    snapshot = tmp_path / "snap"
+    write_snapshot(export_sqlite(seeded_db), snapshot)
+    seasons = load_snapshot(snapshot).table("club_seasons")
+    assert len(seasons) >= 2
+    first, second = seasons.iloc[0], seasons.iloc[1]
+    venue = str(load_snapshot(snapshot).table("venues")["id"].iloc[0])
+
+    csv_path = tmp_path / "primary.csv"
+    csv_path.write_text(
+        "season_id,club_id,venue_id,games,share,source\n"
+        f"{first['season_id']},{first['club_id']},{venue},24,0.8000,\n",
+        encoding="utf-8",
+    )
+
+    sync_snapshot(snapshot, csv_path)
+    sync_snapshot(snapshot, csv_path)  # 冪等
+    after = load_snapshot(snapshot).table("club_seasons")
+    kept = after[
+        (after["season_id"] == second["season_id"]) & (after["club_id"] == second["club_id"])
+    ].iloc[0]
+    assert str(kept["primary_venue_id"]) == str(second["primary_venue_id"])
+
+
+def test_sync_snapshot_raises_on_an_empty_csv(
+    tmp_path: Path, seeded_db: sqlite3.Connection,
+) -> None:
+    """**先に導出する。** 空の CSV で全件 NULL に戻してはならない。"""
+    from batch.features.dataset import export_sqlite, write_snapshot
+    from batch.jobs.derive_primary_venues import sync_snapshot
+    from batch.masters.primary_venues import PrimaryVenueError
+
+    snapshot = tmp_path / "snap"
+    write_snapshot(export_sqlite(seeded_db), snapshot)
+    csv_path = tmp_path / "empty.csv"
+    csv_path.write_text("season_id,club_id,venue_id,games,share,source\n", encoding="utf-8")
+    with pytest.raises(PrimaryVenueError):
+        sync_snapshot(snapshot, csv_path)

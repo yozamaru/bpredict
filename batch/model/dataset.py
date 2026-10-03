@@ -171,12 +171,12 @@ def null_rates(features: pd.DataFrame) -> dict[str, float]:
 class TeamRateData:
     """**1行は「1試合 × 1クラブ」。** 1試合から2行できる。
 
-    14本のモデルが共有する1枚の表として持つ。`features(target)` が案Cの6列を
+    14本のモデルが共有する1枚の表として持つ。`features(target)` が案Cの5列を
     切り出す（`batch/features/team_rate.py`）。**14枚を別々に作らない** —
     `Context` を14回組み直すことになり、しかも推論側は14項目を1組で要る。
     """
 
-    #: 共有4列 + 目的変数ごと2列 × 14 = 32列
+    #: 共有3列 + 目的変数ごと2列 × 14 = 31列
     rows: pd.DataFrame
     #: 目的変数（14列）。その試合でそのクラブが実際に記録した値
     actual: pd.DataFrame
@@ -205,7 +205,7 @@ class TeamRateData:
         return seen
 
     def features(self, target: str) -> pd.DataFrame:
-        """案Cの6列。**列順は `feature_keys()` が正**（実行ごとに変わらない）。"""
+        """案Cの5列。**列順は `feature_keys()` が正**（実行ごとに変わらない）。"""
         return self.rows.loc[:, list(team_rate.feature_keys(target))]
 
     def target(self, name: str) -> Floats:

@@ -1,11 +1,15 @@
 """TeamRate（チーム目標モデル）の特徴量（詳細設計 2.2.1）。
 
 **1行は「1試合 × 1クラブ」である。** 勝敗モデル（`builder.py`）の1行は1試合で
-ホーム視点に固定されるが、ここでは1試合から2行できる。帰結が2つある。
+ホーム視点に固定されるが、ここでは1試合から2行できる。帰結は
+**`diff` に集約しないこと**である（目標値は片側のチームについての量であり、
+差では作れない）。
 
-- **`is_home` が特徴量になる。** 2.2 は「常に1の定数列になる」として持たないが、
-  クラブ視点では 1 と 0 の両方が現れる
-- **`diff` に集約しない。** 目標値は片側のチームについての量であり、差では作れない
+**`is_home` は特徴量にしない（2026-10-03 の実測で落とした）。** クラブ視点では
+1 と 0 の両方が現れるため定数列ではなく、当初は列に入れていた。しかし14本すべてで
+測ったところ**効果が検出できなかった** — 抜いた方が8本で良く、MAE の変化は
+中央値 −0.040%。**ホームアドバンテージは整合化の前段（2.4）で予想スコア
+（Margin 由来）から入る**ため、ここで持つ必要がない。
 
 **列は目的変数ごとに絞る。** 共有4列 ＋ 目的変数ごとの2列 = 1モデル6列。
 14本すべてに同じ70列を与えない（工程8の実測が「列を増やすと薄まる」と言っている。
@@ -58,8 +62,12 @@ _PCT_BY_NAME = {name: (made, attempt) for name, made, attempt in PCT_TARGETS}
 
 
 def shared_keys() -> tuple[str, ...]:
-    """14本すべてに入る共有列。順序は固定する。"""
-    return ("pace_own", "pace_opp", "is_home", "rest_days_own")
+    """14本すべてに入る共有列。順序は固定する。
+
+    **`is_home` は入れない**（上記。実測で効果が検出できなかった）。
+    `rest_days_own` は残す — 抜くと MAE が中央値 +0.138% 悪化した。
+    """
+    return ("pace_own", "pace_opp", "rest_days_own")
 
 
 def feature_keys(target: str) -> tuple[str, ...]:
@@ -125,7 +133,7 @@ def opponent_allowed(context: Context, opponent_id: str, target: str) -> float |
 
 
 def all_feature_keys() -> tuple[str, ...]:
-    """1行が持つ列すべて（共有4 + 目的変数ごと2 × 14 = 32）。
+    """1行が持つ列すべて（共有3 + 目的変数ごと2 × 14 = 31）。
 
     **1つの `Context` から14本ぶんをまとめて作る。** 目的変数ごとに `Context` を
     組み直すと14倍かかり、しかも推論側も14項目すべてを要る（整合化の目標値は
@@ -160,9 +168,9 @@ def build_team_rate_features(
     """
     context = build_context(game_id, as_of, ds, prepared)
     if club_id == context.home_club_id:
-        opponent_id, is_home = context.away_club_id, 1.0
+        opponent_id = context.away_club_id
     elif club_id == context.away_club_id:
-        opponent_id, is_home = context.home_club_id, 0.0
+        opponent_id = context.home_club_id
     else:
         raise FeatureError(f"この試合に出場しないクラブ: {club_id}")
 
@@ -175,7 +183,6 @@ def build_team_rate_features(
     row: dict[str, float] = {
         "pace_own": float(pace_own),
         "pace_opp": float(pace_opp),
-        "is_home": is_home,
         "rest_days_own": (
             DEFAULTS["rest_days_own"] if rest is None else float(rest)
         ),

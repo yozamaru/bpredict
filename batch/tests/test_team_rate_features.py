@@ -5,8 +5,8 @@
 | テスト | 2.2.1 のどの規約か |
 |---|---|
 | `test_targets_match_reconcile` | 14項目が整合化の集合と一致する |
-| `test_one_row_per_club` | 1行は「試合 × クラブ」。`is_home` が 1 と 0 の両方を取る |
-| `test_six_columns_per_target` | 共有4列 ＋ 目的変数ごと2列 |
+| `test_one_row_per_club` | 1行は「試合 × クラブ」。自他が入れ替わる |
+| `test_five_columns_per_target` | 共有3列 ＋ 目的変数ごと2列 |
 | `test_pct_is_sum_over_sum` | 成功率は Σ成功数 ÷ Σ試投数（率の平均ではない） |
 | `test_own_level_does_not_cross_season_boundary` | 直近10試合はシーズンを越えない |
 | `test_row_is_dropped_when_pace_is_missing` | `pace` が欠けたら行を落とす |
@@ -69,15 +69,27 @@ def test_window_is_an_existing_constant() -> None:
 
 # --- 列の形 ---
 
-def test_six_columns_per_target() -> None:
-    """共有4列 ＋ 目的変数ごと2列 = 6列（案C）。"""
-    assert shared_keys() == ("pace_own", "pace_opp", "is_home", "rest_days_own")
+def test_five_columns_per_target() -> None:
+    """共有3列 ＋ 目的変数ごと2列 = 5列（案C）。"""
+    assert shared_keys() == ("pace_own", "pace_opp", "rest_days_own")
     for target in TARGETS:
         keys = feature_keys(target)
-        assert len(keys) == 6
-        assert keys[:4] == shared_keys()
-        assert keys[4:] == (
+        assert len(keys) == 5
+        assert keys[:3] == shared_keys()
+        assert keys[3:] == (
             f"own_{target}_l10", f"opponent_{target}_allowed_l10")
+
+
+def test_is_home_is_not_a_feature() -> None:
+    """**`is_home` を列に戻さない**（2026-10-03 の実測で落とした）。
+
+    クラブ視点では定数列ではないため当初は入れていたが、14本すべてで測ったところ
+    効果が検出できなかった（抜いた方が8本で良く、MAE の変化は中央値 −0.040%）。
+    ホームアドバンテージは整合化の前段で予想スコアから入る。
+    """
+    assert "is_home" not in all_feature_keys()
+    for target in TARGETS:
+        assert "is_home" not in feature_keys(target)
 
 
 def test_column_names_carry_the_target() -> None:
@@ -88,7 +100,7 @@ def test_column_names_carry_the_target() -> None:
 
 def test_all_feature_keys_covers_every_target() -> None:
     keys = all_feature_keys()
-    assert len(keys) == 4 + 2 * 14
+    assert len(keys) == 3 + 2 * 14
     assert len(set(keys)) == len(keys)
     for target in TARGETS:
         assert set(feature_keys(target)) <= set(keys)
@@ -103,18 +115,17 @@ def test_unknown_target_is_rejected() -> None:
 # --- 1行は「試合 × クラブ」 ---
 
 def test_one_row_per_club(seeded_db: sqlite3.Connection) -> None:
-    """**1試合から2行できる。`is_home` が 1 と 0 の両方を取る。**
+    """**1試合から2行できる。** 2行は同じ値にならない。
 
-    勝敗モデルは `is_home` を持たない（常に1の定数列になる。2.2）。クラブ視点では
-    特徴量になるという 2.2.1 の判断を、ここで固定する。
+    勝敗モデルの1行は1試合（ホーム視点固定）で、`diff` に集約される。ここでは
+    片側のチームについての量を作るため、2行が独立に立つ。
     """
     game_id, as_of, home, away = _game(seeded_db)
     ds = export_sqlite(seeded_db)
     home_row = build_team_rate_features(game_id, as_of, ds, home)
     away_row = build_team_rate_features(game_id, as_of, ds, away)
     assert home_row is not None and away_row is not None
-    assert home_row["is_home"] == 1.0
-    assert away_row["is_home"] == 0.0
+    assert home_row != away_row, "2行が同じ値なら片側の量になっていない"
 
 
 def test_own_and_opponent_swap_between_sides(seeded_db: sqlite3.Connection) -> None:
@@ -140,12 +151,13 @@ def test_club_outside_the_game_is_rejected(seeded_db: sqlite3.Connection) -> Non
             game_id, as_of, export_sqlite(seeded_db), str(other[0]))
 
 
-def test_features_for_selects_six_columns(seeded_db: sqlite3.Connection) -> None:
+def test_features_for_selects_five_columns(seeded_db: sqlite3.Connection) -> None:
     game_id, as_of, home, _ = _game(seeded_db)
     row = build_team_rate_features(game_id, as_of, export_sqlite(seeded_db), home)
     assert row is not None
     picked = features_for(row, "fg3a")
     assert list(picked) == list(feature_keys("fg3a"))
+    assert len(picked) == 5
 
 
 # --- 集計の仕方 ---

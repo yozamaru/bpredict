@@ -100,6 +100,32 @@ def learner_for(
     return learn
 
 
+def mean_learner() -> Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]]:
+    """**ベースライン。学習データの（重み付き）平均をそのまま返す。**
+
+    要件 6.4 はベースラインとの比較を求めている。回帰では「ホーム必勝」に当たるのが
+    これである。**`MAE / 実績SD` で代用しない** — その比が 0.798 のとき平均と同等に
+    なるのは目的変数が正規分布のときだけで、カウントは右に裾を持つ。
+
+    成功率は試投数の重み付き平均を取る（学習と同じ重みを使う）。
+    """
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        weights = np.asarray(train_w, dtype=np.float64)
+        y = np.asarray(train_y, dtype=np.float64)
+        total = float(weights.sum())
+        value = float((y * weights).sum() / total) if total > 0 else float(y.mean())
+
+        def predict(features: pd.DataFrame) -> Floats:
+            return np.full(len(features), value, dtype=np.float64)
+
+        return predict, 0
+
+    return learn
+
+
 def _usable(data: TeamRateData, target: str) -> Floats:
     """学習に使える行の真偽。
 
@@ -153,6 +179,23 @@ def _subset(data: TeamRateData, keep: Floats) -> TeamRateData:
         club_margin=data.club_margin[mask],
         total=data.total[mask],
         spectator_restricted=[data.spectator_restricted[i] for i in picked],
+    )
+
+
+def evaluate_baseline(
+    data: TeamRateData, target: str, *, max_folds: int = MAX_FOLDS,
+) -> Evaluation:
+    """同じ fold で平均ベースラインを測る。**同一の分割で比べる**（4.6）。"""
+    keep = _usable(data, target)
+    if not keep.any():
+        raise TeamRateError(f"{target} に使える行が1件もない")
+    subset = _subset(data, keep)
+    return walk_forward(
+        subset.as_training_data(target),
+        mean_learner(),
+        target=subset.target(target),
+        weights=subset.weights(target),
+        max_folds=max_folds,
     )
 
 

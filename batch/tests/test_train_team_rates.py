@@ -49,7 +49,6 @@ def fake_data(per_season: int = 40) -> TeamRateData:
     rows = pd.DataFrame({
         "pace_own": pace_own,
         "pace_opp": rng.uniform(60, 90, n),
-        "is_home": rng.integers(0, 2, n).astype(float),
         "rest_days_own": rng.integers(0, 4, n).astype(float),
     })
     actual: dict[str, np.ndarray] = {}
@@ -141,13 +140,13 @@ def test_count_target_predictions_are_not_negative() -> None:
     assert result.probs.min() >= 0.0
 
 
-def test_features_are_six_columns() -> None:
-    """**モデルに渡すのは6列だけ**（案C）。32列を渡していないこと。"""
+def test_features_are_five_columns() -> None:
+    """**モデルに渡すのは5列だけ**（案C）。31列を渡していないこと。"""
     data = fake_data()
     for target in TARGETS:
         features = data.features(target)
         assert list(features.columns) == list(feature_keys(target))
-        assert features.shape[1] == 6
+        assert features.shape[1] == 5
 
 
 def test_pct_models_are_weighted_by_attempts() -> None:
@@ -240,7 +239,7 @@ def test_matrix_columns_and_labels_line_up(seed_matrix: TeamRateData) -> None:
     assert len(data) == len(data.rows) == len(data.actual) == len(data.attempts)
     assert list(data.actual.columns) == list(TARGETS)
     for target in TARGETS:
-        assert data.features(target).shape == (len(data), 6)
+        assert data.features(target).shape == (len(data), 5)
 
 
 def test_club_view_outcomes_are_real(seed_matrix: TeamRateData) -> None:

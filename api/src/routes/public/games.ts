@@ -29,7 +29,8 @@ type GameRow = {
   game_date: string; tipoff_at: string; status: string;
   home_club_id: string; away_club_id: string;
   home_score: number | null; away_score: number | null;
-  venue_id: string | null; venue_name_at_game: string | null; is_primary_venue: number;
+  venue_id: string | null; venue_name_at_game: string | null;
+  home_primary_venue_id: string | null;
   home_slug: string; away_slug: string;
   home_name: string | null; away_name: string | null;
   home_short: string | null; away_short: string | null;
@@ -101,6 +102,27 @@ function strength(contribution: number, largest: number): number {
   return Math.max(1, Math.ceil(ratio * STRENGTH_STEPS));
 }
 
+/**
+ * その試合がホームクラブの本拠会場で行われたか（詳細設計 1.2）。
+ *
+ * **`games.is_primary_venue` を読まない。** あの列は DDL の `DEFAULT 1` のまま
+ * 全件 1 で、`club_seasons.primary_venue_id` から1回の JOIN で導ける。複製を持つと
+ * 「片方だけ古い」という壊れ方が1つ増えるだけである。
+ *
+ * **クエリは増えない。** この SELECT は当時の表示名のために既に `club_seasons hs` を
+ * LEFT JOIN している。
+ *
+ * **本拠が分からないときは `true` を返す。** 「分からない」と「代替会場である」は
+ * 違う。特徴量側は同じ場合に欠損（None）を返す — あちらは学習に入る値で、
+ * ここは画面に出す値である。
+ */
+function isPrimaryVenue(
+  game: Pick<GameRow, 'venue_id' | 'home_primary_venue_id'>,
+): boolean {
+  if (game.home_primary_venue_id === null || game.venue_id === null) return true;
+  return game.venue_id === game.home_primary_venue_id;
+}
+
 games.get('/games/:gameId', async (c) => {
   const gameId = c.req.param('gameId');
   if (!GAME_ID.test(gameId)) return fail(c, 'BAD_REQUEST', '試合IDの形式が不正');
@@ -110,7 +132,7 @@ games.get('/games/:gameId', async (c) => {
   const game = await c.env.DB.prepare(
     `SELECT g.id, g.season_id, g.league, g.competition, g.game_date, g.tipoff_at, g.status,
             g.home_club_id, g.away_club_id, g.home_score, g.away_score,
-            g.venue_id, g.venue_name_at_game, g.is_primary_venue,
+            g.venue_id, g.venue_name_at_game, hs.primary_venue_id AS home_primary_venue_id,
             hc.slug AS home_slug, ac.slug AS away_slug,
             hs.name AS home_name, as_.name AS away_name,
             hs.short_name AS home_short, as_.short_name AS away_short,
@@ -152,7 +174,7 @@ games.get('/games/:gameId', async (c) => {
       },
       // 当時の名称を優先する。無ければ現在の表示名にフォールバックする（詳細設計 1.2）
       venue: game.venue_id
-        ? { name: game.venue_name_at_game ?? game.venue_name, isPrimary: game.is_primary_venue === 1 }
+        ? { name: game.venue_name_at_game ?? game.venue_name, isPrimary: isPrimaryVenue(game) }
         : null,
       homeScore: finished ? game.home_score : null,
       awayScore: finished ? game.away_score : null,

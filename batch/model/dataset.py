@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from batch.features import team_rate
+from batch.features import player_rate, team_rate
+from batch.features.base import build_context
 from batch.features.builder import FEATURE_KEYS, build_features
 from batch.features.dataset import Dataset
 from batch.features.prepared import prepare
@@ -357,4 +358,121 @@ def build_team_rate_matrix(ds: Dataset) -> TeamRateData:
         club_margin=np.asarray(club_margin, dtype=np.float64),
         total=np.asarray(total, dtype=np.float64),
         spectator_restricted=restricted,
+    )
+
+
+# --- PlayerMinutes（第2段）の学習行列（詳細設計 2.3.1） ---
+
+
+@dataclass(frozen=True)
+class PlayerMinutesData:
+    """**1行は「1試合 × 出場した選手」。**
+
+    `player_game_stats` に行があることが「出場した」の定義であり、この表が
+    そのまま行の集合になる（2.3.1）。第1段（出場するか）と第3段（14項目）は
+    設計にない仕様を要するため、ここでは扱わない。
+    """
+
+    features: pd.DataFrame
+    #: その試合の出場時間（分）
+    minutes: Floats
+    game_ids: list[str]
+    player_ids: list[str]
+    club_ids: list[str]
+    season_ids: list[str]
+    game_dates: list[str]
+
+    def __len__(self) -> int:
+        return len(self.game_ids)
+
+    @property
+    def seasons(self) -> list[str]:
+        seen: list[str] = []
+        for season in self.season_ids:
+            if season not in seen:
+                seen.append(season)
+        return seen
+
+    def as_training_data(self) -> TrainingData:
+        """`walk_forward` に渡す形。**分割器を2つ作らない**（`evaluate.py`）。
+
+        `home_win` / `margin` / `total` はこの行に意味を持たないため NaN を置く。
+        `walk_forward(target=...)` に出場時間を渡すため学習には使われず、
+        **回帰の結果に分類の指標を呼ぶと `Evaluation._require_binary` が落とす**。
+        """
+        blank = np.full(len(self), np.nan, dtype=np.float64)
+        return TrainingData(
+            features=self.features,
+            home_win=blank,
+            margin=blank,
+            total=blank,
+            game_ids=self.game_ids,
+            season_ids=self.season_ids,
+            game_dates=self.game_dates,
+            spectator_restricted=[None] * len(self),
+        )
+
+
+def build_player_minutes_matrix(ds: Dataset) -> PlayerMinutesData:
+    """出場した選手の行を、終了した試合すべてについて組む。
+
+    **出場時間が欠けている行は落とす。** 0 として扱うと「出場したが0分」になり、
+    目的変数が壊れる（`player_game_stats.minutes` は NULL を取りうる）。
+    """
+    games = ds.table("games")
+    finished = games[games["status"] == "FINISHED"].copy()
+    if finished.empty:
+        raise MatrixError("終了した試合が1件もない")
+    finished = finished.sort_values(["tipoff_at", "id"], kind="stable")
+
+    stats = ds.table("player_game_stats")
+    by_game: dict[str, list[dict[str, object]]] = {}
+    for record in stats.to_dict("records"):
+        by_game.setdefault(str(record["game_id"]), []).append(
+            {str(k): v for k, v in record.items()})
+
+    prepared = prepare(ds)
+    rows: list[dict[str, float]] = []
+    minutes: list[float] = []
+    game_ids: list[str] = []
+    player_ids: list[str] = []
+    club_ids: list[str] = []
+    season_ids: list[str] = []
+    game_dates: list[str] = []
+
+    for game in finished.itertuples():
+        appearances = by_game.get(str(game.id))
+        if not appearances:
+            continue
+        # **`Context` は試合ごとに1回だけ作る。** 行ごとに作ると記憶が毎行
+        # 捨てられ、1試合16人で16倍の無駄になる（`player_rate.minutes_row`）
+        context = build_context(
+            str(game.id), _as_of(game.tipoff_at), ds, prepared)
+        for stat in appearances:
+            played = _number(stat.get("minutes"))
+            if played is None:
+                continue
+            club_id = str(stat["club_id"])
+            player_id = str(stat["player_id"])
+            row = player_rate.minutes_row(context, club_id, player_id)
+            if row is None:
+                continue
+            rows.append(row)
+            minutes.append(played)
+            game_ids.append(str(game.id))
+            player_ids.append(player_id)
+            club_ids.append(club_id)
+            season_ids.append(str(game.season_id))
+            game_dates.append(str(game.game_date))
+
+    if not rows:
+        raise MatrixError("PlayerMinutes の学習行を1件も作れなかった")
+    return PlayerMinutesData(
+        features=pd.DataFrame(rows, columns=list(player_rate.MINUTES_KEYS)),
+        minutes=np.asarray(minutes, dtype=np.float64),
+        game_ids=game_ids,
+        player_ids=player_ids,
+        club_ids=club_ids,
+        season_ids=season_ids,
+        game_dates=game_dates,
     )

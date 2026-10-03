@@ -19,6 +19,7 @@ import pytest
 from batch.features.base import Context, build_context
 from batch.features.builder import FEATURE_KEYS, build_features
 from batch.features.dataset import Dataset, export_sqlite
+from batch.features.player_rate import MINUTES_KEYS, build_minutes_features
 from batch.features.team_rate import all_feature_keys, build_team_rate_features
 
 TOLERANCE = 1e-9
@@ -564,3 +565,149 @@ def test_team_rate_mutation_trial_detects_an_intentional_leak(
 
     with pytest.raises(AssertionError):
         _assert_same_allowing_nan(before, leaky(seeded_db))
+
+
+# --- 第2段 PlayerMinutes の特徴量（詳細設計 2.3.1） ---
+#
+# **列が別ならリークの経路も別である。** 勝敗モデルと TeamRate に当てた検証を、
+# 選手視点の行にも当てる。ここを省くと「チームは守られているが出場時間の予測は
+# 漏れている」状態になり、整合化を通して個人スタッツ全体が汚染される。
+
+
+def _player_target(
+    con: sqlite3.Connection, offset_from_end: int = 0,
+) -> tuple[str, datetime, str, str]:
+    """終盤の終了済み試合から、出場実績のある選手を1人選ぶ。"""
+    row = con.execute(
+        "SELECT g.id, g.tipoff_at, p.club_id, p.player_id"
+        "  FROM games g JOIN player_game_stats p ON p.game_id = g.id"
+        " WHERE g.status = 'FINISHED' AND p.minutes IS NOT NULL"
+        " ORDER BY g.game_date DESC, g.tipoff_at DESC, p.player_id"
+        " LIMIT 1 OFFSET ?",
+        (offset_from_end,),
+    ).fetchone()
+    return str(row[0]), datetime.fromisoformat(str(row[1])), str(row[2]), str(row[3])
+
+
+def _player_features(
+    con: sqlite3.Connection, game_id: str, as_of: datetime,
+    club_id: str, player_id: str,
+) -> dict[str, float]:
+    row = build_minutes_features(game_id, as_of, export_sqlite(con), club_id, player_id)
+    assert row is not None, "過去が無く行が落ちた。過去データのある試合を選ぶ"
+    return row
+
+
+def test_player_minutes_target_game_mutation_does_not_change_features(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**本命。** 対象試合を撹乱しても、選手視点の4列が不変であること。
+
+    `minutes_l5_player` は `player_game_stats` を読むため、対象試合の行が
+    窓に混ざっていればここで落ちる。**その試合の出場時間は目的変数である。**
+    """
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    before = _player_features(seeded_db, game_id, as_of, club_id, player_id)
+
+    seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 40, started = 1, pts = 40"
+        " WHERE game_id = ?", (game_id,))
+    seeded_db.execute(
+        "UPDATE games SET home_score = 200, away_score = 0 WHERE id = ?", (game_id,))
+    seeded_db.commit()
+
+    _assert_same(before, _player_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+
+
+def test_player_minutes_future_game_mutation_does_not_change_features(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """`as_of` 以降に終了した試合を撹乱しても不変であること。"""
+    game_id, as_of, club_id, player_id = _player_target(seeded_db, offset_from_end=200)
+    before = _player_features(seeded_db, game_id, as_of, club_id, player_id)
+
+    boundary = as_of.isoformat(timespec="seconds").replace("+00:00", "Z")
+    changed = seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 1, started = 0 WHERE game_id IN"
+        " (SELECT id FROM games WHERE finished_at > ?)", (boundary,),
+    ).rowcount
+    seeded_db.commit()
+    assert changed > 0, "撹乱対象がない。テストが空振りしている"
+
+    _assert_same(before, _player_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+
+
+def test_player_minutes_as_of_is_actually_applied(seeded_db: sqlite3.Connection) -> None:
+    """**陽性確認。** `as_of` を前にずらすと値が変化すること。
+
+    合成シードは選手ごとに分数が一定なので、**古い試合だけ分数を変えて**
+    差を作る（そうしないと窓の中身が変わっても値が動かない）。
+    """
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    old_games = seeded_db.execute(
+        "SELECT p.game_id FROM player_game_stats p JOIN games g ON g.id = p.game_id"
+        " WHERE p.player_id = ? AND g.game_date < (SELECT game_date FROM games WHERE id = ?)"
+        " ORDER BY g.game_date DESC LIMIT 10 OFFSET 3",
+        (player_id, game_id)).fetchall()
+    assert old_games, "古い試合が無い。テストが空振りしている"
+    seeded_db.executemany(
+        "UPDATE player_game_stats SET minutes = 3.0 WHERE game_id = ? AND player_id = ?",
+        [(str(g[0]), player_id) for g in old_games])
+    seeded_db.commit()
+
+    now = _player_features(seeded_db, game_id, as_of, club_id, player_id)
+    past = _player_features(
+        seeded_db, game_id, as_of - timedelta(days=30), club_id, player_id)
+    changed = [k for k in now if abs(now[k] - past[k]) > TOLERANCE]
+    assert any(k.startswith("minutes_l") for k in changed), (
+        f"as_of を30日戻しても出場時間の列が変わらない: {changed}")
+
+
+def test_player_minutes_excludes_unfinished_games(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """`SCHEDULED` の試合が窓に入らないこと。"""
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    before = _player_features(seeded_db, game_id, as_of, club_id, player_id)
+
+    boundary = as_of.isoformat(timespec="seconds").replace("+00:00", "Z")
+    changed = seeded_db.execute(
+        "UPDATE games SET status = 'SCHEDULED', finished_at = NULL,"
+        " home_score = NULL, away_score = NULL WHERE finished_at > ?", (boundary,),
+    ).rowcount
+    seeded_db.commit()
+    assert changed > 0, "撹乱対象がない。テストが空振りしている"
+
+    _assert_same(before, _player_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+
+
+def test_player_minutes_keys_are_fixed(seeded_db: sqlite3.Connection) -> None:
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    row = _player_features(seeded_db, game_id, as_of, club_id, player_id)
+    assert tuple(row) == MINUTES_KEYS
+
+
+def test_player_minutes_mutation_trial_detects_an_intentional_leak(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**テストのテスト。** 意図的にリークさせた実装で撹乱テストが落ちること。"""
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+
+    def leaky(connection: sqlite3.Connection) -> dict[str, float]:
+        base = _player_features(connection, game_id, as_of, club_id, player_id)
+        row = connection.execute(
+            "SELECT minutes FROM player_game_stats WHERE game_id = ? AND player_id = ?",
+            (game_id, player_id)).fetchone()
+        return {**base, "minutes_l5_player": base["minutes_l5_player"] + float(row[0])}
+
+    before = leaky(seeded_db)
+    seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 40 WHERE game_id = ? AND player_id = ?",
+        (game_id, player_id))
+    seeded_db.commit()
+
+    with pytest.raises(AssertionError):
+        _assert_same(before, leaky(seeded_db))

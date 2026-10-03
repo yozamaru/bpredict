@@ -1,0 +1,99 @@
+# 本拠会場を導出して CSV に固定し、D1 へ送る（詳細設計 1.2 / 4.11）。
+#
+# **`mode` で2段に分かれる。** `resolve-venue-geo` と同じ形である。
+#
+#   derive : スナップショットの `games` から導出して
+#            `db/seeds/master/club_primary_venues.csv` を作る。**外部アクセスなし。**
+#            CSV は artifact で取り出す（`contents: read` を崩さないため。基本設計 7.3）。
+#            内容を見てから人（または AI）がコミットする
+#   load   : **コミット済みの** CSV を D1 へ送る（`POST /internal/games` の
+#            `clubSeasons` 配列。新しい口を増やさない）
+#
+# **CSV を自動でコミットしない。** 「1回だけ確定して固定する」設計であり（1.2）、
+# 占有率の低い組（最小 0.367）が本拠と呼べるかを人が確かめる余地を残す。
+#
+# **`seed_master` を流さない。** このジョブはクラブ解決をしない（`rebuild-derived`
+# と同じ理由。4.1）。
+name: derive-primary-venues
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'derive = 導出して CSV を作る / load = コミット済みの CSV を D1 へ送る'
+        required: true
+        type: choice
+        options:
+          - derive
+          - load
+        default: derive
+      dry_run:
+        description: 'load のとき、組み立てるが D1 には書かない'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-write
+  cancel-in-progress: false
+
+jobs:
+  derive:
+    # 手動実行も既定ブランチだけに限る。別ブランチのコードで本番 D1 へ書かない。
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # 未設定のまま走らせない。**skip ではなく fail にする**（手動実行なので、
+      # 黙って通り過ぎるよりその場で気づける方がよい）。
+      #
+      # **derive では要求しない。** あちらは D1 に一切触らず、内部APIも作らない。
+      - name: 設定の確認
+        if: inputs.mode == 'load'
+        shell: bash
+        run: |
+          missing=()
+          for name in API_BASE_URL INGEST_TOKEN; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::未設定: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r batch/requirements.txt
+
+      # inputs を `run:` に直接展開しない。シェルに解釈される前に env へ渡す。
+      - name: 導出
+        if: inputs.mode == 'derive'
+        run: python -m batch.jobs.derive_primary_venues
+
+      # CSV は artifact で受け渡す。**コミットしない**（基本設計 7.3）。
+      - name: CSV を取り出す
+        if: inputs.mode == 'derive'
+        uses: actions/upload-artifact@v4
+        with:
+          name: club-primary-venues
+          path: db/seeds/master/club_primary_venues.csv
+          if-no-files-found: error
+
+      - name: D1 へ送る
+        if: inputs.mode == 'load'
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--load)
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          python -m batch.jobs.derive_primary_venues "${args[@]}"

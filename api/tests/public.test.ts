@@ -71,6 +71,48 @@ describe('GET /games/:gameId', () => {
     expect(res.headers.get('Cache-Control')).toContain('s-maxage=3600');
   });
 
+  it('本拠会場は `club_seasons.primary_venue_id` から導く', async () => {
+    // **`games.is_primary_venue` を読まない**（詳細設計 1.2）。あの列は全件 1 で、
+    // 1回の JOIN で導けるため複製を持たない
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await env.DB.prepare("INSERT INTO venues (id, name) VALUES ('v-home','本拠'),('v-alt','代替')").run();
+    await env.DB.prepare(
+      'INSERT INTO club_seasons (club_id, season_id, name, short_name, league, primary_venue_id)'
+      + " VALUES (?,?,'H','H','PREMIER','v-home')",
+    ).bind(s.homeId, s.seasonId).run();
+
+    // 代替会場での試合。**列は 1 のままである**ことを確かめてから判定を見る
+    await env.DB.prepare("UPDATE games SET venue_id = 'v-alt' WHERE id = ?")
+      .bind(s.gameId).run();
+    const flag = await env.DB.prepare('SELECT is_primary_venue AS f FROM games WHERE id = ?')
+      .bind(s.gameId).first<{ f: number }>();
+    expect(flag?.f).toBe(1);
+
+    let game = (await body(await get(`/games/${s.gameId}`))).game as {
+      venue: { isPrimary: boolean } | null;
+    };
+    expect(game.venue?.isPrimary).toBe(false);
+
+    // 本拠での試合
+    await env.DB.prepare("UPDATE games SET venue_id = 'v-home' WHERE id = ?")
+      .bind(s.gameId).run();
+    game = (await body(await get(`/games/${s.gameId}`))).game as {
+      venue: { isPrimary: boolean } | null;
+    };
+    expect(game.venue?.isPrimary).toBe(true);
+  });
+
+  it('本拠が未設定なら代替会場とは言わない', async () => {
+    // 「分からない」と「代替会場である」は違う（詳細設計 1.2）
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await env.DB.prepare("INSERT INTO venues (id, name) VALUES ('v-x','どこか')").run();
+    await env.DB.prepare("UPDATE games SET venue_id = 'v-x' WHERE id = ?").bind(s.gameId).run();
+    const game = (await body(await get(`/games/${s.gameId}`))).game as {
+      venue: { isPrimary: boolean } | null;
+    };
+    expect(game.venue?.isPrimary).toBe(true);
+  });
+
   it('表示名は当時の名称（club_seasons）を使う', async () => {
     const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
     await env.DB.prepare(

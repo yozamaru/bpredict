@@ -263,9 +263,10 @@ def _target(con: sqlite3.Connection) -> tuple[str, datetime]:
 def test_feature_is_none_when_the_master_is_empty(seeded_db: sqlite3.Connection) -> None:
     """**マスタが NULL なら None**（関数内で埋めない。規約5）。
 
-    本番の `club_seasons.primary_venue_id` は全件 NULL である（2026-10-03 時点）。
-    その状態で #15 を `FEATURE_KEYS` に入れると**定数列**になり、採用ゲートの
-    `constant_columns` に当たる。だから**マスタを投入してから列に足す**。
+    マスタが全件 NULL のまま #15 を `FEATURE_KEYS` に入れると**定数列**になり、
+    採用ゲートの `constant_columns` に当たる。だから**マスタを投入してから列に
+    足した**（2026-10-03。スナップショットに 225/238 行を反映してから列に加えた。
+    詳細設計 4.11 の段4）。
     """
     seeded_db.execute("UPDATE club_seasons SET primary_venue_id = NULL")
     seeded_db.commit()

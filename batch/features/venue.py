@@ -1,7 +1,12 @@
 """会場に関する特徴量（詳細設計 2.2 の検証区分）。
 
-いまあるのは #15（メイン会場か代替会場か）だけである。#16（移動距離）と
-#29（動員）はまだ実装していない。
+いまあるのは #15（メイン会場か代替会場か）だけである。#29（動員）はまだ
+実装していない。
+
+**#16（移動距離）は実装して測り、落とした**（2026-10-04）。採用経路B の Brier で
+「#15 だけ」が4構成の最良（0.201048）で、**#16 を足すと悪化した**（0.201266）。
+要件 6.2 が #16 に定めた検証の観点は「#12 #13 への上乗せ効果」であり、上乗せは
+なかった。再実装するなら `verification/RESULTS.md` のこの測定を先に読むこと。
 
 **`games.is_primary_venue` を読まない。** あの列は公開API（`venue.isPrimary`）の
 ための派生値で、`rebuild_derived` が洗い替える（詳細設計 4.12）。特徴量は
@@ -25,20 +30,15 @@ def is_primary_venue(context: Context) -> float | None:
     **対象試合自身の `venue_id` を読む。** これはリークではない — 会場は日程として
     試合前に確定している情報であり、`team_game_stats` のような結果ではない
     （詳細設計 2.1 の規約3が禁じているのは結果の参照である）。
+
+    **マスタの引き当ては `Prepared` が持つ**（2.1.1）。試合ごとに `club_seasons` を
+    絞り込むと1試合あたり約4msかかる。
     """
     venue_id = context.game.get("venue_id")
     if venue_id is None or pd.isna(venue_id):
         return None
-    seasons = context.dataset.table("club_seasons")
-    if "primary_venue_id" not in seasons.columns:
-        return None
-    row = seasons[
-        (seasons["club_id"].astype(str) == context.home_club_id)
-        & (seasons["season_id"].astype(str) == context.season_id)
-    ]
-    if row.empty:
-        return None
-    primary = row.iloc[0]["primary_venue_id"]
-    if primary is None or pd.isna(primary):
+    primary = context.index.primary_venues.get(
+        (context.season_id, context.home_club_id))
+    if primary is None:
         return None
     return 1.0 if str(venue_id) == str(primary) else 0.0

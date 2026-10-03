@@ -508,4 +508,13 @@ def test_sync_snapshot_does_not_build_the_internal_api(
     monkeypatch.setattr(resolve_venue_geo, "DEFAULT_SNAPSHOT", snapshot)
     monkeypatch.delenv("API_BASE_URL", raising=False)
     monkeypatch.delenv("INGEST_TOKEN", raising=False)
+
+    # **本物のスナップショットに書いていないことを確かめる。** 既定値は関数定義時に
+    # 束縛されるため、`main()` がモジュール定数を明示して渡していないと
+    # monkeypatch が効かず、**リポジトリの `batch/snapshot/` に書いてしまう**
+    # （2026-10-03 に実際に起きた。`MANIFEST.json` の `generated_at` が動いた）
+    real = Path("batch/snapshot/MANIFEST.json")
+    before = real.read_bytes() if real.exists() else None
+
     assert resolve_venue_geo.main(["--sync-snapshot"]) == 0
+    assert (real.read_bytes() if real.exists() else None) == before

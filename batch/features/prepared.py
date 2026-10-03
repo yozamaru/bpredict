@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import bisect
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
@@ -138,6 +139,33 @@ class EloIndex:
         return self._elos[club_id][position - 1]
 
 
+def _is_missing(value: object) -> bool:
+    """単値の欠損判定。**空文字と欠損を混ぜない。**"""
+    if value is None:
+        return True
+    if isinstance(value, float):
+        return math.isnan(value)
+    return str(value) in ("nan", "NaT", "<NA>", "")
+
+
+def _primary_venues(dataset: Dataset) -> dict[tuple[str, str], str]:
+    """(シーズン, クラブ) → 本拠会場ID。**NULL の組は入れない**（#15）。
+
+    「本拠が分からない」と「代替会場である」は違うため、呼び出し側は
+    キーの不在を None として扱う。
+    """
+    seasons = dataset.tables.get("club_seasons")
+    if seasons is None or not {
+        "season_id", "club_id", "primary_venue_id",
+    }.issubset(seasons.columns):
+        return {}
+    return {
+        (str(row["season_id"]), str(row["club_id"])): str(row["primary_venue_id"])
+        for row in seasons.to_dict("records")
+        if not _is_missing(row.get("primary_venue_id"))
+    }
+
+
 @dataclass(frozen=True)
 class Prepared:
     """`as_of` に依らない前処理の結果。1つの `Dataset` に対して1回作る。"""
@@ -172,6 +200,8 @@ class Prepared:
     #: (クラブ, シーズン) → 同。シーズンは **`team_games` 経由**で引く
     player_club_season_positions: dict[tuple[str, str], Positions] = field(
         default_factory=dict)
+    #: (シーズン, クラブ) → 本拠会場ID。NULL の組は入れない（#15）
+    primary_venues: dict[tuple[str, str], str] = field(default_factory=dict)
 
     def as_of_ns(self, as_of: datetime) -> int:
         """`as_of` を `_utc_ns` と同じ単位の整数にする。**単位は `UNIT` 1か所。**"""
@@ -256,6 +286,7 @@ def prepare(dataset: Dataset) -> Prepared:
         entries_by_game={
             str(key): group for key, group in entries.groupby("game_id", sort=False)
         } if len(entries) else {},
+        primary_venues=_primary_venues(dataset),
         club_positions=club_positions,
         club_season_positions=club_season_positions,
         player_club_positions=player_club_positions,

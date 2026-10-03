@@ -14,7 +14,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 // **`?raw` で読む。** JSON インポートのために tsconfig を緩めない
 // （`vite/client` の型は tests/env.d.ts が既に参照している）。
 import contractRaw from '../../contracts/public-shapes.json?raw';
-import { applyMigrations, get, resetAll, seedGame, type Seed } from './helpers';
+import { applyMigrations, get, post, resetAll, seedGame, type Seed } from './helpers';
 
 beforeAll(async () => { await applyMigrations(); });
 beforeEach(async () => { await resetAll(); });
@@ -148,5 +148,80 @@ describe('契約ファイル自身の検査', () => {
       if (!entry?.paths) continue;
       expect(new Set(entry.paths).size, shape).toBe(entry.paths.length);
     }
+  });
+});
+
+/**
+ * 内部APIの**要求ボディ**も同じ契約で固定する（詳細設計 4.12）。
+ *
+ * **応答だけでは足りなかった。** `POST /internal/evaluate` と
+ * `POST /internal/summary` に送る形は `batch/jobs/evaluate.py` が組み立てており、
+ * **Zod が受け取れるかを誰も検査していなかった** — 形が合っているつもりで
+ * 合っていなければ、本番で 400 を受けて初めて分かる。
+ *
+ * 契約から組んだ本文が **200 で通ること**まで見る（キーの一致だけでは、
+ * 必須の値域を満たしていない場合を捕まえられない）。
+ */
+describe('内部APIの要求ボディ（契約）', () => {
+  /** 契約のパスから、その形の本文を組む。値は Zod を通る最小のものを入れる。 */
+  function bodyFrom(shape: string, values: Record<string, unknown>): unknown {
+    const row: Record<string, unknown> = {};
+    let root = '';
+    for (const path of contract(shape)) {
+      const parts = path.split('[].');
+      expect(parts.length, `配列の要素でないパスがある: ${path}`).toBe(2);
+      const [head, leaf] = parts as [string, string];
+      root = head;
+      expect(leaf in values, `値を用意していないキー: ${leaf}`).toBe(true);
+      row[leaf] = values[leaf];
+    }
+    return { [root]: [row] };
+  }
+
+  it('evaluate — 契約どおりの本文が 200 で通る', async () => {
+    const s = await seedGame({ tipoffAt: '2026-09-26T10:05:00Z', status: 'FINISHED' });
+    await env.DB.prepare(
+      `INSERT INTO predictions (id, game_id, season_id, model_version, revision, run_id,
+         predicted_at, as_of, data_as_of, home_win_prob, pred_home_score, pred_away_score,
+         is_provisional, is_final, is_active, feature_snapshot)
+       VALUES ('c-pred',?,?,?,1,'run','2026-09-26T00:00:00Z','2026-09-26T10:05:00Z',
+               '2026-09-25T12:00:00Z',0.68,84,78,0,1,1,'{}')`,
+    ).bind(s.gameId, s.seasonId, s.modelVersion).run();
+
+    const res = await post('/internal/evaluate', bodyFrom('internalEvaluate', {
+      predictionId: 'c-pred', gameId: s.gameId, seasonId: s.seasonId,
+      modelVersion: s.modelVersion, homeWinProb: 0.68, probBucket: 6,
+      outcome: 'WIN', predictedHomeWin: 1, actualHomeWin: 1, isCorrect: 1,
+      brier: 0.1024, scoreMae: 3.5, wasProvisional: 0,
+    }));
+    expect(res.status).toBe(200);
+  });
+
+  it('evaluate — VOID の行もキーを消さずに通る', async () => {
+    const s = await seedGame({ tipoffAt: '2026-09-26T10:05:00Z', status: 'CANCELLED' });
+    await env.DB.prepare(
+      `INSERT INTO predictions (id, game_id, season_id, model_version, revision, run_id,
+         predicted_at, as_of, data_as_of, home_win_prob, pred_home_score, pred_away_score,
+         is_provisional, is_final, is_active, feature_snapshot)
+       VALUES ('c-void',?,?,?,1,'run','2026-09-26T00:00:00Z','2026-09-26T10:05:00Z',
+               '2026-09-25T12:00:00Z',0.68,84,78,0,1,1,'{}')`,
+    ).bind(s.gameId, s.seasonId, s.modelVersion).run();
+
+    // **バッチは `VOID` でもキーを消さず `null` を送る**（4.12）
+    const res = await post('/internal/evaluate', bodyFrom('internalEvaluate', {
+      predictionId: 'c-void', gameId: s.gameId, seasonId: s.seasonId,
+      modelVersion: s.modelVersion, homeWinProb: 0.68, probBucket: 6,
+      outcome: 'VOID', predictedHomeWin: null, actualHomeWin: null,
+      isCorrect: null, brier: null, scoreMae: null, wasProvisional: 0,
+    }));
+    expect(res.status).toBe(200);
+  });
+
+  it('summary — 契約どおりの本文が 200 で通る', async () => {
+    const res = await post('/internal/summary', bodyFrom('internalSummary', {
+      scope: 'BUCKET', scopeKey: '60-70%', modelVersion: '', n: 42,
+      accuracy: 0.65, brier: 0.21, actualRate: 0.69, baselineAccuracy: null,
+    }));
+    expect(res.status).toBe(200);
   });
 });

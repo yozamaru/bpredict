@@ -9,7 +9,8 @@
     "検査は「すべてが埋まった標本」との完全一致で行う。null を取りうるキーも",
     "キーごと消さないことを各側のテストが別に見る（prediction: null など）。",
     "",
-    "形を変える判断はありうる。ただし片方だけを直すと必ず落ちるため、変更が両側に届く。"
+    "形を変える判断はありうる。ただし片方だけを直すと必ず落ちるため、変更が両側に届く。",
+    "内部APIの要求ボディも同じ仕組みで固定する（詳細設計 4.12）。api/tests/models-ops.test.ts と batch/tests/test_job_evaluate.py の両方がこれを読む。"
   ],
   "gamesByDate": {
     "$comment": "GET /games?date= / GET /results?date= の一覧 = today.json と schedule/<date>.json",
@@ -130,6 +131,37 @@
       "data.lastSuccessAt",
       "data.modelVersions[]",
       "meta.generatedAt"
+    ]
+  },
+  "internalEvaluate": {
+    "$comment": "POST /internal/evaluate の本文（batch/jobs/evaluate.py の _result_payload）",
+    "paths": [
+      "results[].actualHomeWin",
+      "results[].brier",
+      "results[].gameId",
+      "results[].homeWinProb",
+      "results[].isCorrect",
+      "results[].modelVersion",
+      "results[].outcome",
+      "results[].predictedHomeWin",
+      "results[].predictionId",
+      "results[].probBucket",
+      "results[].scoreMae",
+      "results[].seasonId",
+      "results[].wasProvisional"
+    ]
+  },
+  "internalSummary": {
+    "$comment": "POST /internal/summary の本文（batch/jobs/evaluate.py の _summary_payload）",
+    "paths": [
+      "rows[].accuracy",
+      "rows[].actualRate",
+      "rows[].baselineAccuracy",
+      "rows[].brier",
+      "rows[].modelVersion",
+      "rows[].n",
+      "rows[].scope",
+      "rows[].scopeKey"
     ]
   }
 }

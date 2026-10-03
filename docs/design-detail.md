@@ -314,7 +314,7 @@ is_primary_venue = (games.venue_id == そのホームクラブの primary_venue_
 > なかった。
 
 **列そのものは残す**（マイグレーションは追記のみ。CLAUDE.md）。読む側がいない
-ことを `test_public_api_does_not_read_is_primary_venue_column` で固定する。
+ことを `本拠会場は club_seasons.primary_venue_id から導く`（`api/tests/public.test.ts`） で固定する。
 
 ### 1.3 ファクト
 

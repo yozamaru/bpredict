@@ -2038,7 +2038,7 @@ oth['pf'] = np.minimum(oth['pf'], 5.0)
 導けない集計」だからで、この列は当てはまらない。
 
 **変異試験で確かめた。** 旧実装（`g.is_primary_venue` を読む）に戻すと
-`test_public_api_derives_is_primary_from_the_master` が落ちる。
+`本拠会場は club_seasons.primary_venue_id から導く`（`api/tests/public.test.ts`） が落ちる。
 
 ### まだ D1 に入っていない
 

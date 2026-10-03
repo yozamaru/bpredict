@@ -2,7 +2,7 @@
   "files": {
     "club_seasons": {
       "rows": 238,
-      "sha256": "364f3906fe186177b0ee7607be2a152d92769f4f2eb7bce5f774bad4afe38f26"
+      "sha256": "bb59a9e30d7a93ed55fb2920a7c4fa07ed4e58ed5bf259338b1afd229dc62ee6"
     },
     "clubs": {
       "rows": 30,
@@ -50,10 +50,10 @@
     },
     "venues": {
       "rows": 149,
-      "sha256": "67d2687d09bfb7badc004cfdf4f2bf47de4290714a8713671ba69da369f1a288"
+      "sha256": "18d55fb5ea51fe51c0bb2f72d44910316ca5b8519a7e2ca660e37827c1beb616"
     }
   },
-  "generated_at": "2026-10-01T01:42:10Z",
+  "generated_at": "2026-10-03T08:58:41Z",
   "max_finished_at": "2026-09-27T09:05:00Z",
   "version": 1
 }

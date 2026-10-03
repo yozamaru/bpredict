@@ -140,3 +140,85 @@ def test_feature_modules_do_not_import_clients() -> None:
         }
         assert not imported, f"{module.__name__} が {imported} を import している"
         assert module.__name__ in sys.modules
+
+
+# --- コミット済みのスナップショットが、マスタの CSV を反映していること ---
+#
+# **2026-10-03 に、座標140件が D1 にだけ入っていてスナップショットは 0件だった。**
+# スナップショットは特徴量・学習・推論の唯一の入力であり（絶対ルール3）、D1 は
+# 公開APIの表示用の複製である。したがって #16（移動距離）は「座標がない」として
+# 全件欠損し、#15 も同じ道をたどるところだった。
+#
+# **`test_snapshot_matches_d1` では捕まらない。** あれは行数と主キー集合を見る仕様で、
+# **列の値が古いことは見ない**（しかも、まだ実装されていない）。ここは D1 を要しない。
+
+REPO = Path(__file__).resolve().parents[2]
+COMMITTED_SNAPSHOT = REPO / "batch" / "snapshot"
+
+
+def _committed() -> dataset.Dataset:
+    if not (COMMITTED_SNAPSHOT / MANIFEST_NAME).exists():
+        pytest.skip("コミット済みのスナップショットがない")
+    return load_snapshot(COMMITTED_SNAPSHOT)
+
+
+def test_snapshot_reflects_the_venue_geo_csv() -> None:
+    """`venues_geo.csv` に座標がある会場は、スナップショットにも座標があること。"""
+    from batch.jobs import resolve_venue_geo
+
+    csv_path = REPO / resolve_venue_geo.CSV_PATH
+    if not csv_path.exists():
+        pytest.skip("venues_geo.csv がない")
+    rows = resolve_venue_geo.read_csv(csv_path)
+    expected = {v for v, row in rows.items() if row.get("lat") and row.get("lng")}
+    if not expected:
+        pytest.skip("CSV に座標の行がない")
+
+    venues = _committed().table("venues")
+    known = set(venues["id"].astype(str))
+    have = {
+        str(r["id"]) for r in venues.to_dict("records")
+        if r.get("lat") is not None and r.get("lng") is not None
+        and not pd_isna(r.get("lat")) and not pd_isna(r.get("lng"))
+    }
+    missing = sorted((expected & known) - have)
+    assert not missing, (
+        f"CSV に座標があるのにスナップショットに無い会場: {missing[:10]}"
+        "（`python -m batch.jobs.resolve_venue_geo --sync-snapshot` を流してコミットする）"
+    )
+
+
+def test_snapshot_reflects_the_primary_venue_csv() -> None:
+    """`club_primary_venues.csv` の本拠会場が、スナップショットにも入っていること。"""
+    from batch.masters import primary_venues
+
+    csv_path = REPO / primary_venues.PRIMARY_VENUE_CSV
+    if not csv_path.exists():
+        pytest.skip("club_primary_venues.csv がない")
+    rows = primary_venues.load_csv(csv_path)
+    if not rows:
+        pytest.skip("CSV が空である")
+    primary = primary_venues.primary_of(rows)
+
+    seasons = _committed().table("club_seasons")
+    missing = [
+        (str(r["season_id"]), str(r["club_id"]))
+        for r in seasons.to_dict("records")
+        if (str(r["season_id"]), str(r["club_id"])) in primary
+        and (r.get("primary_venue_id") is None or pd_isna(r.get("primary_venue_id")))
+    ]
+    assert not missing, (
+        f"CSV に本拠会場があるのにスナップショットが NULL: {missing[:10]}"
+        "（`python -m batch.jobs.derive_primary_venues --sync-snapshot` を流してコミットする）"
+    )
+
+
+def pd_isna(value: object) -> bool:
+    """欠損の判定。`pandas.isna` は配列も受けるため、ここでは単値に限る。"""
+    import math
+
+    if value is None:
+        return True
+    if isinstance(value, float):
+        return math.isnan(value)
+    return str(value) in ("nan", "NaT", "<NA>", "")

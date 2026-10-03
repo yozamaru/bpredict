@@ -1,7 +1,8 @@
 """会場の座標を1回だけ解決して CSV に固定する（詳細設計 4.10）。
 
     python -m batch.jobs.resolve_venue_geo [--dry-run]   解決して CSV に書く
-    python -m batch.jobs.resolve_venue_geo --load        CSV を D1 に送るだけ
+    python -m batch.jobs.resolve_venue_geo --sync-snapshot    CSV をスナップショットに反映する
+    python -m batch.jobs.resolve_venue_geo --load        反映して D1 にも送る
 
 **取り込みが全部終わってから流す。** 会場は取り込みとともに増えるため、途中で流すと
 同じ会場を二度取りに行くことになる。
@@ -21,6 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from batch.features.dataset import Dataset, load_snapshot, write_snapshot
 from batch.geocode.gsi import Candidate, GeocodeError, candidates, sleep_between_requests
 from batch.loader.api import InternalApi, LoaderError
 from batch.loader.limits import chunks
@@ -35,6 +37,7 @@ from batch.scraper.arena import arena_detail_url
 from batch.scraper.client import PolicyError, RateLimitedClient, ScraperError, ScrapingStopped
 
 CSV_PATH = Path("db/seeds/master/venues_geo.csv")
+DEFAULT_SNAPSHOT = Path("batch/snapshot")
 DEFAULT_STATE_PATH = Path("batch/.scraper-state/state.json")
 COLUMNS = ("venue_id", "name", "prefecture", "lat", "lng", "address", "source")
 
@@ -178,6 +181,74 @@ def resolve(
     return result
 
 
+def sync_snapshot(
+    path: Path = CSV_PATH, snapshot_dir: Path = DEFAULT_SNAPSHOT,
+) -> int:
+    """CSV の座標をスナップショットの `venues` に反映する（詳細設計 4.10 の段5）。
+
+    **D1 を要しない。** 出典はコミット済みの CSV で、適用は決定論的である。
+
+    **この段を飛ばすと座標は特徴量から見えない。** スナップショットが特徴量・学習・
+    推論の唯一の入力であり（絶対ルール3）、D1 は公開APIの表示用の複製である。
+    2026-10-03 までこの段がなく、D1 に 140件あるのにスナップショットは 0件だった。
+
+    **`name` は上書きしない。** 初出の名称で固定する（詳細設計 1.2）。CSV の `name` は
+    解決したときの表示名であって、`venues.name` の出典ではない。
+    """
+    rows = read_csv(path)
+    dataset = load_snapshot(snapshot_dir)
+    venues = dataset.table("venues").copy()
+    for column in ("prefecture", "lat", "lng"):
+        if column not in venues.columns:
+            raise ValidationError(f"スナップショットの venues に {column} がない")
+
+    # **座標が揃っていない行は使わない。** 都道府県だけ入れて座標を空にすると、
+    # #16 が「座標がある会場」と誤って数える余地が生まれる
+    resolved = {
+        venue_id: _geo_of(row)
+        for venue_id, row in rows.items()
+        if row.get("lat") and row.get("lng")
+    }
+    ids = list(venues["id"].astype(str))
+    # **CSV に行がない会場は触らない。** 既にある値を None で上書きしない
+    venues["prefecture"] = [
+        resolved[i].prefecture if i in resolved else old
+        for i, old in zip(ids, venues["prefecture"], strict=True)
+    ]
+    venues["lat"] = [
+        resolved[i].lat if i in resolved else old
+        for i, old in zip(ids, venues["lat"], strict=True)
+    ]
+    venues["lng"] = [
+        resolved[i].lng if i in resolved else old
+        for i, old in zip(ids, venues["lng"], strict=True)
+    ]
+    updated = sum(1 for i in ids if i in resolved)
+    write_snapshot(
+        Dataset(tables={**dataset.tables, "venues": venues}),
+        snapshot_dir,
+        tables=["venues"],
+    )
+    return updated
+
+
+@dataclass(frozen=True)
+class Geo:
+    """CSV の1行から取り出した座標と都道府県。**空文字と欠損を混ぜない。**"""
+
+    prefecture: str | None
+    lat: float | None
+    lng: float | None
+
+
+def _geo_of(row: dict[str, str]) -> Geo:
+    return Geo(
+        prefecture=row.get("prefecture") or None,
+        lat=float(row["lat"]) if row.get("lat") else None,
+        lng=float(row["lng"]) if row.get("lng") else None,
+    )
+
+
 def load(api: InternalApi, path: Path = CSV_PATH) -> int:
     """CSV を D1 に送る。`POST /internal/games` の `venues` 配列で受ける（詳細設計 3.4）。"""
     rows = read_csv(path)
@@ -185,11 +256,12 @@ def load(api: InternalApi, path: Path = CSV_PATH) -> int:
         {
             "id": venue_id,
             "name": row.get("name") or venue_id,
-            "prefecture": row.get("prefecture") or None,
-            "lat": float(row["lat"]) if row.get("lat") else None,
-            "lng": float(row["lng"]) if row.get("lng") else None,
+            "prefecture": geo.prefecture,
+            "lat": geo.lat,
+            "lng": geo.lng,
         }
         for venue_id, row in sorted(rows.items())
+        if (geo := _geo_of(row)) is not None
     ]
     sent = 0
     for part in chunks("venues", payload):
@@ -201,15 +273,29 @@ def load(api: InternalApi, path: Path = CSV_PATH) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="会場の座標を1回だけ解決する")
     parser.add_argument("--dry-run", action="store_true", help="解決するが CSV に書かない")
-    parser.add_argument("--load", action="store_true", help="CSV を D1 に送るだけ（取得しない）")
+    parser.add_argument("--load", action="store_true", help="反映して D1 にも送る（取得しない）")
+    parser.add_argument(
+        "--sync-snapshot", action="store_true",
+        help="CSV をスナップショットに反映するだけ（D1 に送らない。取得しない）",
+    )
     args = parser.parse_args(argv)
 
     try:
+        # **スナップショットへの反映は D1 を要しない。** 内部APIは生成時に接続先を
+        # 検証するため、`--sync-snapshot` では作らない（`derive_primary_venues` と同じ）
+        if args.sync_snapshot:
+            print(f"resolve_venue_geo: スナップショットに反映した会場={sync_snapshot()}")
+            return 0
         api = InternalApi(
             os.environ.get("API_BASE_URL", ""), os.environ.get("INGEST_TOKEN", ""),
         )
         if args.load:
-            print(f"resolve_venue_geo: D1 に送った会場={load(api)}")
+            # **スナップショットを先に書く**（基本設計 2.2 の順序）
+            reflected = sync_snapshot()
+            print(
+                f"resolve_venue_geo: スナップショット={reflected}"
+                f" D1 に送った会場={load(api)}"
+            )
             return 0
         client = RateLimitedClient(
             user_agent=os.environ.get("SCRAPER_USER_AGENT", ""),

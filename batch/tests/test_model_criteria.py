@@ -176,14 +176,24 @@ def test_known_and_unexpected_constants_are_reported_separately() -> None:
 
 
 def test_the_entry_keys_are_the_known_constants() -> None:
-    """`game_entries` が空であることに由来する3キー（2026-09-25 の実測）。"""
+    """**`game_entries` が空であることに由来する4キーだけ**（実測で確認済み）。
+
+    勝敗モデルの3列（2026-09-25）と、第2段 PlayerMinutes の `team_minutes_lost`
+    （2026-10-03。126,931行で1種類、抜いても MAE が完全に同一）。
+
+    **集合を固定するのは「知らないまま通ること」を防ぐためである**（4.6）。
+    ここへ足すときは、定数になる理由が**設計上の既知の未実装**に由来することを
+    確かめる。`gameday_update` を実装したら4つとも外す。
+    """
     assert set(KNOWN_CONSTANT) == {
         "minutes_lost_diff",
         "top_players_out_diff",
         "entry_is_official",
+        "team_minutes_lost",
     }
     for reason in KNOWN_CONSTANT.values():
         assert "game_entries" in reason
+        assert "gameday_update" in reason
 
 
 # --- 理由の提示 ---

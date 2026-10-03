@@ -19,13 +19,21 @@ def _recent_minutes(context: Context, club_id: str) -> pd.Series:
 
     所属は `player_game_stats.club_id`（その試合で実際にどのクラブで出たか）で判定する。
     当季に限るのは、前季の別クラブでの出場時間を混ぜないため。
+
+    **クラブごとに1回だけ計算する**（`Context.cached`）。選手モデルの第2段は
+    1試合に16行あり、行ごとに呼ぶと同じ並べ替えと集計を16回繰り返す
+    （`player_rate.minutes_row`）。勝敗モデルからは1試合につきクラブごと1回
+    しか呼ばれないため、そちらには影響しない。
     """
-    rows = context.player_history(club_id, season_only=True)
-    if rows.empty:
-        return pd.Series(dtype="float64")
-    rows = rows.sort_values("game_date", ascending=False)
-    recent = rows.groupby("player_id", sort=False).head(MINUTES_LOST_WINDOW)
-    return recent.groupby("player_id")["minutes"].mean().dropna()
+    def build() -> pd.Series:
+        rows = context.player_history(club_id, season_only=True)
+        if rows.empty:
+            return pd.Series(dtype="float64")
+        ordered = rows.sort_values("game_date", ascending=False, kind="stable")
+        recent = ordered.groupby("player_id", sort=False).head(MINUTES_LOST_WINDOW)
+        return recent.groupby("player_id")["minutes"].mean().dropna()
+
+    return context.cached(("player.recent_minutes", club_id), build)
 
 
 def _absent_players(context: Context, club_id: str) -> set[str]:
@@ -34,14 +42,18 @@ def _absent_players(context: Context, club_id: str) -> set[str]:
     エントリーは試合前に公開される情報であり（要件 5.5）、対象試合の
     `player_game_stats` を見るわけではない。
     """
-    entries = context.entries
-    if entries.empty:
-        return set()
-    club_players = set(context.player_history(club_id, season_only=False)["player_id"])
-    entered = set(entries[entries["status"] == "ENTRY"]["player_id"])
-    listed = set(entries["player_id"])
-    # 登録の記載がある選手のうち、ENTRY でないもの。記載のない選手は判断材料がない
-    return {player for player in club_players & listed if player not in entered}
+    def build() -> set[str]:
+        entries = context.entries
+        if entries.empty:
+            return set()
+        club_players = set(
+            context.player_history(club_id, season_only=False)["player_id"])
+        entered = set(entries[entries["status"] == "ENTRY"]["player_id"])
+        listed = set(entries["player_id"])
+        # 登録の記載がある選手のうち、ENTRY でないもの。記載のない選手は判断材料がない
+        return {p for p in club_players & listed if p not in entered}
+
+    return context.cached(("player.absent", club_id), build)
 
 
 def minutes_lost(context: Context, club_id: str) -> float | None:

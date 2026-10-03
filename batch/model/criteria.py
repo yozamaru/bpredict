@@ -49,6 +49,10 @@ KNOWN_CONSTANT: Mapping[str, str] = {
     "minutes_lost_diff": "game_entries が空（gameday_update が未実装）",
     "top_players_out_diff": "game_entries が空（gameday_update が未実装）",
     "entry_is_official": "game_entries が空（gameday_update が未実装）",
+    # 第2段 PlayerMinutes の列。同じ `minutes_lost` を読むため同じ理由で定数になる。
+    # 実データ 126,931行で**1種類（全件0）**、抜いても MAE が完全に同一だった
+    # （2026-10-03 の実測）。`gameday_update` を実装したら外す
+    "team_minutes_lost": "game_entries が空（gameday_update が未実装）",
 }
 
 

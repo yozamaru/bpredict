@@ -88,6 +88,30 @@ def mean_learner() -> Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]
     return learn
 
 
+def recent_learner(column: str = "minutes_l5_player") -> Callable[
+        ..., tuple[Callable[[pd.DataFrame], Floats], int]]:
+    """**もう1つのベースライン。その選手の直近N試合の平均をそのまま返す。**
+
+    学習しない（列をそのまま出す）。**平均ベースラインだけでは足りない** —
+    出場時間は選手ごとに大きく違うため、リーグ全体の平均（約19分）に対する
+    改善は「選手ごとの水準を知っているか」をほとんど測っていない。
+    **モデルが「直近の平均を出すだけ」を超えているかは、こちらで測る。**
+    """
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        if column not in train_x.columns:
+            raise PlayerModelError(f"ベースラインの列がない: {column}")
+
+        def predict(features: pd.DataFrame) -> Floats:
+            return clip_minutes(features[column].to_numpy(dtype=np.float64))
+
+        return predict, 0
+
+    return learn
+
+
 def evaluate_minutes(
     data: PlayerMinutesData, *, max_folds: int = MAX_FOLDS,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
@@ -109,13 +133,19 @@ def evaluate_minutes(
 
 def evaluate_baseline(
     data: PlayerMinutesData, *, max_folds: int = MAX_FOLDS,
+    learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
 ) -> Evaluation:
-    """同じ fold で平均ベースラインを測る。**同一の分割で比べる**（4.6）。"""
+    """同じ fold でベースラインを測る。**同一の分割で比べる**（4.6）。
+
+    既定は平均（`mean_learner`）。`recent_learner()` を渡すと「直近N試合の平均を
+    そのまま出す」ベースラインになる。**両方を測る** — 前者だけでは
+    「選手ごとの水準を知っているか」しか見えない。
+    """
     if len(data) == 0:
         raise PlayerModelError("学習行が1件もない")
     return walk_forward(
         data.as_training_data(),
-        mean_learner(),
+        mean_learner() if learner is None else learner,
         target=data.minutes,
         max_folds=max_folds,
     )

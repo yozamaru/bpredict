@@ -308,7 +308,13 @@ max_rows_per_request = floor(100 / 列数) × 40
 | 場面 | すること |
 |---|---|
 | 作業を終えるとき | コミットして**プッシュ**し、`docs/STATUS.md` を更新する |
-| 作業を始めるとき | `git status` / `git log --oneline -10` / リモートのブランチ / `docs/STATUS.md` を見る |
+| 作業を始めるとき | `git status` / `git log --oneline -10` / **`git branch --no-merged main`** / `docs/STATUS.md` を見る |
+
+**`git branch --no-merged main` を省略しない。** 2026-10-03 に、2026-09-28 の
+ブランチが `main` に入っていないまま5日間残っていたことが分かった。**コミットも
+プッシュもされていた** — 抜けたのはマージである。リモートのブランチ一覧を眺めるだけでは
+マージ済みかどうかが分からず、**その間に本番で記録が失われていた**（取り込まない試合の
+一覧）。
 
 **`docs/STATUS.md` には、リポジトリと設計文書から分からないことだけを書く。** 工程の完了状況は
 `docs/design-detail.md` 9章、設計判断は各設計文書、変更履歴は `git log` にある。二重に書くと

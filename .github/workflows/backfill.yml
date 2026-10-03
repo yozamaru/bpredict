@@ -116,6 +116,24 @@ jobs:
           [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
           python -m batch.jobs.backfill "${args[@]}"
 
+      # **取り込まない試合の一覧を持ち帰る**（要件 5.3 / 詳細設計 4.8）。
+      # このワークフローは `contents: read` でコミットできないため、実行環境で
+      # 書いた `batch/exclusions/excluded_games.json` はジョブ終了とともに消える。
+      # **権限を増やさずに持ち帰る** — 運営者が落としてリポジトリへ入れる。
+      #
+      # 運用が始まれば `daily_ingest`（元から `contents: write`）が同じ一覧を
+      # コミットする。この受け渡しが要るのは過去データの一括取り込みの間だけ。
+      #
+      # `if: always()` にするのは、PARTIAL で終わった回の分も失わないため。
+      - name: 取り込まない試合の一覧を持ち帰る
+        if: always() && hashFiles('batch/exclusions/excluded_games.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: excluded-games-${{ inputs.season }}-${{ github.run_id }}
+          path: batch/exclusions/excluded_games.json
+          if-no-files-found: error
+          retention-days: 90
+
       # 取得区間が 429 で中止されても、消費した件数と停止状態は必ず残す。
       - id: state-save-date
         if: always() && steps.state-restore.outcome == 'success' && hashFiles('batch/.scraper-state/state.json') != ''

@@ -284,14 +284,20 @@ def main(argv: list[str] | None = None) -> int:
         # **スナップショットへの反映は D1 を要しない。** 内部APIは生成時に接続先を
         # 検証するため、`--sync-snapshot` では作らない（`derive_primary_venues` と同じ）
         if args.sync_snapshot:
-            print(f"resolve_venue_geo: スナップショットに反映した会場={sync_snapshot()}")
+            # **引数を明示して渡す。** 既定値（`path=CSV_PATH`）は関数定義時に束縛
+            # されるため、省略するとモジュール定数を差し替えても効かない。
+            # 実際にテストが**本物の `batch/snapshot/` に書いた**（2026-10-03）
+            print(
+                "resolve_venue_geo: スナップショットに反映した会場="
+                f"{sync_snapshot(CSV_PATH, DEFAULT_SNAPSHOT)}"
+            )
             return 0
         api = InternalApi(
             os.environ.get("API_BASE_URL", ""), os.environ.get("INGEST_TOKEN", ""),
         )
         if args.load:
             # **スナップショットを先に書く**（基本設計 2.2 の順序）
-            reflected = sync_snapshot()
+            reflected = sync_snapshot(CSV_PATH, DEFAULT_SNAPSHOT)
             print(
                 f"resolve_venue_geo: スナップショット={reflected}"
                 f" D1 に送った会場={load(api)}"

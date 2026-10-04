@@ -23,7 +23,7 @@
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.0.0",
+     "modelVersion": "winner-v1.1.0",
      "predAwayScore": 72.89700394399172,
      "predHomeScore": 85.75624997074867
     },
@@ -50,7 +50,7 @@
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.0.0",
+     "modelVersion": "winner-v1.1.0",
      "predAwayScore": 81.44088984202996,
      "predHomeScore": 77.29993799619679
     },
@@ -77,7 +77,7 @@
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.0.0",
+     "modelVersion": "winner-v1.1.0",
      "predAwayScore": 79.97457125719983,
      "predHomeScore": 78.43549216351447
     },
@@ -104,7 +104,7 @@
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.0.0",
+     "modelVersion": "winner-v1.1.0",
      "predAwayScore": 79.35152196049583,
      "predHomeScore": 79.10542697724108
     },
@@ -131,7 +131,7 @@
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.0.0",
+     "modelVersion": "winner-v1.1.0",
      "predAwayScore": 80.81009192917728,
      "predHomeScore": 78.24265519105685
     },
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-04T17:12:21Z"
+  "generatedAt": "2026-10-04T20:08:14Z"
  }
 }

@@ -1,0 +1,143 @@
+# 日次の取り込みと推論（詳細設計 4.2）。
+#
+# **cron をまだ置かない。** 設計 4.1 は `0 21 * * *`（06:00 JST）を定めるが、
+# **ステップ1（前日の結果取得）が未実装である**。この状態で毎日回すと、
+# 未実施の試合と予測だけが新しくなり、**特徴量の入力は止まったまま**になる
+# （`data_as_of` が過去に固定され、予測は日ごとに悪くなる）。
+# **ステップ1 が入ってから cron を置く。**
+#
+# **`contents: write` を与える2つのワークフローのうちの1つ**（基本設計 7.3）。
+# スナップショット（ステップ2）と静的JSON（ステップ5）をコミットするために要る。
+# 残りは `contents: read` のままにする。
+#
+# **どのステップを行うかを必ず指定させる**（`daily_ingest` が required にしている）。
+# 全ステップが揃うまで既定の動作を持たせない — 「回したつもりで半分しか動いて
+# いない」が最も危ない。
+name: daily-ingest
+
+on:
+  workflow_dispatch:
+    inputs:
+      upcoming:
+        description: '未実施の試合を取り込む（ステップ1b と2。公式サイトへ取得する）'
+        required: false
+        type: boolean
+        default: true
+      inference:
+        description: '推論と静的JSON の書き出し（ステップ4と5）'
+        required: false
+        type: boolean
+        default: true
+      dry_run:
+        description: 'D1 には書かない（コミットもしない）'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# D1 へ書き込むジョブの同時実行を禁止する（詳細設計 4.1）。
+# **走行中を殺さない。** 殺されたジョブは `batch()` の途中で止まる。
+concurrency:
+  group: d1-write
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    # 手動実行も既定ブランチだけに限る。別ブランチのコードで本番 D1 へ書かない。
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+      SCRAPER_USER_AGENT: ${{ vars.SCRAPER_USER_AGENT }}
+      SCRAPER_ROBOTS_SHA256: ${{ vars.SCRAPER_ROBOTS_SHA256 }}
+      SCRAPER_TERMS_SHA256: ${{ vars.SCRAPER_TERMS_SHA256 }}
+      SCRAPER_STATE_PATH: batch/.scraper-state/state.json
+    steps:
+      - uses: actions/checkout@v7
+
+      # 未設定のまま走らせない。**skip ではなく fail にする**（手動実行なので、
+      # 黙って通り過ぎるよりその場で気づける方がよい。backfill と同じ扱い）。
+      # 空の User-Agent や規約ハッシュ未確認で取得すると絶対ルール6を破る。
+      - name: 設定の確認
+        env:
+          UPCOMING: ${{ inputs.upcoming }}
+        shell: bash
+        run: |
+          missing=()
+          for name in API_BASE_URL INGEST_TOKEN; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if [[ "$UPCOMING" == 'true' ]]; then
+            for name in SCRAPER_USER_AGENT SCRAPER_ROBOTS_SHA256 SCRAPER_TERMS_SHA256; do
+              [[ -z "${!name}" ]] && missing+=("$name")
+            done
+          fi
+          if (( ${#missing[@]} )); then
+            printf '::error::未設定: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      # スクレイパの状態（日次3,000件のカウンタと 429/503 後の停止）を実行間で
+      # 引き継ぐ。`parser-canary` / `backfill` と同じキー空間を共有し、
+      # **合計で上限を守る**（詳細設計 4.8）。
+      - name: スクレイパの状態を復元
+        if: ${{ inputs.upcoming }}
+        uses: actions/cache@v4
+        with:
+          path: batch/.scraper-state
+          key: scraper-state-${{ github.run_id }}
+          restore-keys: |
+            scraper-state-
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r batch/requirements.txt
+
+      # inputs を `run:` に直接展開しない（env へ渡す）。
+      - name: 取り込みと推論
+        env:
+          UPCOMING: ${{ inputs.upcoming }}
+          INFERENCE: ${{ inputs.inference }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          [[ "$UPCOMING" == 'true' ]] && args+=(--only-upcoming)
+          [[ "$INFERENCE" == 'true' ]] && args+=(--only-inference)
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          if (( ${#args[@]} == 0 )); then
+            echo '::error::--only-upcoming か --only-inference のどちらかを選ぶ'
+            exit 1
+          fi
+          python -m batch.jobs.daily_ingest "${args[@]}"
+
+      # **スナップショットと静的JSON をコミットする**（基本設計 1.2 の構成図）。
+      # 変わっていなければ何もしない（空のコミットを積まない）。
+      - name: スナップショットと静的JSON をコミット
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add batch/snapshot web/public/data
+          if git diff --cached --quiet; then
+            echo '変更なし'
+            exit 0
+          fi
+          git commit -m "データ: daily-ingest の書き出し（run ${GITHUB_RUN_ID}）"
+          git push
+
+      # 取り込まない試合の一覧（不戦敗）を持ち帰る。**`daily_ingest` は
+      # `contents: write` なので上のコミットに含まれる**が、`PARTIAL` で
+      # 途中終了した回のぶんも拾えるようにしておく（詳細設計 4.4）。
+      - name: 取り込まない試合の一覧
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: excluded-games
+          path: batch/exclusions/excluded_games.json
+          if-no-files-found: ignore

@@ -1,0 +1,105 @@
+# 勝敗モデルの学習・評価・登録（詳細設計 4.5 / 4.5.1 / 4.6）。
+#
+# **外部アクセスをしない。** 入力はスナップショット（`batch/snapshot/*.parquet`）で、
+# 出力は `POST /internal/models` である。したがってスクレイピングの関門は要らない。
+#
+# **cron をまだ置かない。** 設計 4.1 は `monthly_train`（`0 19 1 * *` / 120分）を
+# 定めるが、**定期実行は採用判定が自動で本番モデルを差し替える**ことを意味する。
+# 手動で数回回して判定の挙動を見てから入れる。名前も `monthly-train` にせず
+# `train` にしてある（月次に限らないため）。
+#
+# **`contents: read` のままにする**（基本設計 7.3）。特徴量のキャッシュ
+# （`batch/cache/`）はコミットしない。
+#
+# **`--register` を既定にしない。** 登録は D1 の書き込み枠を使い、同じ版を2回
+# 送ると主キー違反で落ちる（詳細設計 4.5.1）。評価だけを何度でも回せるようにする。
+name: train
+
+on:
+  workflow_dispatch:
+    inputs:
+      register:
+        description: '採用判定を通ったら登録して有効化する（D1 に3行書く）'
+        required: false
+        type: boolean
+        default: false
+      model_version:
+        description: '版（既定 1.0.0）。学習条件を変えたら上げる'
+        required: false
+        type: string
+      dry_run:
+        description: '登録の本文を組むが D1 には書かない'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# D1 へ書き込むジョブの同時実行を禁止する（詳細設計 4.1）。
+concurrency:
+  group: d1-write
+  cancel-in-progress: false
+
+jobs:
+  train:
+    # 手動実行も既定ブランチだけに限る。別ブランチのコードで本番 D1 へ書かない。
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # 設計 4.1 の `monthly_train` と同じ 120分。選手モデル16本を見込んだ値であり、
+    # いまのチーム3本では数分で終わる。
+    timeout-minutes: 120
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # 未設定のまま走らせない。**skip ではなく fail にする**（rebuild-derived と同じ）。
+      # 評価だけのときも `InternalApi` を組まないため不要だが、**登録のつもりで
+      # 回した実行が黙って評価だけで終わる**のを防ぐため常に要求する。
+      - name: 設定の確認
+        shell: bash
+        run: |
+          missing=()
+          for name in API_BASE_URL INGEST_TOKEN; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::未設定: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r batch/requirements.txt
+
+      # **リークテストを先に通す**（詳細設計 4.5 の `run_leakage_tests()`）。
+      # 失敗したらモデル登録に到達させない（基本設計 7.2）。
+      - name: リーク検証
+        run: python -m pytest batch/tests/test_leakage.py -q
+
+      # inputs を `run:` に直接展開しない（env へ渡す）。
+      - name: 学習と評価
+        env:
+          REGISTER: ${{ inputs.register }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=(--json train-report.json)
+          [[ "$REGISTER" == 'true' ]] && args+=(--register)
+          [[ -n "$MODEL_VERSION" ]] && args+=(--model-version "$MODEL_VERSION")
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          python -m batch.jobs.train "${args[@]}"
+
+      # 評価の数値を持ち帰る。**`contents: read` のままコミットしない**ため、
+      # `verification/RESULTS.md` への記録は人（または AI）が行う。
+      - name: 評価の数値を上げる
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: train-report
+          path: train-report.json
+          if-no-files-found: warn

@@ -35,8 +35,12 @@ def test_every_workflow_declares_permissions(path):
     """
     body = path.read_text(encoding="utf-8")
     assert re.search(r"^permissions:", body, re.MULTILINE), f"{path.name}: permissions がない"
-    assert re.search(r"^\s+contents:\s*read\s*$", body, re.MULTILINE), \
-        f"{path.name}: contents: read がない"
+    # **`contents` を必ず明示する。** 既定は `read` で、`MAY_WRITE` だけ `write`
+    # を許す（基本設計 7.3）。**書いていないことを許さない** — 省略すると
+    # リポジトリ設定次第で write が付く
+    allowed = r"read|write" if path.name in MAY_WRITE else r"read"
+    assert re.search(rf"^\s+contents:\s*({allowed})\s*$", body, re.MULTILINE), \
+        f"{path.name}: contents: {allowed.replace('|', ' か ')} がない"
 
 
 @pytest.mark.parametrize("path", workflows(), ids=lambda p: p.name)
@@ -255,3 +259,28 @@ def test_backfill_carries_the_exclusion_list_home():
     granted = re.search(r"^permissions:\n((?:[ \t]+.*\n)+)", body, re.MULTILINE)
     assert granted, "backfill.yml: permissions がない"
     assert "contents: write" not in granted[1]
+
+
+# --- cron を置く条件（詳細設計 4.2） ---
+
+def test_daily_ingest_has_no_cron_yet():
+    """**ステップ1（前日の結果取得）が入るまで cron を置かない。**
+
+    この状態で毎日回すと、未実施の試合と予測だけが新しくなり、**特徴量の入力は
+    止まったまま**になる（`data_as_of` が過去に固定され、予測は日ごとに悪くなる）。
+
+    **ステップ1 を実装したらこのテストを消して cron を足す**（設計 4.1 の
+    `0 21 * * *`）。テストで止めてあるのは、忘れて先に cron を置かないためである。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    assert "schedule:" not in body, "ステップ1 の実装より先に cron を置いている"
+
+
+def test_train_does_not_register_by_default():
+    """**登録を既定にしない**（詳細設計 4.5.1）。
+
+    登録は D1 の書き込み枠を使い、同じ版を2回送ると主キー違反で落ちる。
+    """
+    body = (WORKFLOW_DIR / "train.yml").read_text(encoding="utf-8")
+    block = body.split("register:", 1)[1].split("model_version:", 1)[0]
+    assert "default: false" in block, "train.yml の register の既定が false でない"

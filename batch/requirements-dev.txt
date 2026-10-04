@@ -8,7 +8,7 @@
 #   python3.12 -m venv .venv && .venv/bin/python -m pip install -r batch/requirements-dev.txt
 
 pytest==9.1.1
-ruff==0.16.8
+ruff==0.16.9
 mypy==2.3.1
 # pandas の型スタブ。mypy の disallow_untyped_defs 下で pandas を使うために必要（BSD-3-Clause）
 pandas-stubs==3.0.5.260914

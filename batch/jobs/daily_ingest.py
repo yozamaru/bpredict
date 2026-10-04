@@ -11,7 +11,7 @@
 | **2. スナップショット更新** | **あり**（1b が送った行を同じ本文から写す） |
 | 3. 照合・集計・Elo | まだ（`batch.jobs.evaluate` / `recompute_ratings` が別に持つ） |
 | **4. 推論** | **あり**（`--only-inference`） |
-| 5. 静的JSON の書き出し | まだ（`batch.static_json` が別に持つ） |
+| **5. 静的JSON の書き出し** | **あり**（`--only-inference` の後段） |
 | 12. `ingestion_logs` | **あり** |
 
 **実装していないステップを黙って飛ばさない。** どのステップを行うかを引数で
@@ -60,6 +60,7 @@ from batch.loader.payload import (
     upcoming_games_payload,
 )
 from batch.model.dataset import as_of
+from batch.model.explain import payload_of as reason_payload
 from batch.model.predict import ActiveModels, PredictError, load_active
 from batch.parser.errors import ParseError
 from batch.parser.schedule_parser import ScheduleGame, SchedulePage, parse_club_options
@@ -71,6 +72,7 @@ from batch.scraper.client import (
     ScrapingStopped,
 )
 from batch.scraper.schedule import schedule_html_url
+from batch.static_json.builder import ReasonInput
 from batch.static_json.from_snapshot import PredictedGame, build_inputs
 from batch.static_json.writer import (
     DATA_DIR,
@@ -416,12 +418,16 @@ def run_inference(
             log(f"  - skip {game_id} {type(error).__name__}: {error}")
             result.skipped_features.append(game_id)
             continue
+        # **根拠は寄与から機械的に出る**（詳細設計 2.7.1）。例外を投げる経路は
+        # 「列が足りない」だけで、それは `models.predict` が先に落とす
+        reasons = models.explainer.reasons(features)
         try:
             api.post("predictions", prediction_payload(
                 game_id=game_id, season_id=season_id, run_id=run_id,
                 predicted_at=stamp, as_of=tipoff_at, data_as_of=result.data_as_of,
                 prediction=prediction, features=features,
                 model_versions=models.versions,
+                reasons=[reason_payload(r) for r in reasons],
             ))
         except RejectedError:
             # 409（tipoff 経過）か 400。**この試合だけ飛ばして続ける** —
@@ -436,6 +442,14 @@ def run_inference(
             pred_home_score=prediction.home_score,
             pred_away_score=prediction.away_score,
             model_version=models.versions["WINNER"],
+            reasons=tuple(
+                ReasonInput(
+                    group_key=r.group_key, label_ja=r.label_ja,
+                    value_text=r.value_text, favors=r.favors,
+                    contribution=r.contribution,
+                )
+                for r in reasons
+            ),
         ))
     return result
 

@@ -20,9 +20,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 
+import numpy as np
 import pandas as pd
 import pytest
 
+from batch.features.builder import DEFAULTS, FEATURE_KEYS
 from batch.features.dataset import Dataset, SnapshotError
 from batch.jobs import daily_ingest
 from batch.jobs.daily_ingest import (
@@ -44,17 +46,30 @@ from batch.loader.payload import (
     snapshot_rows,
     upcoming_games_payload,
 )
+from batch.model.explain import Explainer
 from batch.model.predict import Prediction
 from batch.parser.schedule_parser import ScheduleGame
 from batch.static_json.from_snapshot import PredictedGame
 
 
 class FakeModels:
-    """`run_inference` が `ActiveModels` に求めるのは2つだけである。"""
+    """`run_inference` が `ActiveModels` に求めるのは3つだけである。
+
+    **`explainer` は本物を持つ。** 文言表（詳細設計 2.7.1）を通さないと、
+    `label_ja` と `value_text` がここで固定されてしまい、本番と違う形で通る。
+    """
 
     versions: ClassVar[dict[str, str]] = {
         "WINNER": "winner-v1.0.0", "MARGIN": "margin-v1.0.0",
         "TOTAL": "total-v1.0.0"}
+    #: 係数1・平均0 なので寄与は特徴量の値そのものになる。`PLAYER` の3列は
+    #: 既定値 0 で寄与も 0 になり、**本番と同じく行が作られない**
+    explainer: ClassVar[Explainer] = Explainer(
+        features=tuple(FEATURE_KEYS),
+        intercept=0.0,
+        coefficients=np.ones(len(FEATURE_KEYS)),
+        means=np.zeros(len(FEATURE_KEYS)),
+    )
 
     def predict(self, _features: Mapping[str, float]) -> Prediction:
         return Prediction(home_win_prob=0.68, margin=7.3, total=162.0,
@@ -307,7 +322,8 @@ def test_a_rejected_game_does_not_stop_the_rest(
             raise AssertionError("get は呼ばれない")
 
     monkeypatch.setattr(daily_ingest, "prepare", lambda _ds: None)
-    monkeypatch.setattr(daily_ingest, "build_features", lambda *a, **k: {"x": 1.0})
+    monkeypatch.setattr(
+        daily_ingest, "build_features", lambda *a, **k: dict(DEFAULTS))
     monkeypatch.setattr(daily_ingest, "load_active", lambda *a, **k: FakeModels())
     result = daily_ingest.run_inference(
         Rejecting(),  # type: ignore[arg-type]
@@ -343,7 +359,8 @@ def test_the_run_id_is_shared_with_the_log(
     """
     monkeypatch.setattr(daily_ingest, "load_snapshot", lambda _p: snapshot_dataset())
     monkeypatch.setattr(daily_ingest, "prepare", lambda _ds: None)
-    monkeypatch.setattr(daily_ingest, "build_features", lambda *a, **k: {"x": 1.0})
+    monkeypatch.setattr(
+        daily_ingest, "build_features", lambda *a, **k: dict(DEFAULTS))
     monkeypatch.setattr(daily_ingest, "load_active", lambda *a, **k: FakeModels())
     monkeypatch.setattr(daily_ingest, "new_run_id", lambda: "daily-fixed")
     monkeypatch.setattr(daily_ingest, "jst_today", lambda now=None: "2026-10-05")

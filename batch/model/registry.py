@@ -25,7 +25,12 @@ from batch.model.baselines import Logistic
 ARTIFACT_MAX_BYTES = 1_572_864
 
 #: artifact の書式の版。**読み出し側が知らない版を黙って読まないため**に持つ。
-LOGISTIC_ARTIFACT_VERSION = 1
+#:
+#: 版2で `means`（学習データの列平均）を必須にした（詳細設計 2.7.1）。根拠の寄与
+#: `係数 × (特徴量 − 平均)` と `base_value` がこれを要し、**平均は推論時に作り直せない**
+#: （学習行列は全期間の特徴量生成を要する）。**版1 は読まない** — 「means が無ければ
+#: 根拠を作らない」という分岐を置くと、根拠が静かに出なくなる状態が生まれる。
+LOGISTIC_ARTIFACT_VERSION = 2
 
 
 class RegistryError(RuntimeError):
@@ -65,14 +70,24 @@ class ModelRecord:
     notes: str | None = None
 
 
-def dump_logistic(model: Logistic, feature_list: list[str]) -> str:
+def dump_logistic(model: Logistic, feature_list: list[str], means: Any) -> str:
     """ロジスティック回帰を JSON にする。
 
     **列名を一緒に保存する。** 係数は列の順序に意味があり、順序が変わった行列へ
     当てはめると**静かに別のモデルになる**。読み出し時に照合する（`load_logistic`）。
+
+    **`means` は学習データの重みなし列平均である**（詳細設計 2.7.1）。根拠の寄与と
+    `base_value` がこれを要し、推論時には作り直せない。重み付き平均にしないのは、
+    時間減衰 λ が探索の対象であり、**λ を変えるたびに `base_value` の意味が動く**
+    ためである。
     """
     if model.coefficients.size != len(feature_list):
         raise RegistryError("係数の数と特徴量の数が合わない")
+    column_means = np.asarray(means, dtype=np.float64)
+    if column_means.ndim != 1 or column_means.size != len(feature_list):
+        raise RegistryError("平均の数と特徴量の数が合わない")
+    if not np.isfinite(column_means).all():
+        raise RegistryError("平均に有限でない値がある")
     return json.dumps(
         {
             "format": "logistic",
@@ -80,6 +95,7 @@ def dump_logistic(model: Logistic, feature_list: list[str]) -> str:
             "intercept": float(model.intercept),
             "features": list(feature_list),
             "coefficients": [float(c) for c in model.coefficients],
+            "means": [float(m) for m in column_means],
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -87,8 +103,8 @@ def dump_logistic(model: Logistic, feature_list: list[str]) -> str:
     )
 
 
-def load_logistic(artifact_text: str, feature_list: list[str]) -> Logistic:
-    """JSON からロジスティック回帰を戻す。**列名と順序を照合する。**
+def _parse_logistic(artifact_text: str, feature_list: list[str]) -> dict[str, Any]:
+    """照合を1か所に置く。**書式の版の検査を2つ持たない。**
 
     照合しないと、特徴量を1つ足したあとに古い artifact を読んで**列がずれたまま
     推論が通る**。通ってしまうのが最も悪い壊れ方である。
@@ -103,9 +119,14 @@ def load_logistic(artifact_text: str, feature_list: list[str]) -> Logistic:
         raise RegistryError("artifact の書式がロジスティック回帰でない")
     if payload.get("version") != LOGISTIC_ARTIFACT_VERSION:
         raise RegistryError("artifact の書式の版が読み出し側と違う")
-    features = payload.get("features")
-    if features != list(feature_list):
+    if payload.get("features") != list(feature_list):
         raise RegistryError("artifact の特徴量が呼び出し側と一致しない")
+    return payload
+
+
+def load_logistic(artifact_text: str, feature_list: list[str]) -> Logistic:
+    """JSON からロジスティック回帰を戻す。**列名と順序を照合する。**"""
+    payload = _parse_logistic(artifact_text, feature_list)
     coefficients = payload.get("coefficients")
     intercept = payload.get("intercept")
     if not isinstance(coefficients, list) or not isinstance(intercept, (int, float)):
@@ -114,6 +135,15 @@ def load_logistic(artifact_text: str, feature_list: list[str]) -> Logistic:
         intercept=float(intercept),
         coefficients=np.asarray(coefficients, dtype=np.float64),
     )
+
+
+def load_logistic_means(artifact_text: str, feature_list: list[str]) -> Any:
+    """artifact から学習データの列平均を戻す（根拠の寄与に使う）。"""
+    payload = _parse_logistic(artifact_text, feature_list)
+    means = payload.get("means")
+    if not isinstance(means, list) or len(means) != len(feature_list):
+        raise RegistryError("artifact に平均がない")
+    return np.asarray(means, dtype=np.float64)
 
 
 def artifact_sha256(artifact_text: str) -> str:

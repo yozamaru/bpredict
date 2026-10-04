@@ -110,8 +110,12 @@ def build_records(
         raise FinalFitError("σ が正の有限値でない")
 
     # --- WINNER: 全特徴ロジスティック回帰（要件 6.1.1） ---
-    winner_model = fit_logistic(
-        data.features.to_numpy(dtype=np.float64), data.home_win, weights=weights)
+    matrix = data.features.to_numpy(dtype=np.float64)
+    winner_model = fit_logistic(matrix, data.home_win, weights=weights)
+    # **重みなしの列平均を artifact に入れる**（詳細設計 2.7.1）。根拠の寄与と
+    # `base_value` がこれを要し、推論時には作り直せない。重み付きにすると
+    # **時間減衰 λ を変えるたびに `base_value` の意味が動く**
+    column_means = matrix.mean(axis=0)
     winner = ModelRecord(
         version=version_of("WINNER", semver),
         model_type="WINNER",
@@ -122,7 +126,7 @@ def build_records(
         eval_window=eval_window,
         params={**LOGISTIC_SETTINGS, "time_decay_lambda": decay},
         feature_list=features,
-        artifact_text=dump_logistic(winner_model, features),
+        artifact_text=dump_logistic(winner_model, features, column_means),
         league=league,
         # **経路としては「Winner 直接」のまま**である（1.5）。実装が
         # ロジスティック回帰に変わったことは `algo` が持つ

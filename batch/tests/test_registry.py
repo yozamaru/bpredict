@@ -29,6 +29,7 @@ from batch.model.registry import (
     dump_logistic,
     fetch_artifact,
     load_logistic,
+    load_logistic_means,
     payload_of,
     register,
 )
@@ -38,6 +39,10 @@ FEATURES = ["elo_diff", "winrate_season_diff", "sos_diff"]
 
 def model() -> Logistic:
     return Logistic(intercept=0.12, coefficients=np.array([0.003, 1.5, -0.002]))
+
+
+#: 学習データの重みなし列平均（詳細設計 2.7.1）。根拠の寄与と `base_value` が要する。
+MEANS = np.array([12.0, 0.01, -3.0])
 
 
 def record(**over: Any) -> ModelRecord:
@@ -51,7 +56,7 @@ def record(**over: Any) -> ModelRecord:
         "eval_window": "2024-25..2026-27",
         "params": {"l2": 1e-4, "max_iterations": 100, "tolerance": 1e-8},
         "feature_list": FEATURES,
-        "artifact_text": dump_logistic(model(), FEATURES),
+        "artifact_text": dump_logistic(model(), FEATURES, MEANS),
         "win_prob_source": "WINNER",
     }
     base.update(over)
@@ -77,14 +82,14 @@ class FakeApi:
 def test_round_trip_keeps_the_predictions() -> None:
     """保存して戻したモデルが、元と同じ確率を返すこと。"""
     original = model()
-    restored = load_logistic(dump_logistic(original, FEATURES), FEATURES)
+    restored = load_logistic(dump_logistic(original, FEATURES, MEANS), FEATURES)
     x = np.array([[120.0, 0.08, 15.0], [-60.0, -0.05, -8.0]])
     assert np.allclose(original.predict(x), restored.predict(x))
 
 
 def test_the_artifact_is_small() -> None:
     """**係数と切片だけなので小さい。** 1.5MB 上限は LightGBM 側の制約である。"""
-    assert len(dump_logistic(model(), FEATURES).encode("utf-8")) < 1024
+    assert len(dump_logistic(model(), FEATURES, MEANS).encode("utf-8")) < 1024
 
 
 def test_load_rejects_a_different_feature_order() -> None:
@@ -92,13 +97,13 @@ def test_load_rejects_a_different_feature_order() -> None:
 
     通ってしまうのが最も悪い壊れ方である — 推論は成功し、値だけが別物になる。
     """
-    text = dump_logistic(model(), FEATURES)
+    text = dump_logistic(model(), FEATURES, MEANS)
     with pytest.raises(RegistryError):
         load_logistic(text, [FEATURES[1], FEATURES[0], FEATURES[2]])
 
 
 def test_load_rejects_an_added_feature() -> None:
-    text = dump_logistic(model(), FEATURES)
+    text = dump_logistic(model(), FEATURES, MEANS)
     with pytest.raises(RegistryError):
         load_logistic(text, [*FEATURES, "新しい列"])
 
@@ -111,7 +116,7 @@ def test_load_rejects_another_format() -> None:
 
 def test_load_rejects_a_future_artifact_version() -> None:
     """**知らない版を黙って読まない。**"""
-    payload = json.loads(dump_logistic(model(), FEATURES))
+    payload = json.loads(dump_logistic(model(), FEATURES, MEANS))
     payload["version"] = 99
     with pytest.raises(RegistryError):
         load_logistic(json.dumps(payload), FEATURES)
@@ -119,7 +124,49 @@ def test_load_rejects_a_future_artifact_version() -> None:
 
 def test_dump_rejects_a_mismatched_feature_list() -> None:
     with pytest.raises(RegistryError):
-        dump_logistic(model(), FEATURES[:2])
+        dump_logistic(model(), FEATURES[:2], MEANS[:2])
+
+
+# --- 学習データの平均（詳細設計 2.7.1） ---
+
+
+def test_the_means_round_trip() -> None:
+    """**根拠の寄与と `base_value` がこれを要する。** 推論時には作り直せない。"""
+    text = dump_logistic(model(), FEATURES, MEANS)
+    assert np.allclose(load_logistic_means(text, FEATURES), MEANS)
+
+
+def test_dump_rejects_a_mismatched_mean_count() -> None:
+    with pytest.raises(RegistryError):
+        dump_logistic(model(), FEATURES, MEANS[:2])
+
+
+def test_dump_rejects_a_non_finite_mean() -> None:
+    with pytest.raises(RegistryError):
+        dump_logistic(model(), FEATURES, np.array([1.0, float("nan"), 3.0]))
+
+
+def test_an_artifact_without_means_is_not_read() -> None:
+    """**版1 を読まない**（2.7.1）。
+
+    「means が無ければ根拠を作らない」という分岐を置くと、**根拠が静かに
+    出なくなる**状態が生まれる。版を上げ、登録し直す側に倒す。
+    """
+    payload = json.loads(dump_logistic(model(), FEATURES, MEANS))
+    del payload["means"]
+    payload["version"] = 1
+    text = json.dumps(payload)
+    with pytest.raises(RegistryError):
+        load_logistic(text, FEATURES)
+    with pytest.raises(RegistryError):
+        load_logistic_means(text, FEATURES)
+
+
+def test_load_means_rejects_a_truncated_list() -> None:
+    payload = json.loads(dump_logistic(model(), FEATURES, MEANS))
+    payload["means"] = payload["means"][:2]
+    with pytest.raises(RegistryError):
+        load_logistic_means(json.dumps(payload), FEATURES)
 
 
 # --- サイズ上限（A-18） ---
@@ -206,7 +253,7 @@ def test_active_models_rejects_a_broken_response() -> None:
 
 def test_fetch_artifact_checks_the_digest() -> None:
     """**ハッシュを照合する。** 壊れた artifact をそのまま推論に使わない。"""
-    text = dump_logistic(model(), FEATURES)
+    text = dump_logistic(model(), FEATURES, MEANS)
     api = FakeApi({
         "models/winner-v1.0.0/artifact": {
             "artifactText": text, "artifactSha256": "0" * 64,
@@ -217,7 +264,7 @@ def test_fetch_artifact_checks_the_digest() -> None:
 
 
 def test_fetch_artifact_returns_the_text_when_the_digest_matches() -> None:
-    text = dump_logistic(model(), FEATURES)
+    text = dump_logistic(model(), FEATURES, MEANS)
     api = FakeApi({
         "models/winner-v1.0.0/artifact": {
             "artifactText": text, "artifactSha256": artifact_sha256(text),

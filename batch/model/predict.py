@@ -19,7 +19,14 @@ import numpy as np
 import pandas as pd
 
 from batch.model.baselines import Logistic
-from batch.model.registry import RegistryError, active_models, fetch_artifact, load_logistic
+from batch.model.explain import Explainer
+from batch.model.registry import (
+    RegistryError,
+    active_models,
+    fetch_artifact,
+    load_logistic,
+    load_logistic_means,
+)
 from batch.model.train_score import margin_from_win_prob, scores
 from batch.model.train_winner import clamp_win_prob
 
@@ -51,6 +58,8 @@ class ActiveModels:
     margin_sigma: float
     feature_list: list[str]
     versions: dict[str, str]
+    #: 根拠の寄与（詳細設計 2.7）。**推論ループの外で1回だけ作る。**
+    explainer: Explainer
 
     def predict(self, features: dict[str, float]) -> Prediction:
         """特徴量1件から勝率・得点差・合計得点・両チーム得点を出す。
@@ -113,10 +122,12 @@ def load_active(api: Any, feature_list: list[str], *, league: str = "PREMIER") -
     # **それでも `modelBundle` には入れる** — σ がこのモデルから来ている
     versions = {t: str(rows[t]["version"]) for t in REQUIRED_TYPES}
     try:
-        winner = load_logistic(
-            fetch_artifact(api, versions["WINNER"],
-                           expected_sha256=_sha(rows["WINNER"])),
-            feature_list)
+        # **WINNER の artifact は1回しか取らない。** 係数と平均は同じ JSON にあり、
+        # 2回取ると（同じ版でも）読んだ内容が一致する保証を別に要する
+        winner_artifact = fetch_artifact(
+            api, versions["WINNER"], expected_sha256=_sha(rows["WINNER"]))
+        winner = load_logistic(winner_artifact, feature_list)
+        means = load_logistic_means(winner_artifact, feature_list)
         total = _booster(
             fetch_artifact(api, versions["TOTAL"], expected_sha256=_sha(rows["TOTAL"])))
     except RegistryError as error:
@@ -128,6 +139,12 @@ def load_active(api: Any, feature_list: list[str], *, league: str = "PREMIER") -
     return ActiveModels(
         winner=winner, total=total, margin_sigma=float(sigma),
         feature_list=list(feature_list), versions=versions,
+        explainer=Explainer(
+            features=tuple(feature_list),
+            intercept=winner.intercept,
+            coefficients=winner.coefficients,
+            means=means,
+        ),
     )
 
 

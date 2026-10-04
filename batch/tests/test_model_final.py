@@ -14,7 +14,7 @@ import pytest
 from batch.model import final
 from batch.model.dataset import TrainingData
 from batch.model.evaluate import Evaluation, Fold
-from batch.model.registry import load_logistic
+from batch.model.registry import load_logistic, load_logistic_means
 
 
 def fake_data(per_season: int = 40,
@@ -140,6 +140,21 @@ def test_the_winner_artifact_round_trips_with_the_column_order() -> None:
     assert model.coefficients.size == data.features.shape[1]
     # 係数の順序が列の順序と一致している（Elo が効く合成データなので符号も効く）
     assert model.coefficients[0] > 0
+
+
+def test_the_winner_artifact_carries_the_unweighted_column_means() -> None:
+    """**根拠の寄与と `base_value` が学習データの平均を要する**（詳細設計 2.7.1）。
+
+    平均は推論時に作り直せない（学習行列は全期間の特徴量生成を要する）。
+    **重み付き平均にしない** — 時間減衰 λ を変えるたびに `base_value` の意味が
+    動くためである。
+    """
+    data = fake_data()
+    winner = final.build_records(data, evaluations())[0]
+    assert winner.artifact_text is not None
+    means = load_logistic_means(winner.artifact_text, list(data.features.columns))
+    expected = data.features.to_numpy(dtype=float).mean(axis=0)
+    assert np.allclose(means, expected)
 
 
 def test_the_params_record_the_convergence_settings() -> None:

@@ -307,10 +307,31 @@ def test_the_schedule_run_commits_its_output():
     assert "github.event_name == 'schedule' || !inputs.dry_run" in body
 
 
+def test_train_runs_monthly():
+    """cron は UTC で書く。毎月1日 19:00 UTC = JST 2日 04:00（設計 4.1）。
+
+    **採用判定が現行モデルと比較するようになってから置いた**（詳細設計 4.6）。
+    それまでは条件1〜2 が課されておらず、**定期実行すると月次で悪いモデルが
+    自動採用されうる**状態だった。
+    """
+    body = (WORKFLOW_DIR / "train.yml").read_text(encoding="utf-8")
+    assert "cron: '0 19 1 * *'" in body
+
+
+def test_the_scheduled_train_makes_a_version_from_the_date():
+    """**同じ版を2回登録すると主キー違反で落ちる**（詳細設計 4.5.1）。
+
+    既定の `1.0.0` のままだと、2回目の月次で必ず落ちる。
+    """
+    body = (WORKFLOW_DIR / "train.yml").read_text(encoding="utf-8")
+    assert 'MODEL_VERSION="1.$(date -u +%Y).$(date -u +%m%d)"' in body
+
+
 def test_train_does_not_register_by_default():
-    """**登録を既定にしない**（詳細設計 4.5.1）。
+    """**手動実行では登録を既定にしない**（詳細設計 4.5.1）。
 
     登録は D1 の書き込み枠を使い、同じ版を2回送ると主キー違反で落ちる。
+    **定期実行では登録する**（そのために置いた cron である）。
     """
     body = (WORKFLOW_DIR / "train.yml").read_text(encoding="utf-8")
     block = body.split("register:", 1)[1].split("model_version:", 1)[0]

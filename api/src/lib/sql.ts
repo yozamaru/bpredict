@@ -27,11 +27,33 @@ export function upsertStatements(
   table: TableName,
   columns: readonly string[],
   rows: readonly Row[],
-  opts: { conflict: readonly string[]; update?: readonly string[]; extra?: readonly string[] },
+  opts: {
+    conflict: readonly string[];
+    update?: readonly string[];
+    /**
+     * **送られてこなかった列を NULL で上書きしない**ための指定（詳細設計 3.4）。
+     *
+     * ここに挙げた列は `COALESCE(excluded.col, table.col)` で更新する。
+     * **実害が出てから足した** — `venues` の `prefecture` / `lat` / `lng` は
+     * `update` に入っていたが `POST /internal/games` の本文には含まれないため、
+     * **取り込みのたびに座標が NULL に戻っていた**（2026-10-05 に実測。
+     * 9/28〜10/4 の試合で使われた10会場の座標がちょうど消えていた）。
+     *
+     * 「その列を送る経路」と「送らない経路」が同じエンドポイントを共有する列は、
+     * すべてここに入れる。
+     */
+    preserve?: readonly string[];
+    extra?: readonly string[];
+  },
 ): D1PreparedStatement[] {
   if (rows.length === 0) return [];
+  const preserve = new Set(opts.preserve ?? []);
   const sets = [
-    ...(opts.update ?? []).map((col) => `${col} = excluded.${col}`),
+    ...(opts.update ?? []).map((col) =>
+      preserve.has(col)
+        ? `${col} = COALESCE(excluded.${col}, ${table}.${col})`
+        : `${col} = excluded.${col}`,
+    ),
     ...(opts.extra ?? []),
   ];
   const action = sets.length > 0 ? `DO UPDATE SET ${sets.join(', ')}` : 'DO NOTHING';

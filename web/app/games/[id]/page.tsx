@@ -1,174 +1,27 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProbabilityBar } from '@/components/prediction/ProbabilityBar';
-import { ReasonList } from '@/components/prediction/ReasonList';
-import { PlayerStatTable } from '@/components/prediction/PlayerStatTable';
-import { StatusBadge } from '@/components/prediction/StatusBadge';
-import {
-  SAMPLE_FORM,
-  SAMPLE_MODEL,
-  SAMPLE_PLAYERS,
-  SAMPLE_REASONS,
-  SAMPLE_REASON_SUMMARY,
-} from '@/lib/fixtures/game';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { NO_PREDICTION } from '@/lib/messages';
-import { statusBadgeKind } from '@/lib/view';
-import { SAMPLE_GAMES, SAMPLE_FULL_DAY, SAMPLE_PENDING_GAMES } from '@/lib/fixtures/today';
-import { SAMPLE_HISTORY_RESULTS } from '@/lib/fixtures/team';
-import { ResultComparison } from '@/components/prediction/ResultComparison';
+import { GameDetailView } from '@/components/prediction/GameDetailView';
+import { staticGameIds } from '@/lib/routes';
 
 export const dynamic = 'force-static';
 
-// 静的生成の範囲は直近5シーズンに限る（要件 8.2）。11a は合成データの3件だけ。
-// **リンク先のあるすべての試合を生成する。** 足し忘れは 404 になり、
-// 「リンクはあるのに開けない」状態を作る（`npm run test:links` が検出する）
+/**
+ * **窓の中の試合（当日＋7日）だけを静的生成する。**
+ *
+ * 要件 8.2 は「直近3シーズン」の試合を生成すると定めるが、**試合IDの一覧を
+ * ビルド時に得る経路が設計に無い**（`seasons.csv` は日付しか持たず、試合IDは
+ * スナップショット = parquet にしかない）。コミット済みの静的JSON が唯一の
+ * ビルド時に読める источник である（`lib/routes.ts`）。
+ *
+ * **試合IDは毎日増えるため、デプロイのたびに生成し直す必要がある。**
+ * この2点は運営者の判断を待つ（`docs/STATUS.md`）。
+ */
 export function generateStaticParams() {
-  return [
-    ...SAMPLE_GAMES,
-    ...SAMPLE_FULL_DAY,
-    ...SAMPLE_PENDING_GAMES,
-    ...SAMPLE_HISTORY_RESULTS,
-  ].map((game) => ({ id: game.gameId }));
+  return staticGameIds().map((id) => ({ id }));
 }
 
 // Next.js 16 では params が Promise（CLAUDE.md）
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // **終了した試合は専用の構成にする**（基本設計 5.2「試合詳細・試合後」）。
-  // このプロダクトで最も信頼が揺れる場面であり、実績との対比を主役に置く
-  const finished = SAMPLE_HISTORY_RESULTS.find((candidate) => candidate.gameId === id);
-  if (finished) {
-    return (
-      <>
-        <h2 className="mt-5 text-[19px] font-extrabold">
-          {finished.home.name} <span className="text-ink-2">対</span> {finished.away.name}
-        </h2>
-        <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-ink-2">
-          <span>B.PREMIER</span>
-          {/* 試合開始をもって凍結された予測である（要件 3.3） */}
-          <StatusBadge kind="final" />
-        </p>
-        <div className="mt-4">
-          <ResultComparison result={finished} />
-        </div>
-        {/* **根拠は試合後も残す。** 凍結された予測の一部であり、
-            後から書き換えない（CLAUDE.md 絶対ルール2） */}
-        <ReasonList summary={SAMPLE_REASON_SUMMARY} reasons={SAMPLE_REASONS} />
-        <p className="mt-4 text-[11px] leading-relaxed text-ink-3">
-          使用モデル {SAMPLE_MODEL.version} ・ 通算的中率{' '}
-          {(SAMPLE_MODEL.accuracy * 100).toFixed(1)}%（{SAMPLE_MODEL.n}試合）
-        </p>
-      </>
-    );
-  }
-
-  const game = [...SAMPLE_GAMES, ...SAMPLE_FULL_DAY].find(
-    (candidate) => candidate.gameId === id,
-  );
-  if (!game) {
-    // **「試合がない」と「予測がまだない」を混ぜない。** 前者は 404、
-    // 後者は試合の情報を出したうえで空状態を添える（要件 8.5）
-    const pending = SAMPLE_PENDING_GAMES.find((candidate) => candidate.gameId === id);
-    if (!pending) notFound();
-    return (
-      <>
-        <h2 className="mt-5 text-[19px] font-extrabold">
-          {pending.home.name} <span className="text-ink-2">対</span> {pending.away.name}
-        </h2>
-        <p className="mt-1 text-[11px] font-bold tracking-wider text-ink-2">
-          B.PREMIER{pending.tipoffLabel ? ` ${pending.tipoffLabel}` : ' 時刻未定'}
-        </p>
-        <div className="mt-4">
-          <EmptyState message={NO_PREDICTION} />
-        </div>
-      </>
-    );
-  }
-  const kind = statusBadgeKind(game);
-
-  return (
-    <>
-      {/* クラブ名からクラブ別ページへ辿れるようにする（基本設計 5.1） */}
-      <h2 className="mt-5 text-[19px] font-extrabold">
-        <Link href={`/teams/${game.home.slug}/`} className="underline decoration-border">
-          {game.home.name}
-        </Link>{' '}
-        <span className="text-ink-2">対</span>{' '}
-        <Link href={`/teams/${game.away.slug}/`} className="underline decoration-border">
-          {game.away.name}
-        </Link>
-      </h2>
-      <p className="mt-1 flex items-center gap-2 text-[11px] font-bold tracking-wider text-ink-2">
-        <span>B.PREMIER{game.tipoffLabel ? ` ${game.tipoffLabel}` : ' 時刻未定'}</span>
-        {game.isEarlySeason && <StatusBadge kind="early" />}
-        {/* 開始前に「確定」を出さない（lib/view.ts の statusBadgeKind） */}
-        {kind && <StatusBadge kind={kind} />}
-      </p>
-
-      <div className="mt-4 rounded-2xl border border-rule bg-panel p-4">
-        <ProbabilityBar game={game} />
-        <dl className="mt-3 flex items-baseline justify-between">
-          <dt className="text-[11px] font-bold tracking-wider text-ink-2">予想スコア</dt>
-          <dd className="text-[28px] font-extrabold">
-            {game.predHomeScore} <span className="text-ink-3">–</span> {game.predAwayScore}
-          </dd>
-        </dl>
-      </div>
-
-      {/* 状態の理由を一文で示す（要件 8.4）。具体時刻は U-06 が決まるまで書かない */}
-      {game.isProvisional && (
-        <p className="mt-3 text-[12px] leading-relaxed text-ink-2">
-          暫定 — 出場選手が未発表のため、直近5試合の出場傾向から推定しています。
-          試合当日の午前中に更新されます。
-        </p>
-      )}
-      {game.isEarlySeason && (
-        <p className="mt-2 rounded-xl bg-warn-bg px-3 py-2 text-[12px] leading-relaxed text-warn">
-          両チームとも今季4試合しか消化していないため、この予測はまだ精度が安定しません。
-        </p>
-      )}
-
-      <ReasonList summary={SAMPLE_REASON_SUMMARY} reasons={SAMPLE_REASONS} />
-
-      <PlayerStatTable players={SAMPLE_PLAYERS} />
-
-      <section className="mt-6">
-        <h3 className="text-[15px] font-extrabold">両チームの直近成績</h3>
-        <dl className="mt-2 rounded-xl border border-rule bg-panel p-3 text-[13px]">
-          {(
-            [
-              ['home', game.home.name],
-              ['away', game.away.name],
-            ] as const
-          ).map(([side, name]) => (
-            <div key={side} className="flex items-baseline justify-between gap-2 py-0.5">
-              <dt className="min-w-0 truncate">
-                <Link
-                  href={`/teams/${side === 'home' ? game.home.slug : game.away.slug}/`}
-                  className="text-ink-2 underline decoration-border"
-                >
-                  {name}
-                </Link>
-              </dt>
-              <dd>
-                {SAMPLE_FORM[side].last5.join(' ')}
-                <span className="text-ink-2">
-                  {' '}
-                  ・ 平均得失点差 {SAMPLE_FORM[side].avgMargin > 0 ? '＋' : ''}
-                  {SAMPLE_FORM[side].avgMargin.toFixed(1)}
-                </span>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
-
-      {/* 使用モデルと、そのモデルの通算精度（母数つき。要件 8.3） */}
-      <p className="mt-4 text-[11px] leading-relaxed text-ink-3">
-        使用モデル {SAMPLE_MODEL.version} ・ 通算的中率{' '}
-        {(SAMPLE_MODEL.accuracy * 100).toFixed(1)}%（{SAMPLE_MODEL.n}試合）
-      </p>
-    </>
-  );
+  if (!staticGameIds().includes(id)) notFound();
+  return <GameDetailView gameId={id} />;
 }

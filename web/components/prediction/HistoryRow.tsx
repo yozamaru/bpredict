@@ -30,14 +30,21 @@ export type HistoryView = {
  * **外れた試合に強い否定色を使わない**（詳細設計 5.3）。的中は `--home`（藍）、
  * 外れは `--text-2` にし、**色だけで情報を伝えない**（文字でも示す。要件 8.6）。
  */
-export function HistoryRow({ item }: { item: HistoryView }) {
+/**
+ * `linked` を false にすると、試合詳細へのリンクを外して同じ見た目を保つ。
+ *
+ * **過去の試合には詳細ページが無い。** 静的生成の対象は窓の中（当日＋7日）の
+ * 試合IDだけで（`lib/routes.ts`）、**リンクを出すと 404 になる**。
+ * 「リンクはあるのに開けない」状態を作らない（`npm run test:links` の趣旨）。
+ */
+export function HistoryRow({ item, linked = true }: { item: HistoryView; linked?: boolean }) {
   const own = Math.round(item.ownWinProb * 100);
   const opponent = 100 - own;
   const won = item.ownScore > item.opponentScore;
 
   return (
     <li className="border-b border-rule last:border-b-0">
-      <Link href={`/games/${item.gameId}/`} className="block min-h-11 px-1 py-2">
+      <Body linked={linked} gameId={item.gameId}>
         <div className="flex items-baseline gap-2 text-[13px]">
           <span className="w-14 shrink-0 text-ink-2">{item.dateLabel}</span>
           <span className="w-11 shrink-0 text-[11px] font-bold text-ink-2">
@@ -61,7 +68,26 @@ export function HistoryRow({ item }: { item: HistoryView }) {
             {item.isCorrect ? '的中' : '外れ'}
           </span>
         </div>
-      </Link>
+      </Body>
     </li>
+  );
+}
+
+function Body({
+  linked,
+  gameId,
+  children,
+}: {
+  linked: boolean;
+  gameId: string;
+  children: React.ReactNode;
+}) {
+  const className = 'block min-h-11 px-1 py-2';
+  return linked ? (
+    <Link href={`/games/${gameId}/`} className={className}>
+      {children}
+    </Link>
+  ) : (
+    <div className={className}>{children}</div>
   );
 }

@@ -24,18 +24,22 @@
 // Safari でも出ていた（`.axis-bar`）。
 //
 // E2E は工程15であり、それまでこの種の誤りを捕まえるものがない。
-// **静的出力なら、生成物を読めば機械で判定できる。**
+//
+// **工程11b から、検査は生成物ではなく部品の原文を読む。** 一覧は
+// クライアントで静的JSON を読むようになったため（基本設計 5.6）、**プリレンダ
+// された HTML には読み込み中の文しか入らない** — バーは出力に現れない。
+// 生成物を読む検査は「0件見つからない」で落ち、**当てる先が消えていた。**
+//
+// 原文を読む検査は出力を読むより弱い（実際に描かれたかは見ていない）。
+// **それでも上の3つは捕まる** — いずれも「原文に何が書いてあるか」で決まる誤りである。
 //
 // 依存を増やさない（Node の標準モジュールだけ）。
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
-const OUT = resolve(import.meta.dirname, '..', 'out');
-const CSS_SOURCE = resolve(import.meta.dirname, '..', 'app', 'globals.css');
-
-/** 一覧を出すページ。`/schedule/<date>/` は代表1枚で足りる */
-const PAGES = ['index.html', 'results/index.html'];
+const APP = resolve(import.meta.dirname, '..', 'app');
+const COMPONENTS = resolve(import.meta.dirname, '..', 'components', 'prediction');
+const CSS_SOURCE = resolve(APP, 'globals.css');
 
 /** 確率は後処理で [0.05, 0.95] にクランプされる（詳細設計 4.6）→ 隔たりは最大45 */
 const MAX_DEVIATION = 45;
@@ -44,53 +48,45 @@ const problems = [];
 let bars = 0;
 let cells = 0;
 
-for (const page of PAGES) {
-  const path = join(OUT, page);
-  if (!existsSync(path)) continue;
-  const html = await readFile(path, 'utf8');
-
-  // 1. 優勢のセルに `axis-column` が付いていること（軸がセルの全高に通る）
-  for (const cell of html.match(/<td\b[^>]*rowspan="2"[^>]*>/gi) ?? []) {
-    // 時刻・状態のセルも rowspan=2 である。バーを含むセルだけを見る
-    const after = html.slice(html.indexOf(cell) + cell.length, html.indexOf(cell) + cell.length + 600);
-    if (!after.includes('axis-bar')) continue;
-    cells += 1;
-    if (!cell.includes('axis-column')) {
-      problems.push(`${page}: 優勢のセルに axis-column がない（軸が列を貫かない）`);
-    }
+// 1. 優勢のセルに `axis-column` が付いていること（軸がセルの全高に通る）
+const table = await readFile(resolve(COMPONENTS, 'GameTable.tsx'), 'utf8');
+for (const cell of table.match(/<td\b[^>]*rowSpan=\{2\}[^>]*>/g) ?? []) {
+  // 時刻・状態のセルも rowSpan=2 である。バーを含むセルだけを見る
+  const at = table.indexOf(cell) + cell.length;
+  if (!table.slice(at, at + 900).includes('AxisBar')) continue;
+  cells += 1;
+  if (!cell.includes('axis-column')) {
+    problems.push('GameTable.tsx: 優勢のセルに axis-column がない（軸が列を貫かない）');
   }
+}
+if (cells === 0) {
+  problems.push('GameTable.tsx: 優勢のセルが見つからない（表の構造が変わったか）');
+}
 
-  // 2. 塗りの縮尺が % であり、最大の隔たりでも半幅（50%）に収まること
-  for (const fill of html.match(/<span\b[^>]*axis-fill[^>]*>/g) ?? []) {
+// 2. 塗りの縮尺が % であり、最大の隔たりでも半幅（50%）に収まること
+for (const file of ['GameTable.tsx', 'ProbabilityBar.tsx']) {
+  const source = await readFile(resolve(COMPONENTS, file), 'utf8');
+  for (const scale of source.match(/devScale="([^"]+)"/g) ?? []) {
     bars += 1;
-    const dev = fill.match(/--dev:\s*([0-9.]+)/);
-    const scale = fill.match(/--dev-scale:\s*([^;"]+)/);
-    if (dev === null || scale === null) {
-      problems.push(`${page}: 塗りに --dev / --dev-scale がない`);
-      continue;
-    }
-    const unit = scale[1].trim();
+    const unit = scale.replace(/devScale="|"/g, '').trim();
     if (!unit.endsWith('%')) {
       problems.push(
-        `${page}: 縮尺が % でない（${unit}）。` +
+        `${file}: 縮尺が % でない（${unit}）。` +
           `px だと隔たり ${MAX_DEVIATION} ポイントで列から溢れる`,
       );
       continue;
     }
     const perPoint = Number.parseFloat(unit);
     if (!Number.isFinite(perPoint) || perPoint <= 0) {
-      problems.push(`${page}: 縮尺が読めない（${unit}）`);
+      problems.push(`${file}: 縮尺が読めない（${unit}）`);
       continue;
     }
     // バーの半分が 50% である。最大の隔たりがそれを越えてはならない
     const widest = MAX_DEVIATION * perPoint;
     if (widest > 50) {
       problems.push(
-        `${page}: 隔たり ${MAX_DEVIATION} ポイントで幅 ${widest}% となり半幅 50% を越える`,
+        `${file}: 隔たり ${MAX_DEVIATION} ポイントで幅 ${widest}% となり半幅 50% を越える`,
       );
-    }
-    if (Number.parseFloat(dev[1]) > 50) {
-      problems.push(`${page}: 隔たりが 50 を越えている（${dev[1]}）`);
     }
   }
 }
@@ -114,7 +110,7 @@ if (css.includes('.axis-column::after') || /\.axis-column\s*\{[^}]*position:\s*r
 }
 
 if (bars === 0) {
-  console.error('check-bar: 優勢バーが1つも見つからない（out/ を作ったか？）');
+  console.error('check-bar: 縮尺の指定が1つも見つからない（部品の構造が変わったか）');
   process.exit(1);
 }
 

@@ -3,10 +3,18 @@
 # **外部アクセスをしない。** 入力はスナップショット（`batch/snapshot/*.parquet`）で、
 # 出力は `POST /internal/models` である。したがってスクレイピングの関門は要らない。
 #
-# **cron をまだ置かない。** 設計 4.1 は `monthly_train`（`0 19 1 * *` / 120分）を
-# 定めるが、**定期実行は採用判定が自動で本番モデルを差し替える**ことを意味する。
-# 手動で数回回して判定の挙動を見てから入れる。名前も `monthly-train` にせず
-# `train` にしてある（月次に限らないため）。
+# **cron は `0 19 1 * *`（JST 2日04:00）である**（設計 4.1 の `monthly_train`）。
+# **採用判定が現行モデルと比較するようになってから置いた**（詳細設計 4.6。v1.98）
+# — それまでは `current_brier=None` を固定で渡しており、条件1〜2（現行より良く、
+# 差が有意かつ 0.003 以上）が一度も課されていなかった。**その状態で定期実行すると
+# 月次で悪いモデルが自動採用されうる。**
+#
+# **定期実行では登録まで行う。** `schedule` では `inputs` が空になるため、
+# `github.event_name == 'schedule'` を先に見る（`daily-ingest` と同じ）。
+# 版は `model_version` を省略すると `1.0.0` で、**同じ版を2回登録すると主キー違反で
+# 落ちる**（4.5.1）。定期実行では**日付から版を作る**。
+#
+# 名前は `monthly-train` にせず `train` にしてある（手動では月次に限らない）。
 #
 # **`contents: read` のままにする**（基本設計 7.3）。特徴量のキャッシュ
 # （`batch/cache/`）はコミットしない。
@@ -16,6 +24,9 @@
 name: train
 
 on:
+  # 毎月1日 19:00 UTC = JST 2日 04:00（CLAUDE.md 時刻の扱い）。
+  schedule:
+    - cron: '0 19 1 * *'
   workflow_dispatch:
     inputs:
       register:
@@ -86,12 +97,19 @@ jobs:
       # inputs を `run:` に直接展開しない（env へ渡す）。
       - name: 学習と評価
         env:
-          REGISTER: ${{ inputs.register }}
+          SCHEDULED: ${{ github.event_name == 'schedule' }}
+          REGISTER: ${{ github.event_name == 'schedule' || inputs.register }}
           MODEL_VERSION: ${{ inputs.model_version }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=(--json train-report.json)
           [[ "$REGISTER" == 'true' ]] && args+=(--register)
+          if [[ "$SCHEDULED" == 'true' && -z "$MODEL_VERSION" ]]; then
+            # **同じ版を2回登録すると主キー違反で落ちる**（詳細設計 4.5.1）。
+            # 月次では日付から版を作る（例: 1.2026.1005）
+            MODEL_VERSION="1.$(date -u +%Y).$(date -u +%m%d)"
+            echo "train: 版を $MODEL_VERSION にした（定期実行）"
+          fi
           [[ -n "$MODEL_VERSION" ]] && args+=(--model-version "$MODEL_VERSION")
           [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
           python -m batch.jobs.train "${args[@]}"

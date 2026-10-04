@@ -34,6 +34,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -42,7 +43,7 @@ from numpy.typing import NDArray
 from batch.features.builder import FEATURE_KEYS
 from batch.features.dataset import Dataset, load_snapshot
 from batch.loader.api import InternalApi, LoaderError
-from batch.model.baselines import fit_logistic, home_always
+from batch.model.baselines import Logistic, fit_logistic, home_always
 from batch.model.criteria import Decision, Inputs, passes_criteria
 from batch.model.dataset import (
     TrainingData,
@@ -60,7 +61,12 @@ from batch.model.params import (
     MIN_EFFECT,
     TIME_DECAY_LAMBDA_INITIAL,
 )
-from batch.model.registry import register
+from batch.model.registry import (
+    RegistryError,
+    fetch_artifact,
+    load_logistic,
+    register,
+)
 from batch.model.train_score import (
     learn_score,
     margin_from_win_prob,
@@ -447,9 +453,126 @@ def _home_win_of(data: TrainingData, season: str) -> Floats:
     return actual
 
 
+@dataclass(frozen=True)
+class Current:
+    """現行モデルを同じウィンドウで再評価した結果（詳細設計 4.6）。
+
+    `evaluation` が None なら比較できなかった（理由は `reason`）。
+    """
+
+    version: str | None = None
+    evaluation: Evaluation | None = None
+    reason: str = ""
+
+
+def frozen_learner(model: Logistic, columns: Sequence[str]) -> Learner:
+    """**学習をしない `Learner`。** 渡された学習データを捨て、保存済みの係数で予測する。
+
+    これを `walk_forward` に渡すことで、**ウィンドウが構造的に同一になる**
+    （分割器を2つ作らない。`evaluate.py`）。
+
+    **現行モデルは全データで当てはめてある**ため（4.5.1）、どの fold の test に
+    対しても予測が in-sample になる。**比較は現行モデルに有利に偏る** — 差し替えが
+    起きにくくなる方向であり、要件 6.5 が意図している向きである（詳細設計 4.6）。
+    """
+    picked = list(columns)
+
+    def learn(
+        _train_x: pd.DataFrame, _train_y: Floats, _train_w: Floats,
+        _valid_x: pd.DataFrame, _valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        def predict(features: pd.DataFrame) -> Floats:
+            return model.predict(features[picked].to_numpy(dtype=np.float64))
+
+        return predict, 0
+
+    return learn
+
+
+def current_evaluation(
+    api: Any, data: TrainingData, *, weights: Floats, max_folds: int = MAX_FOLDS,
+) -> Current:
+    """現行モデルを**同じ walk-forward ウィンドウ**で再評価する（詳細設計 4.6）。
+
+    **記録済みの `cv_brier` は使わない。** 学習当時のウィンドウの値であり、
+    新旧で評価対象が違えば比較になっていない。
+    """
+    try:
+        meta = api.get("metrics/active", {"modelType": "WINNER", "target": "",
+                                          "league": "PREMIER"})
+    except LoaderError as error:
+        return Current(reason=f"現行モデルの照会に失敗した（{error}）")
+    if not isinstance(meta, dict) or not isinstance(meta.get("version"), str):
+        return Current(reason="現行モデルがない")
+
+    version = str(meta["version"])
+    try:
+        artifact = fetch_artifact(api, version)
+    except (LoaderError, RegistryError) as error:
+        return Current(
+            version=version, reason=f"現行モデルの artifact を読めない（{error}）")
+
+    columns = list(data.features.columns)
+    try:
+        # **まず今の列で読む。** 一致すればそのまま比較できる
+        model = load_logistic(artifact, columns)
+        used = columns
+    except RegistryError:
+        recorded = _artifact_features(artifact)
+        if recorded is None:
+            return Current(version=version, reason="現行モデルの列が読めない")
+        missing = [c for c in recorded if c not in columns]
+        if missing:
+            # **採用しない。** 比較できない以上、条件1〜2 を課せない（4.6）
+            return Current(
+                version=version,
+                reason=(
+                    f"現行モデルの列が今の行列に無い（{len(missing)}列）。"
+                    "比較できないため採用しない。意図した差し替えなら --initial を使う"
+                ),
+            )
+        model = load_logistic(artifact, recorded)
+        used = recorded
+
+    evaluation = walk_forward(
+        data, frozen_learner(model, used), weights=weights, max_folds=max_folds)
+    return Current(version=version, evaluation=evaluation)
+
+
+def _artifact_features(artifact_text: str) -> list[str] | None:
+    """artifact が記録している列の並び。読めなければ None。"""
+    try:
+        payload = json.loads(artifact_text)
+    except json.JSONDecodeError:
+        return None
+    features = payload.get("features") if isinstance(payload, dict) else None
+    if not isinstance(features, list) or not all(isinstance(f, str) for f in features):
+        return None
+    return [str(f) for f in features]
+
+
+def _current_for(
+    api: Any | None, data: TrainingData, *, weights: Floats, initial: bool,
+    max_folds: int,
+) -> Current:
+    """比較する相手を決める（詳細設計 4.6）。
+
+    **`--initial` を逃げ道として使う。** 「比較できないときは通す」という新しい
+    分岐を作らない — それが v1.97 まで黙って起きていたことである。
+    """
+    if initial:
+        return Current(reason="--initial が指定された（現行モデルと比較しない）")
+    if api is None:
+        # 登録しない実行では D1 に触らない（`API_BASE_URL` が無い手元でも回る）
+        return Current(reason="登録しないため現行モデルと比較しない")
+    return current_evaluation(api, data, weights=weights, max_folds=max_folds)
+
+
 def evaluate_all(
     data: TrainingData, *, max_folds: int = MAX_FOLDS,
     decay: float = TIME_DECAY_LAMBDA_INITIAL,
+    api: Any | None = None,
+    initial: bool = False,
     log: Callable[[str], None] = print,
 ) -> Report:
     """LightGBM と3段のベースラインを**同一の分割**で評価する。
@@ -506,19 +629,40 @@ def evaluate_all(
     floor = ece_noise_floor(winner.probs)
     nulls = null_rates(data.features)
     constants = constant_columns(data.features)
+    # --- 現行モデルとの比較（詳細設計 4.6 の条件1〜2） ---
+    # **`difference`（ベースラインとの差）をここに渡さない。** あれは A-09 の判定で
+    # あり、現行モデルとの差ではない。v1.97 まで `current_brier=None` を固定で
+    # 渡しており、**条件1〜2 が一度も課されていなかった**
+    current = _current_for(api, data, weights=weights, initial=initial,
+                           max_folds=max_folds)
+    adopted_probs = winner.probs if adopted_route != "B" else route_b.probs
+    adopted_actual = winner.actual if adopted_route != "B" else route_b.actual
+    adopted_brier = winner.brier if adopted_route != "B" else route_b.brier
+    current_brier: float | None = None
+    current_difference: Difference | None = None
+    if current is not None and current.evaluation is not None:
+        # **採用する経路で測る**（基本設計 2.3）。A に対して測った差を B の採用根拠に
+        # すると判定の対象がずれる
+        current_brier = current.evaluation.brier
+        current_difference = brier_difference(
+            current.evaluation.probs, adopted_probs, adopted_actual)
+        log(
+            f"train: 現行 {current.version} を同じウィンドウで再評価した"
+            f"（Brier {current_brier:.6f} / 差 {current_difference.point:+.6f}）"
+        )
+    elif current is not None and current.reason:
+        log(f"train: 現行モデルと比較しない（{current.reason}）")
+
     decision = passes_criteria(Inputs(
         n=winner.n,
-        brier=winner.brier,
+        brier=adopted_brier,
         baseline_elo_brier=elo.brier,
         null_rates=nulls,
         constant_columns=constants,
         ece=winner.ece,
         ece_floor=floor,
-        # **初回登録である。** 現行モデルがないため Brier の比較と有意性の検査は
-        # 課せない（詳細設計 4.6）。`difference` はベースラインとの差であり、
-        # 現行モデルとの差ではないためゲートには渡さない
-        current_brier=None,
-        difference=None,
+        current_brier=current_brier,
+        difference=current_difference,
     ))
     return Report(
         n=winner.n,
@@ -668,14 +812,29 @@ def main(argv: list[str] | None = None) -> int:
         help="採用判定を通ったら WINNER / MARGIN / TOTAL を登録して有効化する")
     parser.add_argument("--model-version", default=DEFAULT_SEMVER,
                         help="版（既定 1.0.0。学習条件を変えたら上げる）")
+    parser.add_argument(
+        "--initial", action="store_true",
+        help="現行モデルと比較しない（初回登録、または列を変えて比較できないとき）")
     parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")
     args = parser.parse_args(argv)
 
+    # **登録するときだけ内部APIを組む。** 現行モデルとの比較は D1 を要するため、
+    # 評価だけの実行（`API_BASE_URL` が無い手元）でも回るようにする
+    api = (
+        InternalApi(
+            os.environ.get("API_BASE_URL", ""),
+            os.environ.get("INGEST_TOKEN", ""),
+            dry_run=args.dry_run,
+        )
+        if args.register
+        else None
+    )
     try:
         data = training_data(
             snapshot=args.snapshot, cache=args.cache, refresh=args.refresh,
         )
-        report = evaluate_all(data, max_folds=args.max_folds)
+        report = evaluate_all(
+            data, max_folds=args.max_folds, api=api, initial=args.initial)
     except TrainError as error:
         print(f"train: 失敗（{type(error).__name__}: {error}）", file=sys.stderr)
         return 1
@@ -691,13 +850,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"train: {args.json} に書き出した")
 
-    if args.register:
+    if args.register and api is not None:
         try:
-            api = InternalApi(
-                os.environ.get("API_BASE_URL", ""),
-                os.environ.get("INGEST_TOKEN", ""),
-                dry_run=args.dry_run,
-            )
             versions = register_models(
                 data, report, api=api, semver=args.model_version)
         except (TrainError, LoaderError) as error:

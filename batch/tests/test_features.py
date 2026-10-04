@@ -286,3 +286,33 @@ def test_sos_uses_the_same_elo_instant_as_elo_diff(seeded_db: sqlite3.Connection
     source = inspect.getsource(team_strength.strength_of_schedule)
     assert "elo(context," in source
     assert "as_of_date" not in source, "Elo の時点を自分で選び直している"
+
+
+# --- 落とした検証区分（実装ごと削除した。詳細設計 2.2） ---
+
+def test_dropped_verification_features_are_gone() -> None:
+    """**測って落とした列が復活していないこと。**
+
+    `efg_diff` / `ft_rate_diff`（#07）、`day_of_week` / `tipoff_hour`（#27）、
+    `travel_km_diff`（#16）、`minutes_concentration_diff`（#22）。
+    いずれも**実装ごと削除**した（「念のため残す」をしない）。再実装するなら、
+    まず `verification/RESULTS.md` の測定を読むこと。
+    """
+    from batch.features.builder import FEATURE_KEYS
+
+    for key in (
+        "efg_diff", "ft_rate_diff", "day_of_week", "tipoff_hour",
+        "travel_km_diff", "minutes_concentration_diff",
+    ):
+        assert key not in FEATURE_KEYS
+
+
+def test_season_progress_is_not_implemented() -> None:
+    """**分母が決まっていないため実装しない**（詳細設計 2.2）。
+
+    「消化した試合数の割合」は `SCHEDULED` を数えることになり規約4に触れ、
+    「暦の進行度」は「消化率」という語と合わない。**決めずに止める。**
+    """
+    from batch.features.builder import FEATURE_KEYS
+
+    assert "season_progress" not in FEATURE_KEYS

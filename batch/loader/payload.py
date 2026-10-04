@@ -362,28 +362,44 @@ def _snake(key: str) -> str:
     return _SNAKE.sub("_", key).lower()
 
 
-def snapshot_rows(payload: Mapping[str, object]) -> dict[str, list[dict[str, object]]]:
-    """`POST /internal/games` の本文を、スナップショットの行に写す。
+#: 本文の配列 → スナップショットのテーブル（詳細設計 4.2 のステップ1 / 2）。
+#:
+#: **`POST /internal/games` と `POST /internal/stats` の両方を受ける。** ステップ1b が
+#: 触るのは `games` と `team_games` だけだが、**ステップ1 はマスタも書く** — 写す範囲を
+#: 広げないと `club_seasons` が D1 にだけ入る（基本設計 2.2 が座標140件で踏んだ形）。
+SNAPSHOT_TABLES: dict[str, str] = {
+    "games": "games",
+    "teamGames": "team_games",
+    "players": "players",
+    "venues": "venues",
+    "venueSourceKeys": "venue_source_keys",
+    "clubSeasons": "club_seasons",
+    "teamGameStats": "team_game_stats",
+    "playerGameStats": "player_game_stats",
+}
+
+
+def snapshot_rows(*payloads: Mapping[str, object]) -> dict[str, list[dict[str, object]]]:
+    """内部APIの本文を、スナップショットの行に写す。
 
     **キーの変換だけを行う**（camelCase → snake_case）。値は触らない —
     「D1 に送ったのと同じ値」であることが要点である（詳細設計 4.2 のステップ2）。
 
-    返すのは `{"games": [...], "team_games": [...]}` の形で、本文に無い配列は
-    返さない。`games` には DDL の DEFAULT を持つ列を足す（`SNAPSHOT_DEFAULTS`）。
+    複数の本文を渡せる（ステップ1 は `games` と `stats` の2つを送る）。本文に無い
+    配列は返さない。`games` には DDL の DEFAULT を持つ列を足す（`SNAPSHOT_DEFAULTS`）。
     """
-    tables = {"games": "games", "teamGames": "team_games"}
     out: dict[str, list[dict[str, object]]] = {}
-    for key, table in tables.items():
-        rows = payload.get(key)
-        if not isinstance(rows, list) or not rows:
-            continue
-        written: list[dict[str, object]] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                raise PayloadError("本文の行が辞書でない")
-            converted = {_snake(k): v for k, v in row.items()}
-            if table == "games":
-                converted = {**SNAPSHOT_DEFAULTS, **converted}
-            written.append(converted)
-        out[table] = written
+    for payload in payloads:
+        for key, table in SNAPSHOT_TABLES.items():
+            rows = payload.get(key)
+            if not isinstance(rows, list) or not rows:
+                continue
+            written = out.setdefault(table, [])
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise PayloadError("本文の行が辞書でない")
+                converted = {_snake(k): v for k, v in row.items()}
+                if table == "games":
+                    converted = {**SNAPSHOT_DEFAULTS, **converted}
+                written.append(converted)
     return out

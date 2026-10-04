@@ -18,6 +18,11 @@ name: daily-ingest
 on:
   workflow_dispatch:
     inputs:
+      yesterday:
+        description: '前日の結果を取り込む（ステップ1 と2。公式サイトへ取得する）'
+        required: false
+        type: boolean
+        default: true
       upcoming:
         description: '未実施の試合を取り込む（ステップ1b と2。公式サイトへ取得する）'
         required: false
@@ -64,6 +69,7 @@ jobs:
       # 空の User-Agent や規約ハッシュ未確認で取得すると絶対ルール6を破る。
       - name: 設定の確認
         env:
+          YESTERDAY: ${{ inputs.yesterday }}
           UPCOMING: ${{ inputs.upcoming }}
         shell: bash
         run: |
@@ -71,7 +77,7 @@ jobs:
           for name in API_BASE_URL INGEST_TOKEN; do
             [[ -z "${!name}" ]] && missing+=("$name")
           done
-          if [[ "$UPCOMING" == 'true' ]]; then
+          if [[ "$YESTERDAY" == 'true' || "$UPCOMING" == 'true' ]]; then
             for name in SCRAPER_USER_AGENT SCRAPER_ROBOTS_SHA256 SCRAPER_TERMS_SHA256; do
               [[ -z "${!name}" ]] && missing+=("$name")
             done
@@ -85,7 +91,7 @@ jobs:
       # 引き継ぐ。`parser-canary` / `backfill` と同じキー空間を共有し、
       # **合計で上限を守る**（詳細設計 4.8）。
       - name: スクレイパの状態を復元
-        if: ${{ inputs.upcoming }}
+        if: ${{ inputs.yesterday || inputs.upcoming }}
         uses: actions/cache@v4
         with:
           path: batch/.scraper-state
@@ -102,16 +108,18 @@ jobs:
       # inputs を `run:` に直接展開しない（env へ渡す）。
       - name: 取り込みと推論
         env:
+          YESTERDAY: ${{ inputs.yesterday }}
           UPCOMING: ${{ inputs.upcoming }}
           INFERENCE: ${{ inputs.inference }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=()
+          [[ "$YESTERDAY" == 'true' ]] && args+=(--only-yesterday)
           [[ "$UPCOMING" == 'true' ]] && args+=(--only-upcoming)
           [[ "$INFERENCE" == 'true' ]] && args+=(--only-inference)
           [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
           if (( ${#args[@]} == 0 )); then
-            echo '::error::--only-upcoming か --only-inference のどちらかを選ぶ'
+            echo '::error::ステップを1つ以上選ぶ（yesterday / upcoming / inference）'
             exit 1
           fi
           python -m batch.jobs.daily_ingest "${args[@]}"
@@ -125,7 +133,10 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           # **存在するものだけを add する。** `web/public/data` は初回の
           # 書き出しまで無く、`git add` は無いパスで exit 128 になる
-          for path in batch/snapshot web/public/data; do
+          # **取り込まない試合の一覧も入れる**（要件 5.3）。`backfill` は
+          # `contents: read` のため artifact で持ち帰るしかないが、このジョブは
+          # 自分でコミットできる
+          for path in batch/snapshot web/public/data batch/exclusions; do
             [[ -e "$path" ]] && git add "$path"
           done
           if git diff --cached --quiet; then

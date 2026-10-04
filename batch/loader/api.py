@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Protocol
 
 #: 内部APIへ送る User-Agent。**省略できない。**
 #:
@@ -76,6 +77,19 @@ def _transport(
     except Exception:  # noqa: BLE001 — 元の通信例外を漏らさない境界（絶対ルール4）
         # URL とトークンが含まれうるため、型も本文も伝播させない
         raise LoaderError("内部APIへの接続に失敗した") from None
+
+
+class Poster(Protocol):
+    """書き込みだけを行う側が要求する最小の口。
+
+    **`InternalApi` そのものを要求しない。** テストが接続先の検証や HTTP の作法を
+    持つ本物を組む必要がなくなる。**何を呼ぶのかは型で残す。**
+
+    **ここに置く。** 「内部APIの何を使うか」は `loader/` の関心であり、
+    ジョブごとに同じ Protocol を書くと**定義が増えるだけ**である。
+    """
+
+    def post(self, path: str, payload: Mapping[str, object]) -> object: ...
 
 
 class InternalApi:

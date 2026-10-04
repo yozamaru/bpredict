@@ -23,12 +23,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from batch.jobs.game_ingest import ingest_game
 from batch.jobs.schedule_walk import walk_schedule
 from batch.jobs.seed_master import load_club_source_ids, load_seasons
 from batch.loader import exclusions
 from batch.loader.api import InternalApi, LoaderError
-from batch.loader.payload import SeasonRef, games_payload, series_numbers, stats_payload
-from batch.parser.boxscore_parser import parse_boxscore
+from batch.loader.payload import SeasonRef, series_numbers
 from batch.parser.errors import (
     DataUnavailable,
     OutOfScopeCompetitionError,
@@ -45,7 +45,6 @@ from batch.parser.schedule_parser import (
     parse_club_options,
 )
 from batch.parser.terms import report_terms_change
-from batch.scraper.boxscore import boxscore_url
 from batch.scraper.client import (
     PolicyError,
     RateLimitedClient,
@@ -199,8 +198,9 @@ def run(
         if limit is not None and result.ingested >= limit:
             break
         try:
-            _ingest_one(client, api, game, event, season, club_ids, short_names,
-                        series.get(game.game_id))
+            ingest_game(client, api, game, event=event, season=season,
+                        club_ids=club_ids, short_names=short_names,
+                        series_game_no=series.get(game.game_id))
         except ScrapingStopped:
             result.degrade("PARTIAL", "429/503 により取得区間を中止した")
             break
@@ -271,36 +271,6 @@ def run(
         result.ingested += 1
 
     return _finish(api, season_id, result)
-
-
-def _ingest_one(
-    client: RateLimitedClient,
-    api: InternalApi,
-    game: ScheduleGame,
-    event: int,
-    season: SeasonRef,
-    club_ids: dict[str, str],
-    short_names: dict[str, str],
-    series_game_no: int | None,
-) -> None:
-    url = boxscore_url(game.game_id)
-    box = parse_boxscore(
-        client.get(url), event=event, clubs=club_ids, expected_game_id=game.game_id
-    )
-    fetched_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
-    api.post(
-        "games",
-        games_payload(
-            box,
-            season=season,
-            club_ids=club_ids,
-            short_names=short_names,
-            series_game_no=series_game_no,
-            source_url=url,
-            fetched_at=fetched_at,
-        ),
-    )
-    api.post("stats", stats_payload(box, club_ids=club_ids, fetched_at=fetched_at))
 
 
 def _finish(api: InternalApi, season_id: str, result: Result) -> Result:

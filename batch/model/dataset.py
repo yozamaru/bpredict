@@ -59,12 +59,19 @@ class TrainingData:
         return seen
 
 
-def _as_of(value: object) -> datetime:
+def as_of(value: object) -> datetime:
+    """`games.tipoff_at` を `as_of` として読む。
+
+    **解釈を1か所にする。** 推論（`batch/jobs/daily_ingest.py`）も学習と同じ
+    関数を通る — 2か所で別に書くと、片方だけが素のタイムゾーンなしを許すような
+    食い違いが静かに入る。
+    """
     text = str(value)
     try:
         return datetime.fromisoformat(text)
     except ValueError:
         raise MatrixError("tipoff_at を時刻として読めない") from None
+
 
 
 def build_matrix(ds: Dataset) -> TrainingData:
@@ -100,7 +107,7 @@ def build_matrix(ds: Dataset) -> TrainingData:
         home = float(str(game.home_score))
         away = float(str(game.away_score))
         rows.append(build_features(
-            str(game.id), as_of=_as_of(game.tipoff_at), ds=ds, prepared=prepared))
+            str(game.id), as_of=as_of(game.tipoff_at), ds=ds, prepared=prepared))
         home_win.append(1.0 if home > away else 0.0)
         margin.append(home - away)
         total.append(home + away)
@@ -303,7 +310,7 @@ def build_team_rate_matrix(ds: Dataset) -> TeamRateData:
             continue
         home = float(str(game.home_score))
         away = float(str(game.away_score))
-        as_of = _as_of(game.tipoff_at)
+        moment = as_of(game.tipoff_at)
         sides = (
             (str(game.home_club_id), home, away),
             (str(game.away_club_id), away, home),
@@ -313,7 +320,7 @@ def build_team_rate_matrix(ds: Dataset) -> TeamRateData:
             if stat is None:
                 continue
             row = team_rate.build_team_rate_features(
-                str(game.id), as_of=as_of, ds=ds, club_id=club_id,
+                str(game.id), as_of=moment, ds=ds, club_id=club_id,
                 prepared=prepared)
             if row is None:
                 continue
@@ -447,7 +454,7 @@ def build_player_minutes_matrix(ds: Dataset) -> PlayerMinutesData:
         # **`Context` は試合ごとに1回だけ作る。** 行ごとに作ると記憶が毎行
         # 捨てられ、1試合16人で16倍の無駄になる（`player_rate.minutes_row`）
         context = build_context(
-            str(game.id), _as_of(game.tipoff_at), ds, prepared)
+            str(game.id), as_of(game.tipoff_at), ds, prepared)
         for stat in appearances:
             played = _number(stat.get("minutes"))
             if played is None:

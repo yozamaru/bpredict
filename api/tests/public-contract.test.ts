@@ -217,16 +217,56 @@ describe('内部APIの要求ボディ（契約）', () => {
     expect(res.status).toBe(200);
   });
 
-  /** 平らな形（配列の要素でない）の本文を契約から組む。 */
+  /**
+   * 契約から本文を組む。平らなキーと、**1件だけの配列**（`root[].leaf`）を扱う。
+   *
+   * 配列を1件にするのは、キーの対応を見るのに十分だからである（件数の規約は
+   * batch 側と `refine` が見る）。
+   */
   function flatBodyFrom(shape: string, values: Record<string, unknown>): unknown {
     const body: Record<string, unknown> = {};
+    const arrays: Record<string, Record<string, unknown>> = {};
     for (const path of contract(shape)) {
-      expect(path.includes('[]'), `平らでないパスがある: ${path}`).toBe(false);
       expect(path in values, `値を用意していないキー: ${path}`).toBe(true);
+      const parts = path.split('[].');
+      if (parts.length === 2) {
+        const [head, leaf] = parts as [string, string];
+        arrays[head] ??= {};
+        arrays[head][leaf] = values[path];
+        continue;
+      }
       body[path] = values[path];
     }
+    for (const [key, row] of Object.entries(arrays)) body[key] = [row];
     return body;
   }
+
+  it('predictions — 契約どおりの本文が 200 で通る', async () => {
+    // tipoff が未来の試合でなければ 409 になる（関門3）
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const s = await seedGame({ tipoffAt: future, status: 'SCHEDULED' });
+    const res = await post('/internal/predictions', flatBodyFrom('internalPredictions', {
+      gameId: s.gameId, seasonId: s.seasonId, modelVersion: s.modelVersion,
+      runId: 'daily-abc', predictedAt: '2026-10-05T21:00:00Z',
+      asOf: future, dataAsOf: '2026-10-04T12:00:00Z',
+      homeWinProb: 0.68, predMargin: 7.3, predTotal: 162,
+      predHomeScore: 84.65, predAwayScore: 77.35, isProvisional: 1,
+      featureSnapshot: '{"elo_diff":80.0}',
+      // **`teamTargets` / `playerPredictions` / `reasons` は送らない。**
+      // いま出せないものをキーごと省く（詳細設計 4.2 の推論）
+      'modelBundle[].modelType': 'WINNER',
+      'modelBundle[].target': '',
+      'modelBundle[].modelVersion': s.modelVersion,
+    }));
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { revision: number; applied: {
+      teamTargets: number; playerPredictions: number; reasons: number } } }>();
+    expect(body.data.revision).toBe(1);
+    // **0件で入ることを確かめる。** `teamTargets` は「2件か0件」が条件である
+    expect(body.data.applied.teamTargets).toBe(0);
+    expect(body.data.applied.playerPredictions).toBe(0);
+    expect(body.data.applied.reasons).toBe(0);
+  });
 
   it('models — 契約どおりの本文が 200 で通る', async () => {
     // **`payload_of` が出しうる全キーを送る。** Zod が `.strict()` なので、

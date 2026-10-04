@@ -1,20 +1,25 @@
 """日次の取り込み（詳細設計 4.2 / 基本設計 4.2）。
 
 **段階的に作っている。** 設計は12ステップを定めるが、いま実装してあるのは
-**未実施の試合の取り込み（ステップ1b）だけ**である。残りは順に足す。
+**未実施の試合の取り込み（1b）と推論（4）**である。残りは順に足す。
 
 | ステップ | 実装 |
 |---|---|
 | 0. robots / 利用規約のハッシュ照合 | **あり** |
 | 1. 前日の結果取得 | まだ（`backfill` が同じ処理を持つ） |
-| **1b. 未実施の試合の取り込み** | **あり** |
+| **1b. 未実施の試合の取り込み** | **あり**（`--only-upcoming`） |
 | 2. スナップショット更新 | まだ |
-| 3〜11（照合・Elo・推論・静的JSON） | まだ |
+| 3. 照合・集計・Elo | まだ（`batch.jobs.evaluate` / `recompute_ratings` が別に持つ） |
+| **4. 推論** | **あり**（`--only-inference`） |
+| 5. 静的JSON の書き出し | まだ（`batch.static_json` が別に持つ） |
 | 12. `ingestion_logs` | **あり** |
 
-**実装していないステップを黙って飛ばさない。** `--only-upcoming` を必須にして、
-**いま何をするジョブなのかを呼び出し側が明示する**。全ステップが揃うまで既定の
-動作を持たせない — 「日次ジョブを回したつもりで半分しか動いていない」が最も危ない。
+**実装していないステップを黙って飛ばさない。** どのステップを行うかを引数で
+**必ず明示させる**（最低1つ required）。全ステップが揃うまで既定の動作を
+持たせない — 「日次ジョブを回したつもりで半分しか動いていない」が最も危ない。
+
+**推論は外部アクセスを行わない。** `--only-inference` だけなら robots の照合も
+スクレイピングもしない（入力はスナップショットと `/internal/*` の GET だけ）。
 
 未実施の試合を取り込む理由は 4.2 のステップ1b にある。**`backfill` は `FINISHED`
 以外を書き込まない**ため（4.8）、これが無いと「向こう7日間の試合について特徴量を
@@ -27,17 +32,27 @@ import argparse
 import os
 import sys
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from batch.features.builder import FEATURE_KEYS, build_features
+from batch.features.dataset import Dataset, SnapshotError, load_snapshot
+from batch.features.prepared import prepare
 from batch.jobs.schedule_walk import walk_schedule
 from batch.jobs.seed_master import Season, load_club_source_ids, load_seasons
-from batch.loader.api import InternalApi, LoaderError
+from batch.loader.api import InternalApi, LoaderError, RejectedError
 from batch.loader.limits import max_rows_per_request
-from batch.loader.payload import SeasonRef, series_numbers, upcoming_games_payload
+from batch.loader.payload import (
+    SeasonRef,
+    prediction_payload,
+    series_numbers,
+    upcoming_games_payload,
+)
+from batch.model.dataset import as_of
+from batch.model.predict import ActiveModels, PredictError, load_active
 from batch.parser.errors import ParseError
 from batch.parser.schedule_parser import ScheduleGame, SchedulePage, parse_club_options
 from batch.parser.terms import report_terms_change
@@ -223,12 +238,120 @@ def run_upcoming(client: RateLimitedClient, api: InternalApi) -> Result:
     return result
 
 
-def _log(api: InternalApi, status: str, rows: int) -> None:
+# --- ステップ4: 推論（詳細設計 4.2 の「推論（ステップ4）」） ---
+
+#: スナップショットの置き場。**入力はここだけである**（絶対ルール3）。
+DEFAULT_SNAPSHOT = Path("batch/snapshot")
+
+
+@dataclass
+class InferenceResult:
+    """推論の集計。**飛ばした理由ごとに分けて数える**（詳細設計 4.4 と同じ方針）。"""
+
+    predicted: int = 0
+    #: 特徴量が作れなかった試合（試合IDを出す）
+    skipped_features: list[str] = field(default_factory=list)
+    #: tipoff を過ぎていて 409 を受けた試合（cron 遅延で起きうる）
+    skipped_after_tipoff: list[str] = field(default_factory=list)
+    data_as_of: str | None = None
+    model_versions: dict[str, str] = field(default_factory=dict)
+
+
+def upcoming_for_inference(
+    ds: Dataset, start: str, end: str, now: str,
+) -> list[tuple[str, str, str]]:
+    """推論の対象（`game_id` / `season_id` / `tipoff_at`）。
+
+    **`SCHEDULED` だけを対象にする。** `POSTPONED` と `CANCELLED` は取り込むが
+    （ステップ1b）、予測は作らない — 中止試合の予測は `VOID` として母数から
+    外れるだけで、作る意味がない（詳細設計 4.2）。
+
+    **`tipoff_at > now` で絞る。** 過ぎた試合に書くと API が 409 を返す（3.4 の
+    関門3）。ここで落としておけば、通常の運用では 409 を受けない。
+    """
+    games = ds.table("games")
+    picked = games[
+        (games["status"] == "SCHEDULED")
+        & (games["game_date"] >= start)
+        & (games["game_date"] <= end)
+        & (games["tipoff_at"] > now)
+    ].sort_values(["tipoff_at", "id"])
+    return [
+        (str(row.id), str(row.season_id), str(row.tipoff_at))
+        for row in picked.itertuples()
+    ]
+
+
+def run_inference(
+    api: InternalApi, *, run_id: str, snapshot: Path = DEFAULT_SNAPSHOT,
+    now: datetime | None = None, log: Callable[[str], None] = print,
+) -> InferenceResult:
+    """ステップ4。**外部サイトへは一度もアクセスしない。**
+
+    **3本が揃わなければ1件も書かない**（`load_active` が落とす）。勝率だけ出して
+    予想スコアを NULL にする経路を作らない（要件 F-02 / F-03）。
+    """
+    moment = (now or datetime.now(UTC)).astimezone(UTC)
+    stamp = moment.isoformat(timespec="seconds").replace("+00:00", "Z")
+    ds = load_snapshot(snapshot)
+    models: ActiveModels = load_active(api, list(FEATURE_KEYS))
+    result = InferenceResult(
+        data_as_of=ds.max_finished_at, model_versions=dict(models.versions))
+    if result.data_as_of is None:
+        raise SnapshotError("スナップショットに終了した試合がない（data_as_of が出ない）")
+
+    start, end = window(jst_today(moment))
+    targets = upcoming_for_inference(ds, start, end, stamp)
+    log(f"daily_ingest: 推論の対象 {len(targets)}試合（{start}〜{end}）")
+    if not targets:
+        return result
+
+    # **索引は1回だけ作る**（詳細設計 2.1.1）。試合ごとに作ると桁が変わる
+    prepared = prepare(ds)
+    for game_id, season_id, tipoff_at in targets:
+        try:
+            # **`as_of` は必ず `games.tipoff_at` である**（用語集 / 2.1）。
+            # 解釈は `batch/model/dataset.py` の `_as_of` と同じにする
+            features = build_features(
+                game_id, as_of(tipoff_at), ds, prepared)
+            prediction = models.predict(features)
+        except (ValueError, KeyError, PredictError) as error:
+            # **件数だけでなく試合IDを出す**（詳細設計 4.4）。件数だけでは調査できない
+            log(f"  - skip {game_id} {type(error).__name__}: {error}")
+            result.skipped_features.append(game_id)
+            continue
+        try:
+            api.post("predictions", prediction_payload(
+                game_id=game_id, season_id=season_id, run_id=run_id,
+                predicted_at=stamp, as_of=tipoff_at, data_as_of=result.data_as_of,
+                prediction=prediction, features=features,
+                model_versions=models.versions,
+            ))
+        except RejectedError:
+            # 409（tipoff 経過）か 400。**この試合だけ飛ばして続ける** —
+            # cron の遅延で起きうる（詳細設計 4.1）
+            log(f"  - skip {game_id} 内部APIが拒否した（tipoff 経過の可能性）")
+            result.skipped_after_tipoff.append(game_id)
+            continue
+        result.predicted += 1
+    return result
+
+
+def new_run_id() -> str:
+    """`ingestion_logs.id` と `predictions.run_id` に使う値。
+
+    **ジョブの先頭で1回だけ作る。** 予測行から実行を辿れるようにするためで
+    （1.5 の `run_id` のコメント）、ログの中で作ると対応が取れない。
+    """
+    return f"daily-{uuid.uuid4().hex[:8]}"
+
+
+def _log(api: InternalApi, status: str, rows: int, run_id: str) -> None:
     """`ingestion_logs` に記録する。**例外の本文を入れない**（絶対ルール4）。"""
     moment = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     try:
         api.post("log", {
-            "id": f"daily-{uuid.uuid4().hex[:8]}",
+            "id": run_id,
             "job": "daily_ingest",
             "startedAt": moment,
             "finishedAt": moment,
@@ -242,53 +365,101 @@ def _log(api: InternalApi, status: str, rows: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="日次の取り込み（詳細設計 4.2）")
     parser.add_argument(
-        "--only-upcoming", action="store_true", required=True,
-        help="未実施の試合の取り込み（ステップ1b）だけを行う。**他のステップは未実装**")
+        "--only-upcoming", action="store_true",
+        help="未実施の試合の取り込み（ステップ1b）を行う")
+    parser.add_argument(
+        "--only-inference", action="store_true",
+        help="推論（ステップ4）を行う。外部サイトへはアクセスしない")
+    parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")
     args = parser.parse_args(argv)
+
+    # **どのステップを行うかを必ず明示させる。** 既定の動作を持たせない —
+    # 全ステップが揃うまで「回したつもりで半分しか動いていない」が起きる
+    if not (args.only_upcoming or args.only_inference):
+        parser.error("--only-upcoming か --only-inference のどちらかを指定する")
 
     api = InternalApi(
         os.environ.get("API_BASE_URL", ""),
         os.environ.get("INGEST_TOKEN", ""),
         dry_run=args.dry_run,
     )
-    client = RateLimitedClient(
-        user_agent=os.environ.get("SCRAPER_USER_AGENT", ""),
-        state_path=Path(os.environ.get("SCRAPER_STATE_PATH", str(DEFAULT_STATE_PATH))),
-        robots_sha256=os.environ.get("SCRAPER_ROBOTS_SHA256") or None,
-        terms_sha256=os.environ.get("SCRAPER_TERMS_SHA256") or None,
-    )
-    try:
-        result = run_upcoming(client, api)
-    except PolicyError:
-        print("daily_ingest: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
-        return 1
-    except ScrapingStopped:
-        # 429 / 503。**スクレイピング区間のみ中止する**（絶対ルール6）
-        print("daily_ingest: 取得を中止した（相手側の応答）", file=sys.stderr)
-        if not args.dry_run:
-            _log(api, "PARTIAL", 0)
-        return 1
-    except (LoaderError, ParseError, ScraperError) as error:
-        print(f"daily_ingest: 失敗（{type(error).__name__}: {error}）", file=sys.stderr)
-        if not args.dry_run:
-            _log(api, "FAILED", 0)
-        return 1
-    except Exception as error:  # noqa: BLE001 — 公開ログの境界で本文を除去する
-        print(f"daily_ingest: 失敗（{type(error).__name__}）", file=sys.stderr)
-        return 1
+    run_id = new_run_id()
+    status = "SUCCESS"
+    rows = 0
 
-    print(
-        f"daily_ingest: 取り込み={result.ingested} 窓の外={result.outside_window}"
-        f" 終了済み={result.finished} 日付不明={result.skipped_undated}"
-        f" 状態不明={result.skipped_unresolved}"
-        f" クラブ一覧={result.club_options} シーズン={','.join(result.seasons) or 'なし'}"
-    )
-    if result.unmatched_clubs:
-        print(f"  クラブ一覧にない相手: {' / '.join(result.unmatched_clubs)}")
+    if args.only_upcoming:
+        client = RateLimitedClient(
+            user_agent=os.environ.get("SCRAPER_USER_AGENT", ""),
+            state_path=Path(os.environ.get("SCRAPER_STATE_PATH", str(DEFAULT_STATE_PATH))),
+            robots_sha256=os.environ.get("SCRAPER_ROBOTS_SHA256") or None,
+            terms_sha256=os.environ.get("SCRAPER_TERMS_SHA256") or None,
+        )
+        try:
+            result = run_upcoming(client, api)
+        except PolicyError:
+            print("daily_ingest: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
+            return 1
+        except ScrapingStopped:
+            # 429 / 503。**スクレイピング区間のみ中止する**（絶対ルール6）
+            print("daily_ingest: 取得を中止した（相手側の応答）", file=sys.stderr)
+            if not args.dry_run:
+                _log(api, "PARTIAL", 0, run_id)
+            return 1
+        except (LoaderError, ParseError, ScraperError) as error:
+            print(f"daily_ingest: 失敗（{type(error).__name__}: {error}）", file=sys.stderr)
+            if not args.dry_run:
+                _log(api, "FAILED", 0, run_id)
+            return 1
+        except Exception as error:  # noqa: BLE001 — 公開ログの境界で本文を除去する
+            print(f"daily_ingest: 失敗（{type(error).__name__}）", file=sys.stderr)
+            return 1
+
+        print(
+            f"daily_ingest: 取り込み={result.ingested} 窓の外={result.outside_window}"
+            f" 終了済み={result.finished} 日付不明={result.skipped_undated}"
+            f" 状態不明={result.skipped_unresolved}"
+            f" クラブ一覧={result.club_options} シーズン={','.join(result.seasons) or 'なし'}"
+        )
+        if result.unmatched_clubs:
+            print(f"  クラブ一覧にない相手: {' / '.join(result.unmatched_clubs)}")
+        rows += result.ingested
+
+    if args.only_inference:
+        try:
+            inferred = run_inference(api, run_id=run_id, snapshot=args.snapshot)
+        except (PredictError, SnapshotError) as error:
+            # **有効モデルが揃っていなければ推論を行わない**（PARTIAL）。
+            # 前回の静的JSONを維持する（基本設計 4.3）
+            print(f"daily_ingest: 推論を行わなかった（{type(error).__name__}: {error}）",
+                  file=sys.stderr)
+            if not args.dry_run:
+                _log(api, "PARTIAL", rows, run_id)
+            return 1
+        except (LoaderError, ValueError) as error:
+            print(f"daily_ingest: 推論に失敗（{type(error).__name__}: {error}）",
+                  file=sys.stderr)
+            if not args.dry_run:
+                _log(api, "FAILED", rows, run_id)
+            return 1
+        except Exception as error:  # noqa: BLE001 — 公開ログの境界で本文を除去する
+            print(f"daily_ingest: 推論に失敗（{type(error).__name__}）", file=sys.stderr)
+            return 1
+
+        print(
+            f"daily_ingest: 予測={inferred.predicted}"
+            f" 特徴量を作れず={len(inferred.skipped_features)}"
+            f" 拒否={len(inferred.skipped_after_tipoff)}"
+            f" data_as_of={inferred.data_as_of}"
+            f" モデル={','.join(sorted(inferred.model_versions.values()))}"
+        )
+        if inferred.skipped_features or inferred.skipped_after_tipoff:
+            status = "PARTIAL"
+        rows += inferred.predicted
+
     if not args.dry_run:
-        _log(api, "SUCCESS", result.ingested)
-    return 0
+        _log(api, status, rows, run_id)
+    return 1 if status == "PARTIAL" else 0
 
 
 if __name__ == "__main__":

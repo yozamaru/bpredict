@@ -46,7 +46,7 @@
      "slug": "ibaraki-robots"
     },
     "prediction": {
-     "homeWinProb": 0.27031959704799347,
+     "homeWinProb": 0.2703195970479935,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -168,6 +168,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-04T21:15:41Z"
+  "generatedAt": "2026-10-04T23:21:01Z"
  }
 }

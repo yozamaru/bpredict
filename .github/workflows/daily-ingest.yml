@@ -123,7 +123,11 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add batch/snapshot web/public/data
+          # **存在するものだけを add する。** `web/public/data` は初回の
+          # 書き出しまで無く、`git add` は無いパスで exit 128 になる
+          for path in batch/snapshot web/public/data; do
+            [[ -e "$path" ]] && git add "$path"
+          done
           if git diff --cached --quiet; then
             echo '変更なし'
             exit 0

@@ -26,6 +26,7 @@ def walk_schedule(
     clubs_by_name: Mapping[str, str],
     on_page: Callable[[SchedulePage], None],
     month: str | int = "all",
+    stop: Callable[[SchedulePage], bool] | None = None,
 ) -> Iterator[ScheduleGame]:
     """終端まで日程ページを辿る。空の `topics` と `index=null` が終端。
 
@@ -33,9 +34,14 @@ def walk_schedule(
     15試合 / `index=null` の単一ページで、前進を必須にした実装は**CSを1件も
     取り込めなかった**（詳細設計 4.4）。
 
-    `month` は当月だけを辿るために使う（日次の取り込み。詳細設計 4.2 のステップ1b）。
-    **絞りが効くかは未確認である** — 効かなければページ数が増えるだけで、
-    呼び出し側が日付で絞るため結果は変わらない。
+    **`month` を日次の取り込みに使わない（2026-10-05 の実測）。** 設計は「当月だけを
+    辿る」ことを想定し、絞りが効かなくても「ページ数が増えるだけ」と見込んでいたが、
+    **実際は読める行を1つも返さなかった** — `mon=10` は行0件（日付不明2件）で、
+    `mon=all` は20件/ページで正しく返る。**想定のどちらでもなかった。**
+
+    代わりに `stop` を使う。**ページは日付の昇順である**ため、ページの最終日が
+    窓の終わりを超えたら以降は要らない（詳細設計 4.2 のステップ1b）。
+    `stop` は `on_page` の後・次の取得の前に呼ぶ。
     """
     index = 0
     previous_date: str | None = None
@@ -52,5 +58,8 @@ def walk_schedule(
         on_page(page)
         previous_date = page.last_date
         if page.next_index is None:
+            return
+        # **次を取る前に判定する。** 取得してから捨てるのは無駄な1リクエストである
+        if stop is not None and stop(page):
             return
         index = page.next_index

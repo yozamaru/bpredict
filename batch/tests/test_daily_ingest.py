@@ -3,7 +3,6 @@
 | テスト | どの規約か |
 |---|---|
 | `test_window_includes_today` | 当日を含める（開始前の試合がある） |
-| `test_months_cross_the_boundary` | 月をまたぐなら2つ辿る |
 | `test_seasons_are_chosen_by_the_csv_not_the_clock` | 時計で当季を決めない |
 | `test_offseason_fetches_nothing` | オフシーズンは取得しない |
 | `test_finished_games_are_left_to_step_one` | 終了済みはステップ1 が扱う |
@@ -32,7 +31,6 @@ from batch.jobs.daily_ingest import (
     Result,
     jst_today,
     main,
-    months_of,
     pick_upcoming,
     seasons_of,
     send,
@@ -95,15 +93,6 @@ def test_window_includes_today() -> None:
     assert end == "2026-10-11"
     assert UPCOMING_DAYS == 7
 
-
-def test_months_cross_the_boundary() -> None:
-    """月をまたぐなら2つ辿る（詳細設計 4.2 のステップ1b）。"""
-    assert months_of("2026-10-04", "2026-10-11") == [10]
-    assert months_of("2026-10-28", "2026-11-04") == [10, 11]
-    assert months_of("2026-12-30", "2027-01-06") == [12, 1]
-
-
-# --- シーズンの決め方 ---
 
 def test_seasons_are_chosen_by_the_csv_not_the_clock() -> None:
     """**時計で当季を決めない。** `seasons.csv` の期間で決める（詳細設計 1.1）。"""
@@ -588,3 +577,75 @@ def test_game_columns_match_the_ddl(db: sqlite3.Connection) -> None:
     """
     actual = [row[1] for row in db.execute("PRAGMA table_info(games)")]
     assert list(GAME_COLUMNS) == actual
+
+
+# --- 月で絞らず、窓の終わりで止める（2026-10-05 の実測） ---
+
+def test_the_walk_stops_after_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**ページの最終日が窓の終わりを超えたら、以降は取らない。**
+
+    設計は `mon` で月に絞ることを想定していたが、**`mon=10` は読める行を1つも
+    返さなかった**（行0件 / 日付不明2件。`mon=all` は20件/ページ）。
+    想定の「効かなくてもページ数が増えるだけ」のどちらでもなかった。
+
+    代わりにページを辿って早めに止める。**次を取る前に判定する** — 取得してから
+    捨てるのは無駄な1リクエストである（絶対ルール6）。
+    """
+    from batch.jobs.schedule_walk import walk_schedule
+    from batch.parser.schedule_parser import SchedulePage
+
+    pages = [
+        SchedulePage(games=(game("1", "2026-10-05"),), next_index=20,
+                     last_date="2026-10-05"),
+        SchedulePage(games=(game("2", "2026-10-12"),), next_index=40,
+                     last_date="2026-10-12"),
+        SchedulePage(games=(game("3", "2026-10-20"),), next_index=60,
+                     last_date="2026-10-20"),
+    ]
+    asked: list[str] = []
+
+    class FakeClient:
+        def get(self, url: str) -> str:
+            asked.append(url)
+            return url
+
+    def parse(_body: str, **kwargs: object) -> SchedulePage:
+        return pages[int(str(kwargs["index"])) // 20]
+
+    monkeypatch.setattr("batch.jobs.schedule_walk.parse_schedule", parse)
+    got = list(walk_schedule(
+        FakeClient(),  # type: ignore[arg-type]
+        year=2026, event=2, clubs_by_name={}, on_page=lambda _p: None,
+        stop=lambda p: p.last_date is not None and p.last_date > "2026-10-12",
+    ))
+
+    # 2ページ目で窓を越えたので3ページ目は取らない
+    assert len(asked) == 3
+    assert [g.game_id for g in got] == ["1", "2", "3"]
+
+
+def test_the_walk_takes_everything_without_a_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`stop` を渡さなければ終端まで辿る（`backfill` はこちら）。"""
+    from batch.jobs.schedule_walk import walk_schedule
+    from batch.parser.schedule_parser import SchedulePage
+
+    pages = [
+        SchedulePage(games=(game("1", "2026-10-05"),), next_index=20,
+                     last_date="2026-10-05"),
+        SchedulePage(games=(game("2", "2026-12-20"),), next_index=None,
+                     last_date="2026-12-20"),
+    ]
+
+    class FakeClient:
+        def get(self, url: str) -> str:
+            return url
+
+    monkeypatch.setattr(
+        "batch.jobs.schedule_walk.parse_schedule",
+        lambda _b, **kw: pages[int(str(kw["index"])) // 20])
+    got = list(walk_schedule(
+        FakeClient(),  # type: ignore[arg-type]
+        year=2026, event=2, clubs_by_name={}, on_page=lambda _p: None))
+    assert [g.game_id for g in got] == ["1", "2"]

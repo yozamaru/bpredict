@@ -121,19 +121,6 @@ def window(today: str, days: int = UPCOMING_DAYS) -> tuple[str, str]:
     return today, (start + timedelta(days=days)).strftime("%Y-%m-%d")
 
 
-def months_of(start: str, end: str) -> list[int]:
-    """窓が触れる暦月。**月をまたぐなら2つ返す**（詳細設計 4.2 のステップ1b）。
-
-    **暦日の文字列から月を取るだけで、時刻を作らない。** `game_date` は JST の
-    暦日であり（CLAUDE.md）、ここでタイムゾーンを持ち込むと二重に変換しうる。
-    """
-    months = [int(start[5:7])]
-    last = int(end[5:7])
-    if last != months[0]:
-        months.append(last)
-    return months
-
-
 def seasons_of(start: str, end: str, seasons: list[Season]) -> list[Season]:
     """窓に重なるシーズン。**時計ではなく `seasons.csv` の期間で決める。**
 
@@ -148,7 +135,11 @@ def _collect(
     season: Season,
     result: Result,
 ) -> Iterator[ScheduleGame]:
-    """そのシーズンの、窓に触れる月の日程を辿る。"""
+    """そのシーズンの日程を、窓の終わりを超えるまで辿る。
+
+    **月で絞らない**（`mon=10` は読める行を1つも返さない。詳細設計 4.2 のステップ1b）。
+    `index` を進めながら、ページの最終日が窓の終わりを超えたら止める。
+    """
     year = int(season.label[:4])
     clubs_by_name = parse_club_options(client.get(schedule_html_url(year)))
     # その年度のクラブ一覧の件数を出す。**20クラブのはずが18なら、ここで分かる**
@@ -161,20 +152,29 @@ def _collect(
             if name not in result.unmatched_clubs:
                 result.unmatched_clubs.append(name)
 
-    start, end = window(jst_today())
+    _, end = window(jst_today())
+
+    def past_the_window(page: SchedulePage) -> bool:
+        """ページの最終日が窓の終わりを超えたら、以降のページは要らない。
+
+        **ページは日付の昇順である**（実測。index 0 が開幕戦から始まる）。
+        `mon` で月に絞る案は使えない — **読める行を1つも返さなかった**
+        （詳細設計 4.2 のステップ1b）。
+        """
+        return page.last_date is not None and page.last_date > end
+
     seen: set[str] = set()
-    for month in months_of(start, end):
-        for event in EVENTS:
-            for game in walk_schedule(
-                client, year=year, event=event, clubs_by_name=clubs_by_name,
-                on_page=fold, month=month,
-            ):
-                # **チャンピオンシップ（event=3）を先に確定させる**（要件 5.3）。
-                # 後から event=2 で同じ試合を見ても `competition` を上書きしない
-                if game.game_id in seen:
-                    continue
-                seen.add(game.game_id)
-                yield game
+    for event in EVENTS:
+        for game in walk_schedule(
+            client, year=year, event=event, clubs_by_name=clubs_by_name,
+            on_page=fold, stop=past_the_window,
+        ):
+            # **チャンピオンシップ（event=3）を先に確定させる**（要件 5.3）。
+            # 後から event=2 で同じ試合を見ても `competition` を上書きしない
+            if game.game_id in seen:
+                continue
+            seen.add(game.game_id)
+            yield game
 
 
 def pick_upcoming(

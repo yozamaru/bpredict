@@ -1,10 +1,14 @@
 # 日次の取り込みと推論（詳細設計 4.2）。
 #
-# **cron をまだ置かない。** 設計 4.1 は `0 21 * * *`（06:00 JST）を定めるが、
-# **ステップ1（前日の結果取得）が未実装である**。この状態で毎日回すと、
-# 未実施の試合と予測だけが新しくなり、**特徴量の入力は止まったまま**になる
-# （`data_as_of` が過去に固定され、予測は日ごとに悪くなる）。
-# **ステップ1 が入ってから cron を置く。**
+# **cron は `0 21 * * *`（06:00 JST）である**（設計 4.1）。ステップ1（前日の結果
+# 取得）が入ったため置いた — それまでは、毎日回しても未実施の試合と予測だけが
+# 新しくなり、**特徴量の入力は止まったまま**になる状態だった（`data_as_of` が
+# 過去に固定され、予測は日ごとに悪くなる）。
+#
+# **`schedule` では `inputs` が空になる。** 真偽値の入力も `''` になるため、
+# `inputs.yesterday` をそのまま使うと**全ステップが false になりジョブが
+# エラーで終わる**。`github.event_name == 'schedule'` を先に見て、定期実行では
+# 全ステップを回す。
 #
 # **`contents: write` を与える2つのワークフローのうちの1つ**（基本設計 7.3）。
 # スナップショット（ステップ2）と静的JSON（ステップ5）をコミットするために要る。
@@ -16,6 +20,9 @@
 name: daily-ingest
 
 on:
+  # 06:00 JST。**UTC で書く**（CLAUDE.md 時刻の扱い）。
+  schedule:
+    - cron: '0 21 * * *'
   workflow_dispatch:
     inputs:
       yesterday:
@@ -69,8 +76,8 @@ jobs:
       # 空の User-Agent や規約ハッシュ未確認で取得すると絶対ルール6を破る。
       - name: 設定の確認
         env:
-          YESTERDAY: ${{ inputs.yesterday }}
-          UPCOMING: ${{ inputs.upcoming }}
+          YESTERDAY: ${{ github.event_name == 'schedule' || inputs.yesterday }}
+          UPCOMING: ${{ github.event_name == 'schedule' || inputs.upcoming }}
         shell: bash
         run: |
           missing=()
@@ -91,7 +98,7 @@ jobs:
       # 引き継ぐ。`parser-canary` / `backfill` と同じキー空間を共有し、
       # **合計で上限を守る**（詳細設計 4.8）。
       - name: スクレイパの状態を復元
-        if: ${{ inputs.yesterday || inputs.upcoming }}
+        if: ${{ github.event_name == 'schedule' || inputs.yesterday || inputs.upcoming }}
         uses: actions/cache@v4
         with:
           path: batch/.scraper-state
@@ -108,9 +115,9 @@ jobs:
       # inputs を `run:` に直接展開しない（env へ渡す）。
       - name: 取り込みと推論
         env:
-          YESTERDAY: ${{ inputs.yesterday }}
-          UPCOMING: ${{ inputs.upcoming }}
-          INFERENCE: ${{ inputs.inference }}
+          YESTERDAY: ${{ github.event_name == 'schedule' || inputs.yesterday }}
+          UPCOMING: ${{ github.event_name == 'schedule' || inputs.upcoming }}
+          INFERENCE: ${{ github.event_name == 'schedule' || inputs.inference }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=()
@@ -127,7 +134,7 @@ jobs:
       # **スナップショットと静的JSON をコミットする**（基本設計 1.2 の構成図）。
       # 変わっていなければ何もしない（空のコミットを積まない）。
       - name: スナップショットと静的JSON をコミット
-        if: ${{ !inputs.dry_run }}
+        if: ${{ github.event_name == 'schedule' || !inputs.dry_run }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'

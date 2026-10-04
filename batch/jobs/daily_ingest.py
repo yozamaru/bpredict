@@ -6,7 +6,7 @@
 | ステップ | 実装 |
 |---|---|
 | 0. robots / 利用規約のハッシュ照合 | **あり** |
-| 1. 前日の結果取得 | まだ（`backfill` が同じ処理を持つ） |
+| **1. 前日の結果取得** | **あり**（`--only-yesterday`。1試合ごとの取り込みは `backfill` と共有する） |
 | **1b. 未実施の試合の取り込み** | **あり**（`--only-upcoming`） |
 | **2. スナップショット更新** | **あり**（1b が送った行を同じ本文から写す） |
 | 3. 照合・集計・Elo | まだ（`batch.jobs.evaluate` / `recompute_ratings` が別に持つ） |
@@ -32,11 +32,11 @@ import argparse
 import os
 import sys
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import cast
 
 import pandas as pd
 
@@ -48,9 +48,11 @@ from batch.features.dataset import (
     write_snapshot,
 )
 from batch.features.prepared import prepare
+from batch.jobs.game_ingest import ingest_game
 from batch.jobs.schedule_walk import walk_schedule
 from batch.jobs.seed_master import Season, load_club_source_ids, load_seasons
-from batch.loader.api import InternalApi, LoaderError, RejectedError
+from batch.loader import exclusions
+from batch.loader.api import InternalApi, LoaderError, Poster, RejectedError
 from batch.loader.limits import max_rows_per_request
 from batch.loader.payload import (
     SeasonRef,
@@ -62,14 +64,28 @@ from batch.loader.payload import (
 from batch.model.dataset import as_of
 from batch.model.explain import payload_of as reason_payload
 from batch.model.predict import ActiveModels, PredictError, load_active
-from batch.parser.errors import ParseError
-from batch.parser.schedule_parser import ScheduleGame, SchedulePage, parse_club_options
+from batch.parser.errors import (
+    DataUnavailable,
+    OutOfScopeError,
+    ParseError,
+    ParseErrorStreak,
+    ParseFailureTracker,
+    ValidationError,
+)
+from batch.parser.schedule_parser import (
+    ExcludedGame,
+    ScheduleGame,
+    SchedulePage,
+    parse_club_options,
+)
 from batch.parser.terms import report_terms_change
 from batch.scraper.client import (
     PolicyError,
     RateLimitedClient,
+    ResponseError,
     ScraperError,
     ScrapingStopped,
+    TransportError,
 )
 from batch.scraper.schedule import schedule_html_url
 from batch.static_json.builder import ReasonInput
@@ -107,6 +123,10 @@ class Result:
     seasons: list[str] = field(default_factory=list)
     #: ステップ2 で書いた行数（テーブルごと）
     snapshot_rows: dict[str, int] = field(default_factory=dict)
+    #: 取り込まない試合（不戦敗）をシーズンごとに持つ。**件数だけでなく中身を残す**
+    #: （要件 5.3 / 4.4）。`backfill` は artifact で持ち帰るしかないが、
+    #: **このジョブは `contents: write` であり自分でコミットできる**
+    excluded: dict[str, list[ExcludedGame]] = field(default_factory=dict)
 
 
 def jst_today(now: datetime | None = None) -> str:
@@ -136,34 +156,38 @@ def _collect(
     client: RateLimitedClient,
     season: Season,
     result: Result,
+    *,
+    through: str,
+    clubs_by_name: Mapping[str, str],
 ) -> Iterator[ScheduleGame]:
-    """そのシーズンの日程を、窓の終わりを超えるまで辿る。
+    """そのシーズンの日程を、`through` を超えるまで辿る。
 
     **月で絞らない**（`mon=10` は読める行を1つも返さない。詳細設計 4.2 のステップ1b）。
-    `index` を進めながら、ページの最終日が窓の終わりを超えたら止める。
+    `index` を進めながら、ページの最終日が `through` を超えたら止める。
+
+    **常に開幕から辿る。** 連戦番号（`series_numbers`）は前日までの試合を見るため、
+    途中から始めると**全試合が1戦目になる**。
     """
     year = int(season.label[:4])
-    clubs_by_name = parse_club_options(client.get(schedule_html_url(year)))
-    # その年度のクラブ一覧の件数を出す。**20クラブのはずが18なら、ここで分かる**
-    result.club_options = len(clubs_by_name)
 
     def fold(page: SchedulePage) -> None:
         result.skipped_undated += page.undated
         result.skipped_unresolved += page.unresolved
+        # **取り込まない試合を捨てない**（要件 5.3）。黙って消えるのは、この設計が
+        # 最も避けたい壊れ方である
+        _add_excluded(result.excluded, season.id, page.excluded)
         for name in page.unmatched_clubs:
             if name not in result.unmatched_clubs:
                 result.unmatched_clubs.append(name)
 
-    _, end = window(jst_today())
-
     def past_the_window(page: SchedulePage) -> bool:
-        """ページの最終日が窓の終わりを超えたら、以降のページは要らない。
+        """ページの最終日が `through` を超えたら、以降のページは要らない。
 
         **ページは日付の昇順である**（実測。index 0 が開幕戦から始まる）。
         `mon` で月に絞る案は使えない — **読める行を1つも返さなかった**
         （詳細設計 4.2 のステップ1b）。
         """
-        return page.last_date is not None and page.last_date > end
+        return page.last_date is not None and page.last_date > through
 
     seen: set[str] = set()
     for event in EVENTS:
@@ -177,6 +201,21 @@ def _collect(
                 continue
             seen.add(game.game_id)
             yield game
+
+
+def _add_excluded(
+    target: dict[str, list[ExcludedGame]], season_id: str,
+    found: Sequence[ExcludedGame],
+) -> None:
+    """取り込まない試合を**試合IDで重ねる**（要件 5.3 / 詳細設計 4.4）。
+
+    **素朴に足さない。** 日程は大会区分ごとに2回辿るため（`EVENTS`）、同じ試合が
+    `event=3` と `event=2` の両方に現れ、件数が二重になる。
+    """
+    for game in found:
+        known = target.setdefault(season_id, [])
+        if all(row.game_id != game.game_id for row in known):
+            known.append(game)
 
 
 def pick_upcoming(
@@ -197,17 +236,6 @@ def pick_upcoming(
             continue
         picked.append(game)
     return picked
-
-
-class Poster(Protocol):
-    """`send` が必要とするのは `post` だけである。
-
-    **`InternalApi` そのものを要求しない。** テストが接続先の検証や HTTP の作法を
-    持つ本物を組む必要がなくなる（`registry.py` が `Any` で済ませたのと同じ事情だが、
-    こちらは**何を呼ぶのか**を型で残す）。
-    """
-
-    def post(self, path: str, payload: Mapping[str, object]) -> object: ...
 
 
 def send(
@@ -263,7 +291,13 @@ def run_upcoming(
     bodies: list[Mapping[str, object]] = []
     for season in seasons_of(start, end, load_seasons()):
         result.seasons.append(season.id)
-        games = pick_upcoming(list(_collect(client, season, result)), start, end, result)
+        clubs_by_name = parse_club_options(client.get(schedule_html_url(int(season.label[:4]))))
+        # その年度のクラブ一覧の件数を出す。**20クラブのはずが18なら、ここで分かる**
+        result.club_options = len(clubs_by_name)
+        games = pick_upcoming(
+            list(_collect(client, season, result, through=end,
+                          clubs_by_name=clubs_by_name)),
+            start, end, result)
         result.ingested += send(
             api, games, season=season, club_ids=club_ids, fetched_at=fetched_at,
             collect=bodies)
@@ -281,15 +315,230 @@ def run_upcoming(
     return result
 
 
+# --- ステップ1: 前日の結果取得（詳細設計 4.2 のステップ1） ---
+
+@dataclass
+class Finished:
+    """前日の結果取得の集計。**理由ごとに分けて数える**（詳細設計 4.4）。"""
+
+    status: str = "SUCCESS"
+    ingested: int = 0
+    #: 前日ではなかった試合（正常。開幕から辿るため必ず出る）
+    other_days: int = 0
+    #: 前日だが終了していない試合（延期・中止・開始前）
+    unfinished: int = 0
+    #: 対象外（選抜チーム・海外クラブ・大会区分の食い違い）
+    non_league: int = 0
+    #: 値域・恒等式の違反。**データの欠陥である**
+    invalid: int = 0
+    #: 取得できなかった試合（非200・通信失敗）。**`不正` と混ぜない**（4.4）
+    unfetched: int = 0
+    skipped_undated: int = 0
+    skipped_unresolved: int = 0
+    excluded: dict[str, list[ExcludedGame]] = field(default_factory=dict)
+    seasons: list[str] = field(default_factory=list)
+    snapshot_rows: dict[str, int] = field(default_factory=dict)
+    #: (game_id, 例外の型名, 自前メッセージ)。**件数だけでは調査ができない**（4.4）
+    skipped: list[tuple[str, str, str]] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    def skip(self, game_id: str, error: Exception) -> None:
+        """例外オブジェクトを残さない。型名と自前メッセージだけにする（絶対ルール4）。"""
+        self.skipped.append((game_id, type(error).__name__, str(error)))
+
+    def degrade(self, note: str) -> None:
+        self.status = "PARTIAL"
+        self.notes.append(note)
+
+
+def yesterday_jst(now: datetime | None = None) -> str:
+    """前日の JST の暦日。**`game_date` の定義そのもの**（CLAUDE.md 時刻の扱い）。"""
+    moment = (now or datetime.now(UTC)).astimezone(UTC) + timedelta(hours=9)
+    return (moment - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+def run_yesterday(
+    client: RateLimitedClient, api: InternalApi, *,
+    snapshot: Path | None = None, now: datetime | None = None,
+    log: Callable[[str], None] = print,
+) -> Finished:
+    """ステップ1。前日の終了した試合を取り込み、スナップショットにも写す。
+
+    **ステップ1b と日程の walk を共有しない。** 止める日付が違うだけだが、
+    429 で片方が中止されてももう片方は続けるという 4.3 の方針を保つには、
+    **取得区間が独立している**必要がある。1回の walk は最大40ページ前後 × 2区分で、
+    日次上限3,000に対して無視できる。
+
+    **取り込めなかった試合を翌日に拾わない**（詳細設計 4.2）。前日ぶんだけを見る
+    ため、失敗した試合はそのまま欠ける。拾うのは `backfill`（再開可能）である。
+    """
+    client.verify_policy(
+        terms_reporter=report_terms_change(os.environ.get("SCRAPER_TERMS_SHA256", "")),
+    )
+    result = Finished()
+    day = yesterday_jst(now)
+    club_ids = {row.source_id: row.club_id for row in load_club_source_ids()}
+    tracker = ParseFailureTracker()
+    bodies: list[Mapping[str, object]] = []
+
+    for season in seasons_of(day, day, load_seasons()):
+        result.seasons.append(season.id)
+        collected, short_names = _collect_finished(client, season, result, through=day)
+        if collected is None:
+            return _mirror(result, snapshot, bodies, log)
+
+        # **連戦番号はシーズン全体から導く**（`series_numbers` は前日までを見る）。
+        # 前日だけで数えると全試合が1戦目になる
+        series = series_numbers([
+            (g.game_id, g.game_date, g.home_source_id, g.away_source_id)
+            for g, _ in collected
+        ])
+        reference = SeasonRef(season.id, season.label, season.league)
+
+        for game, event in collected:
+            if game.game_date != day:
+                result.other_days += 1
+                continue
+            if game.status != "FINISHED":
+                # 延期・中止・開始前。ステップ1b が `games` に状態として入れる
+                result.unfinished += 1
+                continue
+            try:
+                sent = ingest_game(
+                    client, api, game, event=event, season=reference,
+                    club_ids=club_ids, short_names=short_names,
+                    series_game_no=series.get(game.game_id))
+            except ScrapingStopped:
+                result.degrade("429/503 により取得区間を中止した")
+                break
+            except OutOfScopeError as error:
+                # 対象外（選抜チーム・海外クラブ・大会区分の食い違い）。
+                # **`不正` に数えず、連続失敗にも入れない** — 再実行すれば直るものと
+                # 永久に対象外のものを混ぜない（詳細設計 4.4）
+                result.non_league += 1
+                result.skip(game.game_id, error)
+                continue
+            except LoaderError as error:
+                # **D1 への書き込みが失敗したら、その場で止める**（4.3）。
+                # 枠が尽きた状態で残りを叩いても全部失敗する
+                result.degrade(f"D1 への書き込みを中止した（{error}）")
+                break
+            except (ValidationError, DataUnavailable) as error:
+                # 値域・恒等式の違反は当該試合を飛ばす（異常値を Elo に流さない）。
+                # **連続失敗には数えない**（`backfill` と同じ扱い）
+                result.invalid += 1
+                result.skip(game.game_id, error)
+                tracker.success()
+                continue
+            except (ResponseError, TransportError, ParseError) as error:
+                # 取得失敗は**相手側の事情であり再実行で解消する**ため `不正` と
+                # 分けて数える（4.4）。**連続3件で中止する** — 非200が続くのは
+                # 遮断の疑いであり、叩き続けるのは絶対ルール6に反する
+                if isinstance(error, ParseError):
+                    result.invalid += 1
+                else:
+                    result.unfetched += 1
+                result.skip(game.game_id, error)
+                try:
+                    tracker.failure()
+                except ParseErrorStreak:
+                    result.degrade("取得・パースの失敗が連続3件。中止した")
+                    break
+                continue
+            tracker.success()
+            result.ingested += 1
+            bodies.extend((sent.games, sent.stats))
+
+    return _mirror(result, snapshot, bodies, log)
+
+
+def _collect_finished(
+    client: RateLimitedClient, season: Season, result: Finished, *, through: str,
+) -> tuple[list[tuple[ScheduleGame, int]] | None, dict[str, str]]:
+    """日程を辿って `(試合, event)` を集める。失敗したら `(None, …)` を返す。
+
+    **チャンピオンシップ（`event=3`）を先に確定させる**（要件 5.3）。
+    """
+    year = int(season.label[:4])
+    bridge = Result()
+    try:
+        clubs_by_name = parse_club_options(client.get(schedule_html_url(year)))
+    except ScrapingStopped:
+        result.degrade("429/503 により日程の取得を中止した")
+        return None, {}
+    except (ParseError, ValidationError) as error:
+        result.degrade(f"日程の解析に失敗した（{type(error).__name__}: {error}）")
+        return None, {}
+
+    short_names = {source_id: name for name, source_id in clubs_by_name.items()}
+    collected: list[tuple[ScheduleGame, int]] = []
+    seen: set[str] = set()
+    try:
+        for event in EVENTS:
+            for game in _collect(
+                client, season, bridge, through=through,
+                clubs_by_name=clubs_by_name,
+            ):
+                if game.game_id in seen:
+                    continue
+                seen.add(game.game_id)
+                collected.append((game, event))
+    except ScrapingStopped:
+        result.degrade("429/503 により日程の取得を中止した")
+        return None, {}
+    except (ParseError, ValidationError) as error:
+        result.degrade(f"日程の解析に失敗した（{type(error).__name__}: {error}）")
+        return None, {}
+
+    result.skipped_undated += bridge.skipped_undated
+    result.skipped_unresolved += bridge.skipped_unresolved
+    for season_id, found in bridge.excluded.items():
+        _add_excluded(result.excluded, season_id, found)
+    return collected, short_names
+
+
+def _mirror(
+    result: Finished, snapshot: Path | None,
+    bodies: list[Mapping[str, object]], log: Callable[[str], None],
+) -> Finished:
+    """ステップ2。**D1 に送ったのと同じ本文から写す**（基本設計 2.2）。"""
+    if snapshot is None or not bodies:
+        return result
+    ds = load_snapshot(snapshot)
+    written: dict[str, int] = {}
+    for table, count in apply_to_snapshot(ds, snapshot_rows(*bodies)).items():
+        written[table] = written.get(table, 0) + count
+    write_snapshot(ds, snapshot, tables=tuple(written))
+    result.snapshot_rows = written
+    log(f"daily_ingest: スナップショットを更新した（{written}）")
+    return result
+
+
 # --- ステップ2: スナップショット更新（詳細設計 4.2 のステップ2） ---
 
 #: ステップ1b が触るテーブル。**書き直すのはこの2つだけ**（基本設計 2.2 の部分書き出し）。
 UPCOMING_TABLES = ("games", "team_games")
 
-#: 行の同一性。**公式試合IDが主キーである**（詳細設計 1.3 / `team_games` は 1.3 の PK）。
+#: 行の同一性（詳細設計 4.2 のステップ1 の表。DDL の主キーと同じ）。
 KEYS: Mapping[str, tuple[str, ...]] = {
     "games": ("id",),
     "team_games": ("club_id", "game_date", "game_id"),
+    "team_game_stats": ("game_id", "club_id"),
+    "player_game_stats": ("game_id", "player_id"),
+    "players": ("id",),
+    "venues": ("id",),
+    "venue_source_keys": ("source_code",),
+    "club_seasons": ("club_id", "season_id"),
+}
+
+#: **既存の行では上書きしない列。** D1 の upsert が `update` に入れていない列と
+#: そろえる（詳細設計 3.4）。
+#:
+#: `venues.name` は**本文にあるのに更新しない唯一の列**である — 初出の名称で固定し、
+#: 当時の名称で現在の表示名を上書きしない（1.2）。**本文に無い列は触らない**という
+#: 一般の規則で、座標・本拠会場・チームカラー・身長（D1 側の `preserve`）は片づく。
+NEVER_UPDATE: Mapping[str, frozenset[str]] = {
+    "venues": frozenset({"name"}),
 }
 
 
@@ -302,8 +551,14 @@ def apply_to_snapshot(
     だけであり（絶対ルール3）、D1 にだけ書くと「取り込んだのに予測が作られない」
     状態になる（基本設計 2.2 が座標140件で踏んだのと同じ形）。
 
-    **主キーで置き換える**（延期で `game_date` が変わっても別レコードにならない。
-    詳細設計 1.3）。返すのは書いた行数。
+    **行を置き換えず、本文にある列だけを上書きする**（詳細設計 4.2 のステップ1）。
+    置き換えると、**本文が送らない列が消える** — 3.4 が D1 側で直したのと同じ
+    壊れ方である（取り込みは `venues` の `{id, name}` だけを送るため、
+    座標が失われる）。返すのは書いた行数。
+
+    **行の位置は保たない。** 既にある行は末尾へ移るが、特徴量が入力の並びに
+    依存するのは `_recent_minutes`（同じ日に複数試合がある選手）だけで、
+    **1人が1日に2試合出ることはない**（2.1.1 の注記3）。
     """
     written: dict[str, int] = {}
     for table, incoming in rows.items():
@@ -312,21 +567,39 @@ def apply_to_snapshot(
         if table not in KEYS:
             raise SnapshotError(f"スナップショットへの写し方が未定のテーブル: {table}")
         current = ds.table(table)
-        frame = pd.DataFrame(incoming)
-        missing = sorted(set(frame.columns) - set(current.columns))
-        if missing:
-            raise SnapshotError(f"{table} にない列を書こうとした: {missing}")
         keys = list(KEYS[table])
-        index = {
-            tuple(str(row[k]) for k in keys)
-            for row in frame[keys].to_dict(orient="records")
-        }
-        kept = current[~current[keys].astype(str).agg(tuple, axis=1).isin(index)] \
-            if not current.empty else current
-        ds.tables[table] = pd.concat([kept, frame], ignore_index=True)[
-            list(current.columns)
-        ]
-        written[table] = len(frame)
+        protect = NEVER_UPDATE.get(table, frozenset())
+
+        converted: dict[tuple[str, ...], dict[str, object]] = {}
+        for row in incoming:
+            missing = sorted(set(row) - set(current.columns))
+            if missing:
+                raise SnapshotError(f"{table} にない列を書こうとした: {missing}")
+            converted[tuple(str(row[k]) for k in keys)] = dict(row)
+
+        if current.empty:
+            kept, existing = current, cast("dict[tuple[str, ...], dict[str, object]]", {})
+        else:
+            found = current[keys].astype(str).agg(tuple, axis=1).isin(converted)
+            kept = current[~found]
+            # **一致した行だけを辞書にする。** 全件を辞書にすると
+            # `player_game_stats`（146,463行）で桁が変わる
+            existing = {
+                tuple(str(row[k]) for k in keys): {str(c): v for c, v in row.items()}
+                for row in current[found].to_dict(orient="records")
+            }
+
+        merged = []
+        for key, row in converted.items():
+            base = existing.get(key)
+            if base is None:
+                merged.append(row)          # 新規。本文のまま入れる
+            else:
+                patch = {c: v for c, v in row.items() if c not in protect}
+                merged.append({**base, **patch})
+        ds.tables[table] = pd.concat(
+            [kept, pd.DataFrame(merged)], ignore_index=True)[list(current.columns)]
+        written[table] = len(merged)
     return written
 
 
@@ -486,6 +759,29 @@ def write_json(
     return len(written.written)
 
 
+def record_exclusions(
+    found: Mapping[str, list[ExcludedGame]], *,
+    path: Path = exclusions.DEFAULT_PATH,
+    log: Callable[[str], None] = print,
+) -> int:
+    """取り込まない試合の一覧をリポジトリへ書く（要件 5.3 / 詳細設計 4.4）。
+
+    **`backfill` と違い、このジョブは自分でコミットできる**（`contents: write`）。
+    一覧は試合IDで重ねるため、何度流しても同じ結果になる。
+    """
+    written = 0
+    for season_id, games in found.items():
+        if not games:
+            continue
+        exclusions.save(
+            exclusions.merge(exclusions.load(path), games, season_id=season_id),
+            path)
+        written += len(games)
+    if written:
+        log(f"daily_ingest: 取り込まない試合を {written}件 一覧に残した")
+    return written
+
+
 def new_run_id() -> str:
     """`ingestion_logs.id` と `predictions.run_id` に使う値。
 
@@ -511,8 +807,25 @@ def _log(api: InternalApi, status: str, rows: int, run_id: str) -> None:
         print("  - ログの記録に失敗した")
 
 
+def _client() -> RateLimitedClient:
+    """スクレイピングの関門つきクライアント。**ステップ1 と 1b で同じ設定を使う。**
+
+    **状態ファイルを共有する。** 日次3,000件のカウンタと 429/503 後の停止は
+    このファイルが持つため、2つのステップを合わせて上限を守る（絶対ルール6）。
+    """
+    return RateLimitedClient(
+        user_agent=os.environ.get("SCRAPER_USER_AGENT", ""),
+        state_path=Path(os.environ.get("SCRAPER_STATE_PATH", str(DEFAULT_STATE_PATH))),
+        robots_sha256=os.environ.get("SCRAPER_ROBOTS_SHA256") or None,
+        terms_sha256=os.environ.get("SCRAPER_TERMS_SHA256") or None,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="日次の取り込み（詳細設計 4.2）")
+    parser.add_argument(
+        "--only-yesterday", action="store_true",
+        help="前日の結果取得（ステップ1 と2）を行う")
     parser.add_argument(
         "--only-upcoming", action="store_true",
         help="未実施の試合の取り込み（ステップ1b）を行う")
@@ -527,8 +840,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # **どのステップを行うかを必ず明示させる。** 既定の動作を持たせない —
     # 全ステップが揃うまで「回したつもりで半分しか動いていない」が起きる
-    if not (args.only_upcoming or args.only_inference):
-        parser.error("--only-upcoming か --only-inference のどちらかを指定する")
+    if not (args.only_yesterday or args.only_upcoming or args.only_inference):
+        parser.error(
+            "--only-yesterday / --only-upcoming / --only-inference の"
+            "いずれかを指定する")
 
     api = InternalApi(
         os.environ.get("API_BASE_URL", ""),
@@ -539,13 +854,45 @@ def main(argv: list[str] | None = None) -> int:
     status = "SUCCESS"
     rows = 0
 
-    if args.only_upcoming:
-        client = RateLimitedClient(
-            user_agent=os.environ.get("SCRAPER_USER_AGENT", ""),
-            state_path=Path(os.environ.get("SCRAPER_STATE_PATH", str(DEFAULT_STATE_PATH))),
-            robots_sha256=os.environ.get("SCRAPER_ROBOTS_SHA256") or None,
-            terms_sha256=os.environ.get("SCRAPER_TERMS_SHA256") or None,
+    if args.only_yesterday:
+        client = _client()
+        try:
+            finished = run_yesterday(client, api, snapshot=args.snapshot)
+        except PolicyError:
+            print("daily_ingest: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
+            return 1
+        except (LoaderError, ParseError, ScraperError) as error:
+            print(f"daily_ingest: 前日の取得に失敗（{type(error).__name__}: {error}）",
+                  file=sys.stderr)
+            if not args.dry_run:
+                _log(api, "FAILED", 0, run_id)
+            return 1
+        except Exception as error:  # noqa: BLE001 — 公開ログの境界で本文を除去する
+            print(f"daily_ingest: 前日の取得に失敗（{type(error).__name__}）", file=sys.stderr)
+            return 1
+
+        print(
+            f"daily_ingest: 前日={yesterday_jst()} 取り込み={finished.ingested}"
+            f" 他の日={finished.other_days} 未終了={finished.unfinished}"
+            f" 非リーグ戦={finished.non_league} 不正={finished.invalid}"
+            f" 取得失敗={finished.unfetched} 日付不明={finished.skipped_undated}"
+            f" 状態不明={finished.skipped_unresolved}"
+            f" シーズン={','.join(finished.seasons) or 'なし'}"
+            f" スナップショット={finished.snapshot_rows or 'なし'}"
         )
+        for game_id, kind, message in finished.skipped:
+            # **件数だけでは調査ができない**（詳細設計 4.4）
+            print(f"  - skip {game_id} {kind} {message}")
+        for note in finished.notes:
+            print(f"  - {note}")
+        if not args.dry_run:
+            record_exclusions(finished.excluded)
+        rows += finished.ingested
+        if finished.status != "SUCCESS":
+            status = "PARTIAL"
+
+    if args.only_upcoming:
+        client = _client()
         try:
             result = run_upcoming(client, api, snapshot=args.snapshot)
         except PolicyError:

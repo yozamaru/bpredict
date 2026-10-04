@@ -163,5 +163,35 @@
       "rows[].scope",
       "rows[].scopeKey"
     ]
+  },
+  "internalModels": {
+    "$comment": "POST /internal/models の本文（batch/model/registry.py の payload_of）。**すべての任意項目を埋めた記録**のキー集合である — payload_of は None の項目を落とすため、実際に送る本文はこの部分集合になる",
+    "paths": [
+      "activate",
+      "algo",
+      "artifactSha256",
+      "artifactText",
+      "baselineEloBrier",
+      "baselineHomeAccuracy",
+      "calibrator",
+      "cvAccuracy",
+      "cvBrier",
+      "cvEce",
+      "cvLogloss",
+      "evalWindow",
+      "featureList",
+      "featureNullRates",
+      "league",
+      "marginSigma",
+      "modelType",
+      "notes",
+      "params",
+      "target",
+      "trainRange",
+      "trainRows",
+      "trainedAt",
+      "version",
+      "winProbSource"
+    ]
   }
 }

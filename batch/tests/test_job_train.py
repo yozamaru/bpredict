@@ -466,3 +466,78 @@ def test_derived_score_mae_rejects_mismatched_folds() -> None:
 
     with pytest.raises(train.TrainError):
         train.derived_team_score_mae(one("s1"), one("s2"), one("s1"), 12.9)
+
+
+# --- 登録（詳細設計 4.5.1） ---
+
+class FakeApi:
+    """`InternalApi.post` の代わり。**D1 にも HTTP にも触らない。**"""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, dict[str, object]]] = []
+
+    def post(self, path: str, payload: object) -> object:
+        assert isinstance(payload, dict)
+        self.sent.append((path, payload))
+        return {"version": payload.get("version")}
+
+
+def fake_report(*, adopt: bool) -> train.Report:
+    """登録の分岐だけを見るための最小の `Report`。"""
+    from batch.model.criteria import Decision
+
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    ev = train.walk_forward(
+        data, train.logistic_learner(), weights=np.ones(len(data)), max_folds=5)
+    scores = train.walk_forward(
+        data, lambda tx, ty, tw, vx, vy: (
+            (lambda f: np.full(len(f), 0.0)), 80),
+        target=data.margin, weights=np.ones(len(data)), max_folds=5)
+    return train.Report(
+        n=ev.n, seasons=data.seasons,
+        test_seasons=[f.test_season for f in ev.folds],
+        winner=ev, home=ev, elo=ev, lightgbm=ev,
+        ece_floor=0.03, difference=difference(0.004, 0.002, 0.006),
+        null_rates={"elo_diff": 0.0}, constant_columns=[],
+        decision=Decision(adopt=adopt, failures=[] if adopt else ["Brier"], notes=[]),
+        margin=scores, total=scores, margin_sigma=12.9,
+    )
+
+
+def test_register_sends_nothing_when_the_criteria_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**基準未達なら1本も送らない。** 現行モデルを継続する（詳細設計 4.5.1）。
+
+    「登録だけしておく」経路を作らない — `model_versions` に有効でない行が溜まると、
+    どれが本番かを `is_active` 以外で判断する余地が生まれる。
+    """
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    versions = train.register_models(
+        data, fake_report(adopt=False), api=api, log=lambda _m: None)  # type: ignore[arg-type]
+    assert versions == []
+    assert api.sent == []
+
+
+def test_register_activates_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
+    """判定を通ったら3本とも `activate=True` で送る。"""
+    monkeypatch.setattr(
+        "batch.model.final.train_final",
+        lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
+    )
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    versions = train.register_models(
+        data, fake_report(adopt=True), api=api, log=lambda _m: None)  # type: ignore[arg-type]
+    assert versions == ["winner-v1.0.0", "margin-v1.0.0", "total-v1.0.0"]
+    assert [p for p, _ in api.sent] == ["models"] * 3
+    assert all(body["activate"] is True for _p, body in api.sent)
+
+
+def test_register_needs_the_score_evaluations() -> None:
+    """得点差・合計得点の評価がなければ登録できない（σ が出ない）。"""
+    report = fake_report(adopt=True)
+    without = train.replace(report, margin=None, total=None)
+    with pytest.raises(train.TrainError):
+        train.evaluations_of(without)

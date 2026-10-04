@@ -3790,6 +3790,73 @@ fold i:  train = seasons[:i-1]
 
 旧版は `train_lightgbm(X, y)` に検証セットがなく、early stopping が成立していなかった（学習データを渡せば止まらず、評価シーズンを渡せばリーク）。
 
+#### 4.5.1 最終当てはめと登録（v1.87 で新設）
+
+**評価（`python -m batch.jobs.train`）と登録を分ける。** 評価は何度でもやり直せる
+べきで、登録は D1 の書き込み枠を使う。登録は `--register` を付けたときだけ行う。
+
+**登録するのは3本である。**
+
+| `model_type` | 最終当てはめ | artifact | 理由 |
+|---|---|---|---|
+| `WINNER` | `fit_logistic(全データ, 時間減衰重み)` | 係数と切片の JSON（1KB未満） | 本番の勝率（要件 6.1.1） |
+| `MARGIN` | `train_final(…, num_boost_round=median(best_iteration))` | LightGBM のテキスト | **σ を出すために必要**（勝率 → 得点差の変換係数） |
+| `TOTAL` | 同上 | 同上 | 合計得点は勝率から導けない |
+
+**`TEAM_RATE`（14本）と `PLAYER_MIN` は登録しない。** 個人スタッツは第1段と第3段が
+組めず（2.3.1）、整合化まで到達しないため保存する値が作れない。**登録だけ先に
+済ませない** — `prediction_model_bundle` に「使っていないモデル」が並ぶと、
+どの値がどのモデルから出たのかが後から辿れなくなる。
+
+**`margin_sigma` は `MARGIN` の行に入れる**（DDL のコメントのとおり）。推論は
+`GET /internal/models/active` が返す `MARGIN` の行から読む。**`WINNER` の行には
+入れない** — σ は Margin 回帰の残差であって勝率モデルの属性ではない。
+
+**`win_prob_source = 'WINNER'` は `WINNER` の行に入れる**（1.5）。
+
+##### 版の付け方
+
+```
+version = "{model_type を小文字にしたもの}-v{SEMVER}"      既定の SEMVER は 1.0.0
+```
+
+DDL のコメントが挙げる例（`'winner-v1.0.0'`）の形に従う。**`registry` では採番
+しない**（同じ学習結果を2回登録したときに別の版として2行入る）。既定は `1.0.0` で、
+**学習条件を変えたら呼び出し側が上げる**（`--model-version`）。
+
+**同じ版を2回登録すると主キー違反で落ちる。** `POST /internal/models` は素の
+INSERT であり、upsert ではない。**黙って2行入るよりよい** — 気づけるからである。
+
+##### 記録する列
+
+| 列 | 値 |
+|---|---|
+| `train_range` | `"{最初のシーズン}..{最後のシーズン}"`（学習に使った全期間） |
+| `eval_window` | `"{最初のテスト fold}..{最後のテスト fold}"`。**比較の公平性のため固定する**（4.6） |
+| `train_rows` | 最終当てはめに使った行数 |
+| `params` | ロジスティックは `l2` / `max_iterations` / `tolerance` / 時間減衰 λ、LightGBM は `SCORE_PARAMS` と `num_boost_round`。**乱数を使わないモデルでも収束条件を残す**（4.7） |
+| `cv_*` | walk-forward の実測（`WINNER` は勝敗の4指標、`MARGIN` / `TOTAL` は `cv_brier` を使わず NULL にし、MAE は `notes` に残す） |
+| `baseline_home_accuracy` / `baseline_elo_brier` | ベースライン1と2の実測（`WINNER` のみ） |
+
+**`MARGIN` / `TOTAL` の `cv_brier` に MAE を入れない。** 列の名前と中身が食い違うと、
+`/internal/metrics/active` を読む側が Brier だと思って比較する。回帰の指標は
+`notes` に書く（`accuracy_summary` の `BUCKET` 行とは違い、ここは**揃える側**に倒す）。
+
+##### 有効化は採用判定を通ったときだけ
+
+```
+passes_criteria が通る  →  activate=True で3本とも有効化する
+通らない                →  登録そのものを行わない（現行モデルを継続する）
+```
+
+`registry.register` の `activate` の既定は False だが、**このジョブは判定を通った
+ときだけ呼ぶ**ため `activate=True` を渡す。基準未達で登録だけしておく経路は作らない
+— `model_versions` に有効でない行が溜まると、どれが本番かを `is_active` 以外で
+判断する余地が生まれる。
+
+**3本は別々のリクエストで送る。** `POST /internal/models` は1本ずつ受ける口であり、
+D1 の書き込みは3行で枠に影響しない。
+
 ### 4.6 採用基準
 
 ```python

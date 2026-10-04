@@ -217,6 +217,35 @@ describe('内部APIの要求ボディ（契約）', () => {
     expect(res.status).toBe(200);
   });
 
+  /** 平らな形（配列の要素でない）の本文を契約から組む。 */
+  function flatBodyFrom(shape: string, values: Record<string, unknown>): unknown {
+    const body: Record<string, unknown> = {};
+    for (const path of contract(shape)) {
+      expect(path.includes('[]'), `平らでないパスがある: ${path}`).toBe(false);
+      expect(path in values, `値を用意していないキー: ${path}`).toBe(true);
+      body[path] = values[path];
+    }
+    return body;
+  }
+
+  it('models — 契約どおりの本文が 200 で通る', async () => {
+    // **`payload_of` が出しうる全キーを送る。** Zod が `.strict()` なので、
+    // 契約に無いキーを足すとここで落ちる（片側だけの変更を捕まえる）
+    const res = await post('/internal/models', flatBodyFrom('internalModels', {
+      version: 'contract-winner-v1.0.0', modelType: 'WINNER', target: '',
+      league: 'PREMIER', algo: 'logistic', trainedAt: '2026-10-05T00:00:00Z',
+      trainRows: 3031, trainRange: 's1..s3', evalWindow: 's2..s3',
+      params: '{"l2":0.0001}', featureList: '["elo_diff"]',
+      featureNullRates: '{"elo_diff":0.0}',
+      cvAccuracy: 0.69, cvBrier: 0.199, cvLogloss: 0.58, cvEce: 0.025,
+      baselineHomeAccuracy: 0.52, baselineEloBrier: 0.2027,
+      winProbSource: 'WINNER', marginSigma: 12.9,
+      artifactText: '{}', artifactSha256: 'a'.repeat(64),
+      calibrator: null, notes: 'note', activate: true,
+    }));
+    expect(res.status).toBe(200);
+  });
+
   it('summary — 契約どおりの本文が 200 で通る', async () => {
     const res = await post('/internal/summary', bodyFrom('internalSummary', {
       scope: 'BUCKET', scopeKey: '60-70%', modelVersion: '', n: 42,

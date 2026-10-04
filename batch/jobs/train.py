@@ -7,10 +7,16 @@
     python -m batch.jobs.train                      評価して報告する
     python -m batch.jobs.train --json out.json      数値をファイルにも残す
     python -m batch.jobs.train --refresh            特徴量のキャッシュを作り直す
+    python -m batch.jobs.train --register           採用判定を通ったら登録する
 
 **入力はスナップショットだけである**（CLAUDE.md 絶対ルール3）。D1 を読まない。
-**このジョブはモデルを登録しない** — 登録は `POST /internal/models` で、D1 の
-書き込み枠を使う。評価と登録を分けることで、採用判定を何度でもやり直せる。
+**既定では登録しない。** 登録は `POST /internal/models` で D1 の書き込み枠を使う
+ため、`--register` を付けたときだけ行う（詳細設計 4.5.1）。評価と登録を分けると、
+採用判定を何度でもやり直せる。
+
+**`--register` は採用判定を通らなければ何も送らない。** 基準未達で登録だけして
+おく経路は作らない — `model_versions` に有効でない行が溜まると、どれが本番かを
+`is_active` 以外で判断する余地が生まれる。
 
 **特徴量をキャッシュする。** 6,270試合の特徴量生成に20分かかる（基本設計 2.5 の
 実測から外挿）。**キャッシュの鍵はスナップショットの MANIFEST のハッシュ**であり、
@@ -22,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -34,6 +41,7 @@ from numpy.typing import NDArray
 
 from batch.features.builder import FEATURE_KEYS
 from batch.features.dataset import Dataset, load_snapshot
+from batch.loader.api import InternalApi, LoaderError
 from batch.model.baselines import fit_logistic, home_always
 from batch.model.criteria import Decision, Inputs, passes_criteria
 from batch.model.dataset import (
@@ -44,6 +52,7 @@ from batch.model.dataset import (
     time_decay_weights,
 )
 from batch.model.evaluate import Evaluation, Learner, walk_forward
+from batch.model.final import DEFAULT_SEMVER, Evaluations, build_records
 from batch.model.metrics import Difference, brier_difference, ece_noise_floor
 from batch.model.params import (
     ECE_FLOOR_K,
@@ -51,6 +60,7 @@ from batch.model.params import (
     MIN_EFFECT,
     TIME_DECAY_LAMBDA_INITIAL,
 )
+from batch.model.registry import register
 from batch.model.train_score import (
     learn_score,
     margin_from_win_prob,
@@ -614,6 +624,38 @@ def render(report: Report) -> str:
     return "\n".join(lines)
 
 
+def evaluations_of(report: Report) -> Evaluations:
+    """`Report` から登録に必要なものだけを取り出す（依存の向きを `batch.model`
+    から `batch.jobs` に向けないため）。"""
+    if report.margin is None or report.total is None:
+        raise TrainError("得点差・合計得点の評価がない（登録できない）")
+    return Evaluations(
+        winner=report.winner, home=report.home, elo=report.elo,
+        margin=report.margin, total=report.total,
+        ece_floor=report.ece_floor, null_rates=report.null_rates,
+    )
+
+
+def register_models(
+    data: TrainingData, report: Report, *, api: InternalApi,
+    semver: str = DEFAULT_SEMVER, log: Callable[[str], None] = print,
+) -> list[str]:
+    """採用判定を通ったときだけ3本を登録して有効化する（詳細設計 4.5.1）。
+
+    **判定を通らなければ空を返す。** 現行モデルを継続する。
+    """
+    if not report.decision.adopt:
+        log(f"train: 採用基準を満たさないため登録しない（{report.decision.summary}）")
+        return []
+    records = build_records(data, evaluations_of(report), semver=semver)
+    registered: list[str] = []
+    for record in records:
+        size = register(api, record, activate=True)
+        log(f"train: {record.version} を登録して有効化した（artifact {size:,} バイト）")
+        registered.append(record.version)
+    return registered
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="勝敗モデルを評価する（登録はしない）")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
@@ -621,6 +663,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--refresh", action="store_true", help="特徴量を作り直す")
     parser.add_argument("--max-folds", type=int, default=MAX_FOLDS)
     parser.add_argument("--json", type=Path, help="数値を書き出す先")
+    parser.add_argument(
+        "--register", action="store_true",
+        help="採用判定を通ったら WINNER / MARGIN / TOTAL を登録して有効化する")
+    parser.add_argument("--model-version", default=DEFAULT_SEMVER,
+                        help="版（既定 1.0.0。学習条件を変えたら上げる）")
+    parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")
     args = parser.parse_args(argv)
 
     try:
@@ -642,6 +690,27 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(report.as_dict(), ensure_ascii=False, indent=2), encoding="utf-8",
         )
         print(f"train: {args.json} に書き出した")
+
+    if args.register:
+        try:
+            api = InternalApi(
+                os.environ.get("API_BASE_URL", ""),
+                os.environ.get("INGEST_TOKEN", ""),
+                dry_run=args.dry_run,
+            )
+            versions = register_models(
+                data, report, api=api, semver=args.model_version)
+        except (TrainError, LoaderError) as error:
+            # **自前の文言を出す。** これらの例外は URL も応答本文もトークンも
+            # 含まない（基本設計 4.3）。型名だけにすると切り分けに再実行が要る
+            print(f"train: 登録に失敗（{type(error).__name__}: {error}）",
+                  file=sys.stderr)
+            return 1
+        except Exception as error:  # noqa: BLE001 — 本文に何が入るか保証できない
+            print(f"train: 登録に失敗（{type(error).__name__}）", file=sys.stderr)
+            return 1
+        if not versions:
+            return 1          # 採用基準未達は PARTIAL 相当。通知に乗せる
     return 0
 
 

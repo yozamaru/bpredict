@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from batch.jobs.schedule_walk import walk_schedule
 from batch.jobs.seed_master import load_club_source_ids, load_seasons
 from batch.loader import exclusions
 from batch.loader.api import InternalApi, LoaderError
@@ -40,8 +41,8 @@ from batch.parser.errors import (
 from batch.parser.schedule_parser import (
     ExcludedGame,
     ScheduleGame,
+    SchedulePage,
     parse_club_options,
-    parse_schedule,
 )
 from batch.parser.terms import report_terms_change
 from batch.scraper.boxscore import boxscore_url
@@ -53,7 +54,7 @@ from batch.scraper.client import (
     ScrapingStopped,
     TransportError,
 )
-from batch.scraper.schedule import schedule_html_url, schedule_url
+from batch.scraper.schedule import schedule_html_url
 
 #: 取り込むのはリーグ戦とチャンピオンシップだけ（要件 5.3）。
 #: **チャンピオンシップ（3）を先に辿る。** `event=2` は「そのシーズンの日程」であり、
@@ -121,19 +122,11 @@ def _schedule_pages(
     clubs_by_name: dict[str, str],
     result: Result,
 ) -> Iterator[ScheduleGame]:
-    """終端まで日程ページを辿る。空の `topics` と `index=null` が終端。"""
-    index = 0
-    previous_date: str | None = None
-    while True:
-        page = parse_schedule(
-            client.get(schedule_url(year, event, index)),
-            year=year,
-            event=event,
-            clubs_by_name=clubs_by_name,
-            previous_date=previous_date,
-            index=index,
-        )
-        yield from page.games
+    """終端まで日程ページを辿り、飛ばした行を `Result` に折り込む。
+
+    歩き方そのものは `schedule_walk.walk_schedule` が持つ（`daily_ingest` と共有）。
+    """
+    def fold(page: SchedulePage) -> None:
         # 飛ばした行を黙って捨てない。**理由ごとに**集計して出力に出す。
         # 非リーグ戦は日程では判定しない（行の名前は略称のことがある。要件 5.3）
         result.skipped_undated += page.undated
@@ -142,10 +135,9 @@ def _schedule_pages(
         for name in page.unmatched_clubs:
             if name not in result.unmatched_clubs:
                 result.unmatched_clubs.append(name)
-        previous_date = page.last_date
-        if page.next_index is None:
-            return
-        index = page.next_index
+
+    yield from walk_schedule(
+        client, year=year, event=event, clubs_by_name=clubs_by_name, on_page=fold)
 
 
 def run(

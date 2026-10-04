@@ -11,6 +11,7 @@ import math
 import numpy as np
 import pytest
 
+from batch.model import train_score
 from batch.model.train_score import (
     ScoreError,
     scores,
@@ -112,3 +113,52 @@ def test_rounding_for_display_can_tie_but_not_contradict() -> None:
     favored_home = probs > 0.5
     assert np.all(shown_home[favored_home] >= shown_away[favored_home])
     assert np.all(shown_home[~favored_home] <= shown_away[~favored_home])
+
+
+# --- 予想スコアを勝率から導く（要件 6.1.1） ---
+
+def test_margin_from_win_prob_is_the_inverse_of_win_prob_from_margin() -> None:
+    """`margin → 勝率 → margin` が元に戻ること。**向きを変えただけである。**"""
+    sigma = 12.93
+    margin = np.array([-20.0, -5.0, 0.0, 3.5, 18.0])
+    back = train_score.margin_from_win_prob(
+        train_score.win_prob_from_margin(margin, sigma), sigma)
+    assert back == pytest.approx(margin, abs=1e-9)
+
+
+def test_margin_from_win_prob_is_zero_at_even_odds() -> None:
+    """50% なら得点差0。符号の食い違いが原理的に起きないことの核心である。"""
+    assert train_score.margin_from_win_prob(
+        np.array([0.5]), 12.93) == pytest.approx([0.0])
+
+
+def test_margin_from_win_prob_rejects_the_closed_interval() -> None:
+    """`Φ⁻¹(0)` は −∞。**クランプを通す前の確率を渡させない。**"""
+    for bad in (0.0, 1.0):
+        with pytest.raises(train_score.ScoreError):
+            train_score.margin_from_win_prob(np.array([bad]), 12.93)
+
+
+def test_margin_from_win_prob_rejects_a_bad_sigma() -> None:
+    """σ は実測値である。**既定値を持たせない**（要件 6.1）。"""
+    for bad in (0.0, -1.0, float("nan"), float("inf")):
+        with pytest.raises(train_score.ScoreError):
+            train_score.margin_from_win_prob(np.array([0.6]), bad)
+
+
+def test_the_derived_score_agrees_with_the_win_probability() -> None:
+    """**A-11 が構造的に成立すること。** 勝率が 0.5 より大きければホームが勝つ。
+
+    旧経路（Margin 回帰）では実測で 4.7% の試合が食い違っていた。
+    """
+    sigma = 12.93
+    probs = np.array([0.12, 0.49, 0.50, 0.51, 0.88])
+    margin = train_score.margin_from_win_prob(probs, sigma)
+    home, away = train_score.scores(margin, np.full(probs.size, 160.0))
+    for p, h, a in zip(probs, home, away, strict=True):
+        if p > 0.5:
+            assert h > a
+        elif p < 0.5:
+            assert h < a
+        else:
+            assert h == pytest.approx(a)

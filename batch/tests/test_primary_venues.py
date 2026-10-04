@@ -18,9 +18,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from batch.features.base import build_context
-from batch.features.dataset import export_sqlite
-from batch.features.venue import is_primary_venue as feature_is_primary
 from batch.masters.primary_venues import (
     CSV_COLUMNS,
     PrimaryVenue,
@@ -260,122 +257,20 @@ def _target(con: sqlite3.Connection) -> tuple[str, datetime]:
     return str(row[0]), datetime.fromisoformat(str(row[1]))
 
 
-def test_feature_is_none_when_the_master_is_empty(seeded_db: sqlite3.Connection) -> None:
-    """**マスタが NULL なら None**（関数内で埋めない。規約5）。
+def test_the_feature_is_gone() -> None:
+    """**#15 は落とした**（2026-10-04。詳細設計 2.2）。
 
-    マスタが全件 NULL のまま #15 を `FEATURE_KEYS` に入れると**定数列**になり、
-    採用ゲートの `constant_columns` に当たる。だから**マスタを投入してから列に
-    足した**（2026-10-03。スナップショットに 225/238 行を反映してから列に加えた。
-    詳細設計 4.11 の段4）。
+    **未実施の試合に会場IDが付かない**（日程ページは会場名しか持たず、公式IDは
+    試合後のボックススコアにしかない）ため、本番では常に既定値になる。
+    測ると**1.0 に固定するのと列を落とすのが完全に同じ結果**だった（0.199133）。
+
+    **マスタ（`club_seasons.primary_venue_id`）と CSV は残す** — 公開API の
+    `venue.isPrimary` が使っており、特徴量とは別の用途である（詳細設計 1.2）。
     """
-    seeded_db.execute("UPDATE club_seasons SET primary_venue_id = NULL")
-    seeded_db.commit()
-    game_id, as_of = _target(seeded_db)
-    context = build_context(game_id, as_of, export_sqlite(seeded_db))
-    assert feature_is_primary(context) is None
+    import importlib.util
 
+    from batch.features.builder import FEATURE_KEYS
 
-def test_feature_reads_the_master_not_the_column(seeded_db: sqlite3.Connection) -> None:
-    """**`games.is_primary_venue` を読まない**（詳細設計 1.2）。
-
-    列を 0 にしてもマスタが本拠と言えば 1 を返す。逆も確かめる。
-    """
-    game_id, as_of = _target(seeded_db)
-    row = seeded_db.execute(
-        "SELECT home_club_id, season_id, venue_id FROM games WHERE id = ?",
-        (game_id,)).fetchone()
-    club_id, season_id, venue_id = str(row[0]), str(row[1]), str(row[2])
-
-    seeded_db.execute("UPDATE games SET is_primary_venue = 0 WHERE id = ?", (game_id,))
-    seeded_db.execute(
-        "UPDATE club_seasons SET primary_venue_id = ? WHERE club_id = ? AND season_id = ?",
-        (venue_id, club_id, season_id))
-    seeded_db.commit()
-    context = build_context(game_id, as_of, export_sqlite(seeded_db))
-    assert feature_is_primary(context) == 1.0, "列が 0 でもマスタに従う"
-
-    other = seeded_db.execute(
-        "SELECT id FROM venues WHERE id <> ? LIMIT 1", (venue_id,)).fetchone()
-    assert other is not None, "別の会場が1件もない（検査の条件を作れていない）"
-    seeded_db.execute(
-        "UPDATE club_seasons SET primary_venue_id = ?"
-        " WHERE club_id = ? AND season_id = ?", (str(other[0]), club_id, season_id))
-    seeded_db.execute("UPDATE games SET is_primary_venue = 1 WHERE id = ?", (game_id,))
-    seeded_db.commit()
-    context = build_context(game_id, as_of, export_sqlite(seeded_db))
-    assert feature_is_primary(context) == 0.0, "列が 1 でもマスタに従う"
-
-
-# --- スナップショットへの反映（詳細設計 4.11 の段4） ---
-
-def test_sync_snapshot_writes_the_primary_venue(
-    tmp_path: Path, seeded_db: sqlite3.Connection,
-) -> None:
-    from batch.features.dataset import export_sqlite, load_snapshot, write_snapshot
-    from batch.jobs.derive_primary_venues import sync_snapshot
-
-    snapshot = tmp_path / "snap"
-    write_snapshot(export_sqlite(seeded_db), snapshot)
-    seasons = load_snapshot(snapshot).table("club_seasons")
-    first = seasons.iloc[0]
-    venue = str(load_snapshot(snapshot).table("venues")["id"].iloc[0])
-
-    csv_path = tmp_path / "primary.csv"
-    csv_path.write_text(
-        "season_id,club_id,venue_id,games,share,source\n"
-        f"{first['season_id']},{first['club_id']},{venue},24,0.8000,\n",
-        encoding="utf-8",
-    )
-
-    assert sync_snapshot(snapshot, csv_path) == 1
-    after = load_snapshot(snapshot).table("club_seasons")
-    row = after[
-        (after["season_id"] == first["season_id"]) & (after["club_id"] == first["club_id"])
-    ].iloc[0]
-    assert str(row["primary_venue_id"]) == venue
-
-
-def test_sync_snapshot_leaves_rows_absent_from_the_csv_alone(
-    tmp_path: Path, seeded_db: sqlite3.Connection,
-) -> None:
-    """**CSV に行がない組は触らない。** 既にある値を None で上書きしない。"""
-    from batch.features.dataset import export_sqlite, load_snapshot, write_snapshot
-    from batch.jobs.derive_primary_venues import sync_snapshot
-
-    snapshot = tmp_path / "snap"
-    write_snapshot(export_sqlite(seeded_db), snapshot)
-    seasons = load_snapshot(snapshot).table("club_seasons")
-    assert len(seasons) >= 2
-    first, second = seasons.iloc[0], seasons.iloc[1]
-    venue = str(load_snapshot(snapshot).table("venues")["id"].iloc[0])
-
-    csv_path = tmp_path / "primary.csv"
-    csv_path.write_text(
-        "season_id,club_id,venue_id,games,share,source\n"
-        f"{first['season_id']},{first['club_id']},{venue},24,0.8000,\n",
-        encoding="utf-8",
-    )
-
-    sync_snapshot(snapshot, csv_path)
-    sync_snapshot(snapshot, csv_path)  # 冪等
-    after = load_snapshot(snapshot).table("club_seasons")
-    kept = after[
-        (after["season_id"] == second["season_id"]) & (after["club_id"] == second["club_id"])
-    ].iloc[0]
-    assert str(kept["primary_venue_id"]) == str(second["primary_venue_id"])
-
-
-def test_sync_snapshot_raises_on_an_empty_csv(
-    tmp_path: Path, seeded_db: sqlite3.Connection,
-) -> None:
-    """**先に導出する。** 空の CSV で全件 NULL に戻してはならない。"""
-    from batch.features.dataset import export_sqlite, write_snapshot
-    from batch.jobs.derive_primary_venues import sync_snapshot
-    from batch.masters.primary_venues import PrimaryVenueError
-
-    snapshot = tmp_path / "snap"
-    write_snapshot(export_sqlite(seeded_db), snapshot)
-    csv_path = tmp_path / "empty.csv"
-    csv_path.write_text("season_id,club_id,venue_id,games,share,source\n", encoding="utf-8")
-    with pytest.raises(PrimaryVenueError):
-        sync_snapshot(snapshot, csv_path)
+    assert "is_primary_venue" not in FEATURE_KEYS
+    assert importlib.util.find_spec("batch.features.venue") is None, (
+        "会場の特徴量が1つも無いのにモジュールが残っている")

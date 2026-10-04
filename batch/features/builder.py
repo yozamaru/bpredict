@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from batch.features import player, schedule_ctx, team_strength, venue
+from batch.features import player, schedule_ctx, team_strength
 from batch.features.base import Context, build_context
 from batch.features.constants import ELO_DEFAULT, RECENT_WINDOWS
 from batch.features.dataset import Dataset
@@ -38,10 +38,6 @@ DEFAULTS: dict[str, float] = {
     # #08: 差なので 0.0。**相手の平均 Elo なので、欠損を 1500 で埋めない**
     # （片側だけ埋めると差が偽の値になる。`_diff` が None を返す）
     "sos_diff": 0.0,
-    # #15: 本拠が分からないクラブ×シーズンは**本拠として扱う**。
-    # `games.is_primary_venue INTEGER NOT NULL DEFAULT 1`（詳細設計 1.3）と同じ既定で、
-    # 新しい値を決めていない
-    "is_primary_venue": 1.0,
     "series_game_no": 1.0,
     "prev_result_diff": 0.0,
     "prev_margin_diff": 0.0,
@@ -107,7 +103,6 @@ def build_features(
         "tov_rate_diff": _diff(context, team_strength.turnover_rate),
         "oreb_rate_diff": _diff(context, team_strength.offensive_reb_rate),
         "sos_diff": _diff(context, team_strength.strength_of_schedule),
-        "is_primary_venue": venue.is_primary_venue(context),
         "series_game_no": schedule_ctx.series_game_no(context),
         "prev_result_diff": _diff(context, schedule_ctx.previous_result),
         "prev_margin_diff": _diff(context, schedule_ctx.previous_margin),

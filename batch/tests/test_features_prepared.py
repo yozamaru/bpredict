@@ -12,7 +12,6 @@
 """
 from __future__ import annotations
 
-import sqlite3
 from datetime import UTC, datetime
 
 import pandas as pd
@@ -254,49 +253,15 @@ def test_elo_is_the_same_with_and_without_the_index(club_id: str, game_date: str
     assert indexed == scanned
 
 
-# --- 本拠会場の索引（#15。2.1.1 の「as_of に依らない前処理」） ---
+# --- 落とした索引 ---
 
-def test_primary_venue_index_matches_a_direct_read(seeded_db: sqlite3.Connection) -> None:
-    """索引が、素朴に読んだ結果と一致すること。
+def test_the_primary_venue_index_is_gone() -> None:
+    """**#15 を落としたため、索引も外した**（詳細設計 2.2）。
 
-    **索引は「いつ計算するか」だけを変える**（2.1.1）。値が変わってはならない。
+    `Prepared` は特徴量のための索引だけを持つ。使い手がいなくなった索引を残すと、
+    「何のためにあるのか」が後から分からなくなる。
     """
-    from batch.features.dataset import export_sqlite
-    from batch.features.prepared import prepare
+    from batch.features.prepared import Prepared
 
-    ds = export_sqlite(seeded_db)
-    index = prepare(ds)
-
-    seasons = ds.table("club_seasons")
-    expected_primary = {
-        (str(r["season_id"]), str(r["club_id"])): str(r["primary_venue_id"])
-        for r in seasons.to_dict("records")
-        if r["primary_venue_id"] is not None
-    }
-    assert index.primary_venues == expected_primary
-
-
-def test_primary_venue_index_skips_missing_values(seeded_db: sqlite3.Connection) -> None:
-    """**欠損は入れない。** 「分からない」と「値がある」を混ぜない。"""
-    from batch.features.dataset import export_sqlite
-    from batch.features.prepared import prepare
-
-    seeded_db.execute("UPDATE club_seasons SET primary_venue_id = NULL")
-    seeded_db.commit()
-    assert prepare(export_sqlite(seeded_db)).primary_venues == {}
-
-
-def test_primary_venue_index_is_empty_without_the_columns() -> None:
-    """列ごと無いスナップショット（古い版）でも落ちないこと。"""
-    import pandas as pd
-
-    from batch.features.dataset import Dataset
-    from batch.features.prepared import _primary_venues
-
-    assert _primary_venues(Dataset(tables={
-        "club_seasons": pd.DataFrame(columns=["club_id", "season_id"]),
-    })) == {}
-
-    # **表そのものが無い `Dataset` でも落ちない。** 手で組んだ最小のデータセットに
-    # `club_seasons` は入っていない（実際に 21件のテストが `SnapshotError` で落ちた）
-    assert _primary_venues(Dataset(tables={})) == {}
+    assert not hasattr(Prepared, "primary_venues")
+    assert "primary_venues" not in Prepared.__dataclass_fields__

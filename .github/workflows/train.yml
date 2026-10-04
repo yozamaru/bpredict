@@ -74,7 +74,9 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-      - run: pip install -r batch/requirements.txt
+      # **`requirements-dev.txt` も入れる。** リークテストを先に通すため pytest が要る
+      # （`requirements.txt` には入っていない。CI と同じ組み合わせにする）。
+      - run: pip install -r batch/requirements.txt -r batch/requirements-dev.txt
 
       # **リークテストを先に通す**（詳細設計 4.5 の `run_leakage_tests()`）。
       # 失敗したらモデル登録に到達させない（基本設計 7.2）。

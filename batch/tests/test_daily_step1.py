@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pandas as pd
 import pytest
@@ -374,3 +374,99 @@ def test_exclusions_are_merged_by_game_id(monkeypatch: pytest.MonkeyPatch) -> No
     daily_ingest._add_excluded(target, SEASON.id, [found])
     daily_ingest._add_excluded(target, SEASON.id, [found])
     assert target == {SEASON.id: [found]}
+
+
+# --- ステップ3: 照合・集計・Elo 再計算（詳細設計 4.2 のステップ3） ---
+
+
+class Outcome:
+    """`evaluate.run` の戻り値のうち、`run_settle` が読むものだけ。"""
+
+    results: ClassVar[list[Any]] = []
+    skipped: ClassVar[list[Any]] = []
+
+
+class Ratings:
+    rows = 12
+    requests = 1
+    from_date = "2026-10-04"
+    to_date = "2026-10-04"
+    notes: ClassVar[list[str]] = []
+
+
+def test_settle_runs_the_match_and_then_the_elo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**順序は「照合 → Elo」である**（詳細設計 4.2 の並びに合わせる）。"""
+    called: list[str] = []
+
+    def record(name: str, value: Any) -> Any:
+        called.append(name)
+        return value
+
+    monkeypatch.setattr(
+        daily_ingest.evaluate_job, "run", lambda **_k: record("evaluate", Outcome()))
+    monkeypatch.setattr(
+        daily_ingest.ratings_job, "run", lambda **_k: record("ratings", Ratings()))
+    status = daily_ingest.run_settle(None, log=lambda _m: None)  # type: ignore[arg-type]
+    assert (called, status) == (["evaluate", "ratings"], "SUCCESS")
+
+
+def test_the_elo_still_runs_when_the_match_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**Elo を止める方が予測に直接効く**（`elo_diff` は寄与度が最大の列）。
+
+    照合が止まるのは的中率ページが古くなるだけで、予測には効かない。
+    """
+    called: list[str] = []
+
+    def boom(**_k: object) -> Any:
+        raise daily_ingest.EvaluateError("照合対象の応答が不正")
+
+    def ran(**_k: object) -> Any:
+        called.append("ratings")
+        return Ratings()
+
+    monkeypatch.setattr(daily_ingest.evaluate_job, "run", boom)
+    monkeypatch.setattr(daily_ingest.ratings_job, "run", ran)
+    status = daily_ingest.run_settle(None, log=lambda _m: None)  # type: ignore[arg-type]
+    assert called == ["ratings"]
+    assert status == "PARTIAL"
+
+
+def test_a_failed_elo_does_not_stop_the_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**止めるより古い Elo で出す。** どちらも冪等なので翌日やり直せる。"""
+    monkeypatch.setattr(daily_ingest.evaluate_job, "run", lambda **_k: Outcome())
+
+    def boom(**_k: object) -> Any:
+        raise SnapshotError("スナップショットに games がない")
+
+    monkeypatch.setattr(daily_ingest.ratings_job, "run", boom)
+    assert daily_ingest.run_settle(
+        None, log=lambda _m: None) == "PARTIAL"  # type: ignore[arg-type]
+
+
+def test_settle_comes_before_the_inference_in_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """**推論より前に回す。** 後に回すとその日の推論が古い Elo を使う。"""
+    order: list[str] = []
+
+    def settled(*_a: object, **_k: object) -> str:
+        order.append("settle")
+        return "SUCCESS"
+
+    def loaded(_p: object) -> Dataset:
+        order.append("inference")
+        return Dataset(tables={})
+
+    monkeypatch.setattr(daily_ingest, "run_settle", settled)
+    monkeypatch.setattr(daily_ingest, "load_snapshot", loaded)
+    monkeypatch.setattr(
+        daily_ingest, "InternalApi", lambda *a, **k: FakeApi())
+    monkeypatch.setenv("API_BASE_URL", "https://example.test")
+    monkeypatch.setenv("INGEST_TOKEN", "t")
+    daily_ingest.main([
+        "--only-settle", "--only-inference", "--data", str(tmp_path)])
+    assert order[:2] == ["settle", "inference"]

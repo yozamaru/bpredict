@@ -75,6 +75,78 @@ describe('試合の取り込み', () => {
   });
 });
 
+describe('送られてこない列を NULL で上書きしない（詳細設計 3.4）', () => {
+  it('会場の座標が取り込みで消えない', async () => {
+    // **本番で実際に消えた。** 9/28〜10/4 の試合で使われた10会場の座標が
+    // ちょうど NULL に戻っていた（2026-10-05 に実測）。座標を送るのは
+    // `resolve_venue_geo` だけで、試合の取り込みは `{id, name}` しか送らない
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    const loaded = await post('/internal/games', {
+      venues: [{ id: 'v-1', name: '架空アリーナ', prefecture: '東京都', lat: 35.6, lng: 139.7 }],
+    });
+    expect(loaded.status).toBe(200);
+
+    // 試合の取り込みは座標を送らない
+    const ingest = await post('/internal/games', {
+      venues: [{ id: 'v-1', name: '架空アリーナ' }],
+      games: [{
+        id: s.gameId, seasonId: s.seasonId, league: 'PREMIER', competition: 'REGULAR',
+        gameDate: '2026-09-22', tipoffAt: '2099-01-01T10:05:00Z',
+        homeClubId: s.homeId, awayClubId: s.awayId, status: 'FINISHED', venueId: 'v-1',
+      }],
+    });
+    expect(ingest.status).toBe(200);
+
+    const row = await env.DB.prepare(
+      'SELECT prefecture, lat, lng FROM venues WHERE id = ?',
+    ).bind('v-1').first<{ prefecture: string | null; lat: number | null; lng: number | null }>();
+    expect(row).toEqual({ prefecture: '東京都', lat: 35.6, lng: 139.7 });
+  });
+
+  it('座標を送れば更新される（保護は NULL のときだけ効く）', async () => {
+    await post('/internal/games', {
+      venues: [{ id: 'v-2', name: '架空体育館', prefecture: '東京都', lat: 35.6, lng: 139.7 }],
+    });
+    await post('/internal/games', {
+      venues: [{ id: 'v-2', name: '架空体育館', prefecture: '大阪府', lat: 34.7, lng: 135.5 }],
+    });
+    const row = await env.DB.prepare('SELECT prefecture, lat FROM venues WHERE id = ?')
+      .bind('v-2').first<{ prefecture: string; lat: number }>();
+    expect(row).toEqual({ prefecture: '大阪府', lat: 34.7 });
+  });
+
+  it('本拠会場が取り込みで消えない', async () => {
+    // `derive_primary_venues` が入れた値を、試合の取り込みが消していた経路
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await post('/internal/games', {
+      venues: [{ id: 'v-3', name: '架空ドーム' }],
+      clubSeasons: [{
+        clubId: s.homeId, seasonId: s.seasonId, name: '架空ホーム',
+        shortName: '架空H', league: 'PREMIER', primaryVenueId: 'v-3',
+      }],
+    });
+    // 取り込みは本拠会場を送らない
+    await post('/internal/games', {
+      clubSeasons: [{
+        clubId: s.homeId, seasonId: s.seasonId, name: '架空ホーム',
+        shortName: '架空H', league: 'PREMIER',
+      }],
+    });
+    const row = await env.DB.prepare(
+      'SELECT primary_venue_id FROM club_seasons WHERE club_id = ? AND season_id = ?',
+    ).bind(s.homeId, s.seasonId).first<{ primary_venue_id: string | null }>();
+    expect(row?.primary_venue_id).toBe('v-3');
+  });
+
+  it('当時の名称は現在の表示名を上書きしない（既存の規約）', async () => {
+    await post('/internal/games', { venues: [{ id: 'v-4', name: '現在の名称' }] });
+    await post('/internal/games', { venues: [{ id: 'v-4', name: '当時の名称' }] });
+    const row = await env.DB.prepare('SELECT name FROM venues WHERE id = ?')
+      .bind('v-4').first<{ name: string }>();
+    expect(row?.name).toBe('現在の名称');
+  });
+});
+
 describe('スタッツの取り込み', () => {
   it('恒等式に反する行は CHECK に当たり、1行も入らない（単一 batch）', async () => {
     const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });

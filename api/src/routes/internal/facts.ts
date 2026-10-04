@@ -101,6 +101,10 @@ facts.post('/games', async (c) => {
         conflict: ['id'],
         // 名称は当時の値で上書きしない。現在の表示名は別の経路で更新する（詳細設計 1.2）
         update: ['prefecture', 'lat', 'lng'],
+        // **座標は NULL で上書きしない。** この3列を送るのは `resolve_venue_geo`
+        // だけで、試合の取り込みは `{id, name}` しか送らない。保護が無かったため
+        // **取り込みのたびに座標が消えていた**（2026-10-05 に10会場で実測）
+        preserve: ['prefecture', 'lat', 'lng'],
         extra: ["updated_at = datetime('now')"],
       }),
     ...upsertStatements(c.env.DB, 'venue_source_keys', VENUE_KEY_COLS,
@@ -112,6 +116,9 @@ facts.post('/games', async (c) => {
       players.map((p) => [p.id, p.name, p.heightCm ?? null]), {
         conflict: ['id'],
         update: ['name', 'height_cm'],
+        // 身長を送る経路はまだ無い（選手マスタは未実装）。入ったときに
+        // 取り込みが消さないよう、先に保護しておく
+        preserve: ['height_cm'],
         extra: ["updated_at = datetime('now')"],
       }),
     ...upsertStatements(c.env.DB, 'club_seasons', CLUB_SEASON_COLS,
@@ -121,6 +128,10 @@ facts.post('/games', async (c) => {
       ]), {
         conflict: ['club_id', 'season_id'],
         update: ['name', 'short_name', 'league', 'primary_venue_id', 'color_primary', 'color_secondary'],
+        // **本拠会場とチームカラーは NULL で上書きしない。** 本拠会場を送るのは
+        // `derive_primary_venues` だけ、カラーは送る経路がまだ無い。`venues` の
+        // 座標と同じ形であり、同じ保護を置く（詳細設計 3.4）
+        preserve: ['primary_venue_id', 'color_primary', 'color_secondary'],
       }),
     // upsert キーは id（公式試合ID）。延期で game_date が変わっても別レコードにならない
     ...upsertStatements(c.env.DB, 'games', GAME_COLS, gameRows, {

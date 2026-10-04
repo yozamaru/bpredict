@@ -16,7 +16,7 @@ from batch.jobs.daily_ingest import (
     NEVER_UPDATE,
     apply_to_snapshot,
     record_exclusions,
-    run_yesterday,
+    run_results,
     yesterday_jst,
 )
 from batch.jobs.game_ingest import Sent
@@ -58,12 +58,17 @@ class FakeClient:
 
 
 class FakeApi:
-    def __init__(self) -> None:
+    def __init__(self, ingested: set[str] | None = None) -> None:
         self.posted: list[tuple[str, Mapping[str, object]]] = []
+        self.ingested = ingested or set()
 
     def post(self, path: str, payload: Mapping[str, object]) -> object:
         self.posted.append((path, payload))
         return {"data": {}}
+
+    def ingested_game_ids(self, _season_id: str) -> set[str]:
+        """**既に取り込んだ試合**（`backfill` と同じ口。詳細設計 4.8）。"""
+        return self.ingested
 
 
 def wire(
@@ -72,6 +77,7 @@ def wire(
     *,
     ingest: Any = None,
     excluded: list[ExcludedGame] | None = None,
+    ingested: set[str] | None = None,
 ) -> FakeApi:
     """日程の walk と1試合ごとの取り込みを差し替える。"""
     monkeypatch.setattr(daily_ingest, "load_seasons", lambda: [SEASON])
@@ -88,7 +94,7 @@ def wire(
 
     monkeypatch.setattr(daily_ingest, "_collect", collect)
 
-    api = FakeApi()
+    api = FakeApi(ingested)
     sent = Sent(games={"games": [{"id": "x"}]}, stats={"teamGameStats": []})
     monkeypatch.setattr(
         daily_ingest, "ingest_game", ingest or (lambda *a, **k: sent))
@@ -106,10 +112,15 @@ def test_yesterday_is_the_jst_calendar_day() -> None:
     assert yesterday_jst(datetime(2026, 10, 4, 14, 55, tzinfo=UTC)) == "2026-10-03"
 
 
-def test_only_yesterdays_finished_games_are_ingested(
+def test_the_window_is_yesterday_and_today(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """**開幕から辿るため、他の日の試合が必ず出る。** 数えるだけで取り込まない。"""
+    """**当日も取る**（v1.97）。
+
+    前日だけだと、14:05 に始まって16時過ぎに終わった試合が**翌朝06:00 まで
+    取り込まれない** — 的中の記録が最大14時間遅れる。
+    **開幕から辿るため、窓の外の試合が必ず出る**（数えるだけで取り込まない）。
+    """
     taken: list[str] = []
 
     def ingest(_c: object, _a: object, g: ScheduleGame, **_k: object) -> Sent:
@@ -120,26 +131,47 @@ def test_only_yesterdays_finished_games_are_ingested(
         game("old", "2026-10-01"),
         game("yes", YESTERDAY),
         game("today", "2026-10-05"),
+        game("future", "2026-10-06"),
     ], ingest=ingest)
-    result = run_yesterday(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
-    assert taken == ["yes"]
-    assert result.ingested == 1
-    assert result.other_days == 2
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    assert taken == ["yes", "today"]
+    assert (result.ingested, result.other_days) == (2, 2)
 
 
-def test_an_unfinished_game_on_yesterday_is_counted_not_ingested(
+def test_an_already_ingested_game_is_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**1日4回回すため、飛ばさないと同じ試合を4回書き直す**（1試合118.6行）。
+
+    判定は `backfill` と同じ口で、「スタッツまで入っているか」を見る（4.8）。
+    """
+    taken: list[str] = []
+
+    def ingest(_c: object, _a: object, g: ScheduleGame, **_k: object) -> Sent:
+        taken.append(g.game_id)
+        return Sent(games={}, stats={})
+
+    api = wire(
+        monkeypatch, [game("done", YESTERDAY), game("new", YESTERDAY)],
+        ingest=ingest, ingested={"done"})
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    assert taken == ["new"]
+    assert (result.ingested, result.already) == (1, 1)
+
+
+def test_an_unfinished_game_in_the_window_is_counted_not_ingested(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """延期・中止・開始前はステップ1b が状態として入れる。**ここでは取らない。**"""
     api = wire(monkeypatch, [game("post", YESTERDAY, status="POSTPONED")])
-    result = run_yesterday(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
     assert (result.ingested, result.unfinished) == (0, 1)
 
 
-def test_no_games_yesterday_is_a_success(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_games_in_the_window_is_a_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """**オフシーズンでも落ちない。** 取得を1回も行わずに SUCCESS で終わる。"""
     api = wire(monkeypatch, [])
-    result = run_yesterday(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
     assert (result.status, result.ingested) == ("SUCCESS", 0)
 
 
@@ -160,7 +192,7 @@ def test_a_failed_fetch_is_counted_apart_from_invalid_data(
 
     api = wire(monkeypatch, [game("a", YESTERDAY), game("b", YESTERDAY)],
                ingest=ingest)
-    result = run_yesterday(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
     assert (result.unfetched, result.invalid) == (1, 1)
     # **件数だけでなく試合IDと理由を出す**（詳細設計 4.4）
     assert [row[0] for row in result.skipped] == ["a", "b"]
@@ -175,7 +207,7 @@ def test_three_consecutive_failures_stop_the_fetch(
 
     api = wire(
         monkeypatch, [game(str(i), YESTERDAY) for i in range(5)], ingest=ingest)
-    result = run_yesterday(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
     assert result.status == "PARTIAL"
     assert result.unfetched == 3          # 4件目には進まない
 
@@ -189,7 +221,7 @@ def test_a_validation_error_does_not_count_toward_the_streak(
 
     api = wire(
         monkeypatch, [game(str(i), YESTERDAY) for i in range(5)], ingest=ingest)
-    result = run_yesterday(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
     assert (result.status, result.invalid) == ("SUCCESS", 5)
 
 
@@ -207,7 +239,7 @@ def test_the_exclusion_list_is_kept(
         away_name="架空タ", home_score="0", away_score="20",
         reason="状態欄が空で得点がある（不戦敗の形）")
     api = wire(monkeypatch, [game("yes", YESTERDAY)], excluded=[found])
-    result = run_yesterday(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
+    result = run_results(FakeClient(), api, now=NOW)  # type: ignore[arg-type]
     # **試合IDで重ねる。** 同じ試合が `event=3` と `event=2` の両方に現れるため、
     # 素朴に足すと件数が二重になる（日程は区分ごとに2回辿る）
     assert result.excluded == {SEASON.id: [found]}
@@ -391,6 +423,7 @@ class Ratings:
     requests = 1
     from_date = "2026-10-04"
     to_date = "2026-10-04"
+    unchanged = False
     notes: ClassVar[list[str]] = []
 
 
@@ -470,3 +503,28 @@ def test_settle_comes_before_the_inference_in_main(
     daily_ingest.main([
         "--only-settle", "--only-inference", "--data", str(tmp_path)])
     assert order[:2] == ["settle", "inference"]
+
+
+# --- 推論の対象から開始直前を外す（設計 4.1） ---
+
+
+def test_a_game_starting_within_thirty_minutes_is_not_predicted() -> None:
+    """**cron の遅延と推論の所要時間で開始を跨ぐ**ため、開始直前は外す。
+
+    過ぎた試合に書くと API が 409 を返す（詳細設計 3.4 の関門3）。
+    """
+    games = pd.DataFrame([
+        {"id": "soon", "season_id": "s", "status": "SCHEDULED",
+         "game_date": "2026-10-05", "tipoff_at": "2026-10-05T12:20:00Z"},
+        {"id": "later", "season_id": "s", "status": "SCHEDULED",
+         "game_date": "2026-10-05", "tipoff_at": "2026-10-05T12:40:00Z"},
+    ])
+    picked = daily_ingest.upcoming_for_inference(
+        Dataset(tables={"games": games}), "2026-10-05", "2026-10-12",
+        "2026-10-05T12:00:00Z")
+    assert [row[0] for row in picked] == ["later"]
+
+
+def test_the_margin_is_thirty_minutes() -> None:
+    """設計 4.1 の値をそのまま使う。**勝手に変えない。**"""
+    assert daily_ingest.INFERENCE_MARGIN_MINUTES == 30

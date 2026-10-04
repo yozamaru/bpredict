@@ -1,12 +1,12 @@
 """日次の取り込み（詳細設計 4.2 / 基本設計 4.2）。
 
 **段階的に作っている。** 設計は12ステップを定めるが、いま実装してあるのは
-**未実施の試合の取り込み（1b）と推論（4）**である。残りは順に足す。
+**結果の取得（1）・未実施の試合（1b）・照合と Elo（3）・推論（4）・静的JSON（5）**である。
 
 | ステップ | 実装 |
 |---|---|
 | 0. robots / 利用規約のハッシュ照合 | **あり** |
-| **1. 前日の結果取得** | **あり**（`--only-yesterday`。1試合ごとの取り込みは `backfill` と共有する） |
+| **1. 結果の取得（前日と当日）** | **あり**（`--only-results`。1試合ごとの取り込みは `backfill` と共有する） |
 | **1b. 未実施の試合の取り込み** | **あり**（`--only-upcoming`） |
 | **2. スナップショット更新** | **あり**（1b が送った行を同じ本文から写す） |
 | **3. 照合・集計・Elo** | **あり**（`--only-settle`。`batch.jobs.evaluate` と `recompute_ratings` を呼ぶ） |
@@ -329,8 +329,10 @@ class Finished:
 
     status: str = "SUCCESS"
     ingested: int = 0
-    #: 前日ではなかった試合（正常。開幕から辿るため必ず出る）
+    #: 窓の外だった試合（正常。開幕から辿るため必ず出る）
     other_days: int = 0
+    #: 既に取り込んであった試合（**飛ばさないと1日4回書き直す**）
+    already: int = 0
     #: 前日だが終了していない試合（延期・中止・開始前）
     unfinished: int = 0
     #: 対象外（選抜チーム・海外クラブ・大会区分の食い違い）
@@ -363,12 +365,18 @@ def yesterday_jst(now: datetime | None = None) -> str:
     return (moment - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
-def run_yesterday(
+def run_results(
     client: RateLimitedClient, api: InternalApi, *,
     snapshot: Path | None = None, now: datetime | None = None,
     log: Callable[[str], None] = print,
 ) -> Finished:
-    """ステップ1。前日の終了した試合を取り込み、スナップショットにも写す。
+    """ステップ1。`[前日, 当日]`（JST）の終了した試合を取り込み、スナップショットにも写す。
+
+    **当日も見る**（v1.97）。前日だけだと、14:05 に始まって16時過ぎに終わった試合が
+    **翌朝06:00 まで取り込まれない** — 的中の記録が最大14時間遅れる。
+
+    **既に取り込んだ試合は飛ばす**（`backfill` と同じ判定。4.8）。飛ばさないと
+    同じ試合を1日4回書き直す（1試合118.6行）。
 
     **ステップ1b と日程の walk を共有しない。** 止める日付が違うだけだが、
     429 で片方が中止されてももう片方は続けるという 4.3 の方針を保つには、
@@ -382,16 +390,19 @@ def run_yesterday(
         terms_reporter=report_terms_change(os.environ.get("SCRAPER_TERMS_SHA256", "")),
     )
     result = Finished()
-    day = yesterday_jst(now)
+    start, end = yesterday_jst(now), jst_today(now)
     club_ids = {row.source_id: row.club_id for row in load_club_source_ids()}
     tracker = ParseFailureTracker()
     bodies: list[Mapping[str, object]] = []
 
-    for season in seasons_of(day, day, load_seasons()):
+    for season in seasons_of(start, end, load_seasons()):
         result.seasons.append(season.id)
-        collected, short_names = _collect_finished(client, season, result, through=day)
+        collected, short_names = _collect_finished(client, season, result, through=end)
         if collected is None:
             return _mirror(result, snapshot, bodies, log)
+        # **既に取り込んだ試合を飛ばす**（`backfill` と同じ口。4.8）。
+        # 「スタッツまで入っているか」を見るため、試合行だけ残った状態も拾える
+        done = api.ingested_game_ids(season.id)
 
         # **連戦番号はシーズン全体から導く**（`series_numbers` は前日までを見る）。
         # 前日だけで数えると全試合が1戦目になる
@@ -402,12 +413,15 @@ def run_yesterday(
         reference = SeasonRef(season.id, season.label, season.league)
 
         for game, event in collected:
-            if game.game_date != day:
+            if not (start <= game.game_date <= end):
                 result.other_days += 1
                 continue
             if game.status != "FINISHED":
                 # 延期・中止・開始前。ステップ1b が `games` に状態として入れる
                 result.unfinished += 1
+                continue
+            if game.game_id in done:
+                result.already += 1
                 continue
             try:
                 sent = ingest_game(
@@ -642,11 +656,15 @@ def run_settle(
         status = "PARTIAL"
 
     try:
-        ratings = ratings_job.run(api=api, snapshot_dir=snapshot)
+        # **食い違う日付以降だけを D1 へ送る**（詳細設計 4.2 のステップ3）。
+        # 毎回全期間（12,584行）を送ると、書き込み枠の12.6%を Elo だけで使う
+        # — 1日4回回すと50%になる
+        ratings = ratings_job.run(api=api, snapshot_dir=snapshot, only_changed=True)
         log(
             f"daily_ingest: Elo を再計算した（{ratings.rows}行"
             f" / 送った {ratings.requests}リクエスト"
-            f" / {ratings.from_date or '—'}〜{ratings.to_date or '—'}）"
+            f" / {ratings.from_date or '—'}〜{ratings.to_date or '—'}"
+            f"{' / 保存済みと一致' if ratings.unchanged else ''}）"
         )
         for note in ratings.notes:
             log(f"  - {note}")
@@ -676,6 +694,18 @@ class InferenceResult:
     written: int = 0
 
 
+#: 推論の対象から外す余裕（分。設計 4.1 の `tipoff > now + 30分`）。
+#: **cron の遅延と推論の所要時間で開始を跨ぐ**ため、開始直前の試合は外す。
+INFERENCE_MARGIN_MINUTES = 30
+
+
+def _plus_minutes(moment: str, minutes: int) -> str:
+    """ISO 8601（UTC）の文字列に分を足す。**文字列の比較に使うため同じ書式で返す。**"""
+    parsed = datetime.fromisoformat(moment).astimezone(UTC)
+    return (parsed + timedelta(minutes=minutes)).isoformat(
+        timespec="seconds").replace("+00:00", "Z")
+
+
 def upcoming_for_inference(
     ds: Dataset, start: str, end: str, now: str,
 ) -> list[tuple[str, str, str]]:
@@ -685,15 +715,20 @@ def upcoming_for_inference(
     （ステップ1b）、予測は作らない — 中止試合の予測は `VOID` として母数から
     外れるだけで、作る意味がない（詳細設計 4.2）。
 
-    **`tipoff_at > now` で絞る。** 過ぎた試合に書くと API が 409 を返す（3.4 の
-    関門3）。ここで落としておけば、通常の運用では 409 を受けない。
+    **`tipoff_at > now + 30分` で絞る**（設計 4.1）。過ぎた試合に書くと API が 409 を
+    返す（3.4 の関門3）。開始直前の試合も外すのは、**cron の遅延と推論の所要時間で
+    開始を跨ぐ**ことがあるためである。
+
+    **1日4回のすべてで同じ余裕を使う**（4.2）。06:00 の実行では最も早い開始時刻が
+    8時間後であり、この余裕は実際には効かない — **同じ規約を2つ持たない**方を採る。
     """
     games = ds.table("games")
+    margin = _plus_minutes(now, INFERENCE_MARGIN_MINUTES)
     picked = games[
         (games["status"] == "SCHEDULED")
         & (games["game_date"] >= start)
         & (games["game_date"] <= end)
-        & (games["tipoff_at"] > now)
+        & (games["tipoff_at"] > margin)
     ].sort_values(["tipoff_at", "id"])
     return [
         (str(row.id), str(row.season_id), str(row.tipoff_at))
@@ -874,8 +909,8 @@ def _client() -> RateLimitedClient:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="日次の取り込み（詳細設計 4.2）")
     parser.add_argument(
-        "--only-yesterday", action="store_true",
-        help="前日の結果取得（ステップ1 と2）を行う")
+        "--only-results", action="store_true",
+        help="結果の取得（ステップ1 と2）を行う。窓は [前日, 当日]（JST）")
     parser.add_argument(
         "--only-upcoming", action="store_true",
         help="未実施の試合の取り込み（ステップ1b）を行う")
@@ -893,10 +928,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # **どのステップを行うかを必ず明示させる。** 既定の動作を持たせない —
     # 全ステップが揃うまで「回したつもりで半分しか動いていない」が起きる
-    if not (args.only_yesterday or args.only_upcoming or args.only_settle
+    if not (args.only_results or args.only_upcoming or args.only_settle
             or args.only_inference):
         parser.error(
-            "--only-yesterday / --only-upcoming / --only-settle / "
+            "--only-results / --only-upcoming / --only-settle / "
             "--only-inference のいずれかを指定する")
 
     api = InternalApi(
@@ -908,10 +943,10 @@ def main(argv: list[str] | None = None) -> int:
     status = "SUCCESS"
     rows = 0
 
-    if args.only_yesterday:
+    if args.only_results:
         client = _client()
         try:
-            finished = run_yesterday(client, api, snapshot=args.snapshot)
+            finished = run_results(client, api, snapshot=args.snapshot)
         except PolicyError:
             print("daily_ingest: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
             return 1
@@ -928,8 +963,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         print(
-            f"daily_ingest: 前日={yesterday_jst()} 取り込み={finished.ingested}"
-            f" 他の日={finished.other_days} 未終了={finished.unfinished}"
+            f"daily_ingest: 結果 {yesterday_jst()}〜{jst_today()}"
+            f" 取り込み={finished.ingested} 既取得={finished.already}"
+            f" 窓の外={finished.other_days} 未終了={finished.unfinished}"
             f" 非リーグ戦={finished.non_league} 不正={finished.invalid}"
             f" 取得失敗={finished.unfetched} 日付不明={finished.skipped_undated}"
             f" 状態不明={finished.skipped_unresolved}"

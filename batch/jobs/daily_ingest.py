@@ -8,7 +8,7 @@
 | 0. robots / 利用規約のハッシュ照合 | **あり** |
 | 1. 前日の結果取得 | まだ（`backfill` が同じ処理を持つ） |
 | **1b. 未実施の試合の取り込み** | **あり**（`--only-upcoming`） |
-| 2. スナップショット更新 | まだ |
+| **2. スナップショット更新** | **あり**（1b が送った行を同じ本文から写す） |
 | 3. 照合・集計・Elo | まだ（`batch.jobs.evaluate` / `recompute_ratings` が別に持つ） |
 | **4. 推論** | **あり**（`--only-inference`） |
 | 5. 静的JSON の書き出し | まだ（`batch.static_json` が別に持つ） |
@@ -38,8 +38,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+import pandas as pd
+
 from batch.features.builder import FEATURE_KEYS, build_features
-from batch.features.dataset import Dataset, SnapshotError, load_snapshot
+from batch.features.dataset import (
+    Dataset,
+    SnapshotError,
+    load_snapshot,
+    write_snapshot,
+)
 from batch.features.prepared import prepare
 from batch.jobs.schedule_walk import walk_schedule
 from batch.jobs.seed_master import Season, load_club_source_ids, load_seasons
@@ -49,6 +56,7 @@ from batch.loader.payload import (
     SeasonRef,
     prediction_payload,
     series_numbers,
+    snapshot_rows,
     upcoming_games_payload,
 )
 from batch.model.dataset import as_of
@@ -95,6 +103,8 @@ class Result:
     club_options: int = 0
     unmatched_clubs: list[str] = field(default_factory=list)
     seasons: list[str] = field(default_factory=list)
+    #: ステップ2 で書いた行数（テーブルごと）
+    snapshot_rows: dict[str, int] = field(default_factory=dict)
 
 
 def jst_today(now: datetime | None = None) -> str:
@@ -205,29 +215,41 @@ def send(
     season: Season,
     club_ids: Mapping[str, str],
     fetched_at: str,
+    collect: list[Mapping[str, object]] | None = None,
 ) -> int:
-    """`POST /internal/games` で送る。**1リクエストの行数上限を守る**（詳細設計 3.4）。"""
+    """`POST /internal/games` で送る。**1リクエストの行数上限を守る**（詳細設計 3.4）。
+
+    `collect` を渡すと、送った本文をそこに積む。**ステップ2がそれを
+    スナップショットへ写す** — 同じ値であることが要点である（基本設計 2.2）。
+    """
     if not games:
         return 0
     series = series_numbers(
         [(g.game_id, g.game_date, g.home_name, g.away_name) for g in games])
     reference = SeasonRef(season.id, season.label, season.league)
     for begin in range(0, len(games), ROWS_PER_REQUEST):
-        api.post(
-            "games",
-            upcoming_games_payload(
-                games[begin:begin + ROWS_PER_REQUEST],
-                season=reference,
-                club_ids=club_ids,
-                series_game_no=series,
-                fetched_at=fetched_at,
-            ),
+        body = upcoming_games_payload(
+            games[begin:begin + ROWS_PER_REQUEST],
+            season=reference,
+            club_ids=club_ids,
+            series_game_no=series,
+            fetched_at=fetched_at,
         )
+        api.post("games", body)
+        if collect is not None:
+            collect.append(body)
     return len(games)
 
 
-def run_upcoming(client: RateLimitedClient, api: InternalApi) -> Result:
-    """ステップ1b。**取得前に robots と利用規約を照合する**（絶対ルール6）。"""
+def run_upcoming(
+    client: RateLimitedClient, api: InternalApi, *,
+    snapshot: Path | None = None, log: Callable[[str], None] = print,
+) -> Result:
+    """ステップ1b と2。**取得前に robots と利用規約を照合する**（絶対ルール6）。
+
+    `snapshot` を渡すと、送ったのと同じ行を**スナップショットにも書く**
+    （ステップ2。基本設計 2.2）。**渡さないと推論が未実施の試合を見られない。**
+    """
     client.verify_policy(
         terms_reporter=report_terms_change(os.environ.get("SCRAPER_TERMS_SHA256", "")),
     )
@@ -236,12 +258,74 @@ def run_upcoming(client: RateLimitedClient, api: InternalApi) -> Result:
     club_ids = {row.source_id: row.club_id for row in load_club_source_ids()}
     fetched_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
+    bodies: list[Mapping[str, object]] = []
     for season in seasons_of(start, end, load_seasons()):
         result.seasons.append(season.id)
         games = pick_upcoming(list(_collect(client, season, result)), start, end, result)
         result.ingested += send(
-            api, games, season=season, club_ids=club_ids, fetched_at=fetched_at)
+            api, games, season=season, club_ids=club_ids, fetched_at=fetched_at,
+            collect=bodies)
+
+    # --- ステップ2。**D1 に送ったのと同じ本文から写す** ---
+    if snapshot is not None and bodies:
+        ds = load_snapshot(snapshot)
+        written: dict[str, int] = {}
+        for body in bodies:
+            for table, count in apply_to_snapshot(ds, snapshot_rows(body)).items():
+                written[table] = written.get(table, 0) + count
+        write_snapshot(ds, snapshot, tables=UPCOMING_TABLES)
+        result.snapshot_rows = written
+        log(f"daily_ingest: スナップショットを更新した（{written}）")
     return result
+
+
+# --- ステップ2: スナップショット更新（詳細設計 4.2 のステップ2） ---
+
+#: ステップ1b が触るテーブル。**書き直すのはこの2つだけ**（基本設計 2.2 の部分書き出し）。
+UPCOMING_TABLES = ("games", "team_games")
+
+#: 行の同一性。**公式試合IDが主キーである**（詳細設計 1.3 / `team_games` は 1.3 の PK）。
+KEYS: Mapping[str, tuple[str, ...]] = {
+    "games": ("id",),
+    "team_games": ("club_id", "game_date", "game_id"),
+}
+
+
+def apply_to_snapshot(
+    ds: Dataset, rows: Mapping[str, list[dict[str, object]]],
+) -> dict[str, int]:
+    """送った行をスナップショットに upsert する。**D1 に送ったのと同じ値を書く。**
+
+    **これが無いと推論が未実施の試合を見られない。** 推論の入力はスナップショット
+    だけであり（絶対ルール3）、D1 にだけ書くと「取り込んだのに予測が作られない」
+    状態になる（基本設計 2.2 が座標140件で踏んだのと同じ形）。
+
+    **主キーで置き換える**（延期で `game_date` が変わっても別レコードにならない。
+    詳細設計 1.3）。返すのは書いた行数。
+    """
+    written: dict[str, int] = {}
+    for table, incoming in rows.items():
+        if not incoming:
+            continue
+        if table not in KEYS:
+            raise SnapshotError(f"スナップショットへの写し方が未定のテーブル: {table}")
+        current = ds.table(table)
+        frame = pd.DataFrame(incoming)
+        missing = sorted(set(frame.columns) - set(current.columns))
+        if missing:
+            raise SnapshotError(f"{table} にない列を書こうとした: {missing}")
+        keys = list(KEYS[table])
+        index = {
+            tuple(str(row[k]) for k in keys)
+            for row in frame[keys].to_dict(orient="records")
+        }
+        kept = current[~current[keys].astype(str).agg(tuple, axis=1).isin(index)] \
+            if not current.empty else current
+        ds.tables[table] = pd.concat([kept, frame], ignore_index=True)[
+            list(current.columns)
+        ]
+        written[table] = len(frame)
+    return written
 
 
 # --- ステップ4: 推論（詳細設計 4.2 の「推論（ステップ4）」） ---
@@ -449,7 +533,7 @@ def main(argv: list[str] | None = None) -> int:
             terms_sha256=os.environ.get("SCRAPER_TERMS_SHA256") or None,
         )
         try:
-            result = run_upcoming(client, api)
+            result = run_upcoming(client, api, snapshot=args.snapshot)
         except PolicyError:
             print("daily_ingest: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
             return 1
@@ -473,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
             f" 終了済み={result.finished} 日付不明={result.skipped_undated}"
             f" 状態不明={result.skipped_unresolved}"
             f" クラブ一覧={result.club_options} シーズン={','.join(result.seasons) or 'なし'}"
+            f" スナップショット={result.snapshot_rows or 'なし'}"
         )
         if result.unmatched_clubs:
             print(f"  クラブ一覧にない相手: {' / '.join(result.unmatched_clubs)}")

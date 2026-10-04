@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -336,3 +337,50 @@ def prediction_payload(
             for model_type, version in model_versions.items()
         ],
     }
+
+
+#: `POST /internal/games` の本文のキー → スナップショットの列（詳細設計 4.2 のステップ2）。
+#: **本文から作る。** 別に組むと、片方だけ直したときに D1 とスナップショットが
+#: 食い違う（基本設計 2.2「D1 を更新するジョブは同じ値をスナップショットにも書く」）。
+_SNAKE = re.compile(r"(?<!^)(?=[A-Z])")
+
+#: DDL の DEFAULT を写す列（詳細設計 1.3）。**D1 が入れる値をこちらでも入れる。**
+#: `created_at` / `updated_at` は写さない — **D1 が自分の時計と書式で入れる**ため、
+#: こちらの値を書くと「D1 が記録していない時刻」を主張することになる。
+#: 次の全体再構築（8.1 手順6）で D1 の値に揃う。
+SNAPSHOT_DEFAULTS: dict[str, object] = {
+    "is_primary_venue": 1,
+    "result_revision": 0,
+    "rescheduled_to": None,
+}
+
+
+def _snake(key: str) -> str:
+    return _SNAKE.sub("_", key).lower()
+
+
+def snapshot_rows(payload: Mapping[str, object]) -> dict[str, list[dict[str, object]]]:
+    """`POST /internal/games` の本文を、スナップショットの行に写す。
+
+    **キーの変換だけを行う**（camelCase → snake_case）。値は触らない —
+    「D1 に送ったのと同じ値」であることが要点である（詳細設計 4.2 のステップ2）。
+
+    返すのは `{"games": [...], "team_games": [...]}` の形で、本文に無い配列は
+    返さない。`games` には DDL の DEFAULT を持つ列を足す（`SNAPSHOT_DEFAULTS`）。
+    """
+    tables = {"games": "games", "teamGames": "team_games"}
+    out: dict[str, list[dict[str, object]]] = {}
+    for key, table in tables.items():
+        rows = payload.get(key)
+        if not isinstance(rows, list) or not rows:
+            continue
+        written: list[dict[str, object]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise PayloadError("本文の行が辞書でない")
+            converted = {_snake(k): v for k, v in row.items()}
+            if table == "games":
+                converted = {**SNAPSHOT_DEFAULTS, **converted}
+            written.append(converted)
+        out[table] = written
+    return out

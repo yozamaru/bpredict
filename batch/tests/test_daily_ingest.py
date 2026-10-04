@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,7 +24,7 @@ from typing import ClassVar
 import pandas as pd
 import pytest
 
-from batch.features.dataset import Dataset
+from batch.features.dataset import Dataset, SnapshotError
 from batch.jobs import daily_ingest
 from batch.jobs.daily_ingest import (
     ROWS_PER_REQUEST,
@@ -40,6 +41,11 @@ from batch.jobs.daily_ingest import (
 )
 from batch.jobs.seed_master import Season
 from batch.loader.api import RejectedError
+from batch.loader.payload import (
+    SeasonRef,
+    snapshot_rows,
+    upcoming_games_payload,
+)
 from batch.model.predict import Prediction
 from batch.parser.schedule_parser import ScheduleGame
 from batch.static_json.from_snapshot import PredictedGame
@@ -59,6 +65,7 @@ class FakeModels:
 
 SEASON = Season("2026-27-PREMIER", "2026-27", "PREMIER", "2026-09-01", "2027-06-30")
 PREVIOUS = Season("2025-26-B1", "2025-26", "B1", "2025-09-01", "2026-06-30")
+SEASON_REF = SeasonRef(SEASON.id, SEASON.label, SEASON.league)
 
 
 def game(game_id: str, game_date: str, status: str = "SCHEDULED") -> ScheduleGame:
@@ -218,10 +225,23 @@ def test_only_upcoming_is_required() -> None:
 
 # --- ステップ4: 推論 ---
 
+#: `games` の全列（DDL の順。詳細設計 1.3）。**部分集合にしない** —
+#: ステップ2 は「スナップショットに無い列を書こうとしたら落とす」ため、
+#: 列を削ると本物では通る操作がテストでだけ落ちる。
+GAME_COLUMNS = (
+    "id", "season_id", "league", "competition", "game_date", "tipoff_at",
+    "finished_at", "finished_at_is_estimated", "home_club_id", "away_club_id",
+    "venue_id", "venue_name_at_game", "is_primary_venue", "series_game_no",
+    "status", "rescheduled_to", "home_score", "away_score", "attendance",
+    "spectator_restricted", "result_revision", "source_url", "fetched_at",
+    "created_at", "updated_at",
+)
+
+
 def snapshot_dataset(
     *, status: str = "SCHEDULED", game_date: str = "2026-10-06",
 ) -> Dataset:
-    """推論の対象を引くのに必要な列だけを持つ最小のスナップショット。"""
+    """推論とステップ2 に必要な列を持つスナップショット。"""
     games = pd.DataFrame([
         # 終了した試合（`data_as_of` の出どころ）
         {"id": "past", "season_id": "2026-27-PREMIER", "status": "FINISHED",
@@ -241,7 +261,15 @@ def snapshot_dataset(
         {"id": "703", "slug": "club-703", "name": "架空ブ"},
         {"id": "704", "slug": "club-704", "name": "架空タ"},
     ])
-    return Dataset(tables={"games": games, "clubs": clubs})
+    for column in GAME_COLUMNS:
+        if column not in games.columns:
+            games[column] = None
+    games = games[list(GAME_COLUMNS)]
+    team_games = pd.DataFrame(
+        columns=["game_id", "club_id", "opponent_id", "season_id", "game_date",
+                 "finished_at", "is_home", "competition", "result", "margin"])
+    return Dataset(tables={
+        "games": games, "clubs": clubs, "team_games": team_games})
 
 
 def test_only_scheduled_games_are_predicted() -> None:
@@ -492,3 +520,71 @@ def test_written_files_satisfy_the_contract(tmp_path: Path) -> None:
             assert any(path.startswith(o) for o in out), \
                 f"{name}: {path} が消えているが畳まれた祖先が無い"
         assert nulls <= out
+
+
+# --- ステップ2: スナップショット更新 ---
+
+def test_the_sent_rows_are_written_to_the_snapshot() -> None:
+    """**D1 に送ったのと同じ本文から写す**（基本設計 2.2）。
+
+    これが無いと**推論が未実施の試合を見られない** — 推論の入力はスナップショット
+    だけであり（絶対ルール3）、D1 にだけ書くと「取り込んだのに予測が作られない」
+    状態になる。座標140件で踏んだのと同じ形である。
+    """
+    ds = snapshot_dataset()
+    body = upcoming_games_payload(
+        [game("new-1", "2026-10-07")], season=SEASON_REF,
+        club_ids={"703": "703", "704": "704"},
+        series_game_no={"new-1": 1}, fetched_at="2026-10-05T00:00:00Z")
+    written = daily_ingest.apply_to_snapshot(ds, snapshot_rows(body))
+    assert written == {"games": 1, "team_games": 2}
+    games = ds.table("games")
+    assert "new-1" in set(games["id"])
+    row = games[games["id"] == "new-1"].iloc[0]
+    assert row["status"] == "SCHEDULED"
+    assert row["tipoff_at"] == "2026-10-07T10:05:00Z"
+    # **DDL の DEFAULT を写す**（D1 が入れる値をこちらでも入れる）
+    assert int(row["is_primary_venue"]) == 1
+    assert int(row["result_revision"]) == 0
+
+
+def test_the_upsert_replaces_by_primary_key() -> None:
+    """**主キーで置き換える。** 2回流して行が増えないこと（冪等。詳細設計 4.4）。"""
+    ds = snapshot_dataset()
+    before = len(ds.table("games"))
+    body = upcoming_games_payload(
+        [game("g1", "2026-10-06")], season=SEASON_REF,
+        club_ids={"703": "703", "704": "704"},
+        series_game_no={"g1": 1}, fetched_at="2026-10-05T00:00:00Z")
+    daily_ingest.apply_to_snapshot(ds, snapshot_rows(body))
+    daily_ingest.apply_to_snapshot(ds, snapshot_rows(body))
+    assert len(ds.table("games")) == before
+
+
+def test_a_column_that_does_not_exist_is_rejected() -> None:
+    """スナップショットに無い列を書こうとしたら落とす。
+
+    **黙って列を増やさない** — `write_snapshot` が書いた parquet の列が変わると、
+    次に読む側（特徴量・学習）が気づかないまま別の形を受け取る。
+    """
+    ds = snapshot_dataset()
+    with pytest.raises(SnapshotError):
+        daily_ingest.apply_to_snapshot(ds, {"games": [{"id": "x", "unknown": 1}]})
+
+
+def test_an_unknown_table_is_rejected() -> None:
+    """写し方（主キー）が未定のテーブルは落とす。"""
+    ds = snapshot_dataset()
+    with pytest.raises(SnapshotError):
+        daily_ingest.apply_to_snapshot(ds, {"venues": [{"id": "x"}]})
+
+
+def test_game_columns_match_the_ddl(db: sqlite3.Connection) -> None:
+    """`GAME_COLUMNS` が DDL と一致すること。**二重管理を検査で止める。**
+
+    `batch_limits` を DDL と突き合わせているのと同じ理由である（詳細設計 3.4）。
+    列を1つ足したときにこの一覧だけが古いまま残ると、**本物では通る操作が
+    テストでだけ落ちる**（あるいはその逆）。
+    """
+    actual = [row[1] for row in db.execute("PRAGMA table_info(games)")]
+    assert list(GAME_COLUMNS) == actual

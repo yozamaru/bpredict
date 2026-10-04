@@ -195,3 +195,94 @@ def test_minutes_lost_grows_when_a_regular_is_out(seeded_db: sqlite3.Connection)
     assert after is not None
     assert after > before
 
+
+
+# --- #08 SOS（詳細設計 2.2 の `sos_diff`・検証区分） ---
+
+def test_sos_is_the_mean_of_opponent_elo(seeded_db: sqlite3.Connection) -> None:
+    """**当季に対戦した相手の、対象試合日の直前の Elo の平均**であること。
+
+    窓と Elo の時点は既にあるものに合わせてある（詳細設計 2.2）。ここでは
+    「その2つの組み合わせ」が実装どおりかを、独立に数え直して確かめる。
+    """
+    from batch.features.team_strength import strength_of_schedule
+
+    game_id, as_of = _game(seeded_db, "DESC")
+    context = build_context(game_id, as_of, export_sqlite(seeded_db))
+    club_id = context.home_club_id
+
+    history = context.club_history(club_id, season_only=True)
+    assert not history.empty, "当季の過去試合がある試合を選べていない"
+    expected = [elo(context, str(o)) for o in history["opponent_id"]]
+    known = [e for e in expected if e is not None]
+    assert known, "相手の Elo が1件も引けない"
+
+    assert strength_of_schedule(context, club_id) == sum(known) / len(known)
+
+
+def test_sos_uses_the_season_window(seeded_db: sqlite3.Connection) -> None:
+    """**前季の相手を混ぜない**（`margin_season` と同じ窓）。"""
+    from batch.features.team_strength import strength_of_schedule
+
+    game_id, as_of = _game(seeded_db, "DESC")
+    context = build_context(game_id, as_of, export_sqlite(seeded_db))
+    club_id = context.home_club_id
+
+    season = context.club_history(club_id, season_only=True)
+    everything = context.club_history(club_id, season_only=False)
+    assert len(everything) > len(season), "シーズンを跨ぐ履歴がある試合を選べていない"
+
+    value = strength_of_schedule(context, club_id)
+    across = [elo(context, str(o)) for o in everything["opponent_id"]]
+    across_known = [e for e in across if e is not None]
+    assert value != sum(across_known) / len(across_known)
+
+
+def test_sos_is_none_without_a_game_this_season(seeded_db: sqlite3.Connection) -> None:
+    """**開幕戦は None**（関数内で 1500 を埋めない。規約5）。"""
+    from batch.features.team_strength import strength_of_schedule
+
+    row = seeded_db.execute(
+        "SELECT t.club_id, t.game_id FROM team_games t JOIN games g ON g.id = t.game_id"
+        " WHERE g.status = 'FINISHED' ORDER BY g.game_date ASC LIMIT 1").fetchone()
+    club_id, game_id = str(row[0]), str(row[1])
+    _, as_of = _game(seeded_db, "ASC")
+    context = build_context(game_id, as_of, export_sqlite(seeded_db))
+    assert strength_of_schedule(context, club_id) is None
+
+
+def test_sos_drops_games_whose_opponent_elo_is_unknown(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**相手の Elo が引けない試合は平均から落とす。** 1500 で埋めない。"""
+    from batch.features.team_strength import strength_of_schedule
+
+    game_id, as_of = _game(seeded_db, "DESC")
+    context = build_context(game_id, as_of, export_sqlite(seeded_db))
+    club_id = context.home_club_id
+    before = strength_of_schedule(context, club_id)
+    assert before is not None
+
+    # 相手のうち1クラブの Elo を消す
+    opponent = str(context.club_history(club_id, season_only=True)["opponent_id"].iloc[0])
+    seeded_db.execute("DELETE FROM team_ratings WHERE club_id = ?", (opponent,))
+    seeded_db.commit()
+
+    after = strength_of_schedule(
+        build_context(game_id, as_of, export_sqlite(seeded_db)), club_id)
+    assert after is not None and after != before
+
+
+def test_sos_uses_the_same_elo_instant_as_elo_diff(seeded_db: sqlite3.Connection) -> None:
+    """**「対戦した当時の Elo」を使っていないこと。**
+
+    同じ行列の中で Elo の時点が2種類あると、`elo_diff` との比較が何を意味するのか
+    読めなくなる（詳細設計 2.2）。実装が `elo()` を通していることを固定する。
+    """
+    import inspect
+
+    from batch.features import team_strength
+
+    source = inspect.getsource(team_strength.strength_of_schedule)
+    assert "elo(context," in source
+    assert "as_of_date" not in source, "Elo の時点を自分で選び直している"

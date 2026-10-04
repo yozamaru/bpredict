@@ -372,10 +372,19 @@ SNAPSHOT_TABLES: dict[str, str] = {
     "teamGames": "team_games",
     "players": "players",
     "venues": "venues",
-    "venueSourceKeys": "venue_source_keys",
     "clubSeasons": "club_seasons",
     "teamGameStats": "team_game_stats",
     "playerGameStats": "player_game_stats",
+}
+
+#: **スナップショットが持たない配列**（基本設計 2.2 のファイル一覧）。
+#:
+#: 黙って落とさず、**名前と理由をここに書く** — 「無いテーブルは飛ばす」という
+#: 一般の規則にすると、本当に写し忘れたテーブルも静かに通る。
+NOT_IN_SNAPSHOT: dict[str, str] = {
+    # 公式ID → 内部ID の対応表。**取り込みが使うもので、学習入力ではない**。
+    # 特徴量・学習・推論のどれも読まないため、スナップショットに置かない
+    "venueSourceKeys": "名寄せの対応表であり、学習入力ではない",
 }
 
 
@@ -390,6 +399,12 @@ def snapshot_rows(*payloads: Mapping[str, object]) -> dict[str, list[dict[str, o
     """
     out: dict[str, list[dict[str, object]]] = {}
     for payload in payloads:
+        unknown = sorted(
+            set(payload) - set(SNAPSHOT_TABLES) - set(NOT_IN_SNAPSHOT))
+        if unknown:
+            # **黙って落とさない。** 本文に配列を足したときに、スナップショットへ
+            # 写す/写さないの判断をここで必ず迫る
+            raise PayloadError(f"スナップショットへの写し方が未定の配列: {unknown}")
         for key, table in SNAPSHOT_TABLES.items():
             rows = payload.get(key)
             if not isinstance(rows, list) or not rows:

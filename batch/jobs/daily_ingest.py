@@ -861,7 +861,9 @@ def main(argv: list[str] | None = None) -> int:
         except PolicyError:
             print("daily_ingest: 取得前確認に失敗した（robots / 利用規約）", file=sys.stderr)
             return 1
-        except (LoaderError, ParseError, ScraperError) as error:
+        except (LoaderError, ParseError, ScraperError, SnapshotError) as error:
+            # **型名だけにしない**（詳細設計 4.3）。これらは自前の文言を持ち、
+            # URL も応答本文もトークンも含まない（絶対ルール4に触れない）
             print(f"daily_ingest: 前日の取得に失敗（{type(error).__name__}: {error}）",
                   file=sys.stderr)
             if not args.dry_run:

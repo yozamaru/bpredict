@@ -21,7 +21,7 @@ from batch.jobs.daily_ingest import (
 )
 from batch.jobs.game_ingest import Sent
 from batch.jobs.seed_master import Season
-from batch.loader.payload import snapshot_rows
+from batch.loader.payload import NOT_IN_SNAPSHOT, PayloadError, snapshot_rows
 from batch.parser.errors import ValidationError
 from batch.parser.schedule_parser import (
     ExcludedGame,
@@ -296,8 +296,8 @@ def test_a_column_missing_from_the_snapshot_is_refused() -> None:
         apply_to_snapshot(ds, {"venues": [{"id": "3", "name": "x", "新しい列": 1}]})
 
 
-def test_the_eight_tables_of_step_one_are_all_mapped() -> None:
-    """**ステップ1 が書く8テーブルすべてに写し方がある**（詳細設計 4.2）。
+def test_the_tables_of_step_one_are_all_mapped() -> None:
+    """**ステップ1 が書くテーブルすべてに写し方がある**（詳細設計 4.2）。
 
     広げないと `club_seasons` が D1 にだけ入る（基本設計 2.2 が座標で踏んだ形）。
     """
@@ -309,10 +309,27 @@ def test_the_eight_tables_of_step_one_are_all_mapped() -> None:
         {"teamGameStats": [{"gameId": "g"}], "playerGameStats": [{"gameId": "g"}]},
     ))
     assert tables == {
-        "games", "team_games", "players", "venues", "venue_source_keys",
+        "games", "team_games", "players", "venues",
         "club_seasons", "team_game_stats", "player_game_stats",
     }
     assert tables <= set(daily_ingest.KEYS)
+
+
+def test_venue_source_keys_is_declared_as_not_in_the_snapshot() -> None:
+    """**スナップショットは名寄せの対応表を持たない**（基本設計 2.2 の一覧）。
+
+    **黙って落とさず、名前と理由を持つ。** 「無いテーブルは飛ばす」という一般の
+    規則にすると、本当に写し忘れたテーブルも静かに通る（本番で `SnapshotError`
+    になって初めて気づいた）。
+    """
+    assert set(NOT_IN_SNAPSHOT) == {"venueSourceKeys"}
+    assert NOT_IN_SNAPSHOT["venueSourceKeys"]
+
+
+def test_an_unmapped_array_is_refused() -> None:
+    """本文に配列を足したら、写す / 写さないの判断をその場で迫る。"""
+    with pytest.raises(PayloadError):
+        snapshot_rows({"newThing": [{"id": "x"}]})
 
 
 # --- 日程の walk が返したものを捨てない ---

@@ -224,3 +224,52 @@ def test_fetch_artifact_returns_the_text_when_the_digest_matches() -> None:
         },
     })
     assert fetch_artifact(api, "winner-v1.0.0") == text
+
+
+# --- 契約（詳細設計 3.7 / 4.5.1） ---
+
+CONTRACT = Path(__file__).resolve().parents[2] / "contracts" / "public-shapes.json"
+
+
+def contract(shape: str) -> set[str]:
+    return set(json.loads(CONTRACT.read_text(encoding="utf-8"))[shape]["paths"])
+
+
+def full_record() -> ModelRecord:
+    """**すべての任意項目を埋めた**記録。契約はこれで固定する。
+
+    `payload_of` は None の項目を落とすため、実際に送る本文はこの部分集合になる。
+    固定するのは「`payload_of` が Zod のどのキーに写すか」である。
+    """
+    return ModelRecord(
+        version="winner-v1.0.0", model_type="WINNER", algo="logistic",
+        trained_at="2026-10-05T00:00:00Z", train_rows=3031,
+        train_range="s1..s3", eval_window="s2..s3",
+        params={"l2": 1e-4}, feature_list=["elo_diff"],
+        artifact_text="{}", target="", league="PREMIER",
+        win_prob_source="WINNER", margin_sigma=12.9,
+        feature_null_rates={"elo_diff": 0.0},
+        cv_accuracy=0.69, cv_brier=0.199, cv_logloss=0.58, cv_ece=0.025,
+        baseline_home_accuracy=0.52, baseline_elo_brier=0.2027,
+        calibrator="{}", notes="note",
+    )
+
+
+def test_payload_matches_the_contract() -> None:
+    """**`api/src/schemas/models.ts` の Zod と1対1で対応させる。**
+
+    片方だけ直すと本番で 400 を受けて初めて分かる（詳細設計 3.7 と同じ問題）。
+    api 側は契約から組んだ本文が 200 で通ることまで見る。
+    """
+    assert set(payload_of(full_record(), activate=True)) == contract("internalModels")
+
+
+def test_every_sent_key_is_in_the_contract() -> None:
+    """任意項目が欠けた本文でも、**契約に無いキーは出さない**。"""
+    lean = ModelRecord(
+        version="margin-v1.0.0", model_type="MARGIN", algo="lightgbm",
+        trained_at="2026-10-05T00:00:00Z", train_rows=10,
+        train_range="s1..s3", eval_window="s2..s3",
+        params={}, feature_list=["elo_diff"],
+    )
+    assert set(payload_of(lean, activate=False)) <= contract("internalModels")

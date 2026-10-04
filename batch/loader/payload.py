@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 
+from batch.model.predict import Prediction
 from batch.parser.models import BoxScore
 from batch.parser.schedule_parser import ScheduleGame
 
@@ -279,3 +281,58 @@ def upcoming_games_payload(
             for club, opponent, is_home in ((home, away, 1), (away, home, 0))
         )
     return {"games": rows, "teamGames": team_rows}
+
+
+def prediction_payload(
+    *,
+    game_id: str,
+    season_id: str,
+    run_id: str,
+    predicted_at: str,
+    as_of: str,
+    data_as_of: str,
+    prediction: Prediction,
+    features: Mapping[str, float],
+    model_versions: Mapping[str, str],
+) -> dict[str, object]:
+    """`POST /internal/predictions` の本文（詳細設計 4.2 のステップ4）。
+
+    **1リクエストに1試合である**（3.4 の口がそう作られている）。
+
+    **出せないものはキーを送らない。** `teamTargets` / `playerPredictions` /
+    `reasons` は、TeamRate が未登録（4.5.1）・個人スタッツの第1段と第3段が
+    組めない（2.3.1）・根拠の文言が未定（工程13）であるため0件になる。
+    **`teamTargets` は「2件か0件」でなければ Zod が拒否する** — 1件は片側だけ
+    整合化した状態であり、原理的に誤りである。
+
+    **この帰結として受け入れ基準 A-01 は満たさない**（根拠3件以上と個人スタッツを
+    求めている）。満たさないことを承知のうえで、勝敗確率と予想スコアを先に通す。
+
+    **`isProvisional` は常に 1。** エントリー情報を取得していない（`game_entries`
+    は0行）。確定するのは `gameday_update` が入ってからである。
+    """
+    if not model_versions:
+        raise PayloadError("使ったモデルの版が空である")
+    return {
+        "gameId": game_id,
+        "seasonId": season_id,
+        # **代表バージョンは WINNER である**（1.6）。全体は modelBundle が持つ
+        "modelVersion": model_versions["WINNER"],
+        "runId": run_id,
+        "predictedAt": predicted_at,
+        "asOf": as_of,
+        "dataAsOf": data_as_of,
+        "homeWinProb": prediction.home_win_prob,
+        "predMargin": prediction.margin,
+        "predTotal": prediction.total,
+        "predHomeScore": prediction.home_score,
+        "predAwayScore": prediction.away_score,
+        "isProvisional": 1,
+        # **丸めない。** 画面に出すときに整数へ丸める（要件 8.3）
+        "featureSnapshot": json.dumps(
+            {k: float(v) for k, v in features.items()}, ensure_ascii=False),
+        "modelBundle": [
+            {"modelType": model_type, "target": "", "modelVersion": version}
+            for model_type, version in model_versions.items()
+        ],
+    }

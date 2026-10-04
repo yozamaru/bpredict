@@ -163,5 +163,57 @@
       "rows[].scope",
       "rows[].scopeKey"
     ]
+  },
+  "internalModels": {
+    "$comment": "POST /internal/models の本文（batch/model/registry.py の payload_of）。**すべての任意項目を埋めた記録**のキー集合である — payload_of は None の項目を落とすため、実際に送る本文はこの部分集合になる",
+    "paths": [
+      "activate",
+      "algo",
+      "artifactSha256",
+      "artifactText",
+      "baselineEloBrier",
+      "baselineHomeAccuracy",
+      "calibrator",
+      "cvAccuracy",
+      "cvBrier",
+      "cvEce",
+      "cvLogloss",
+      "evalWindow",
+      "featureList",
+      "featureNullRates",
+      "league",
+      "marginSigma",
+      "modelType",
+      "notes",
+      "params",
+      "target",
+      "trainRange",
+      "trainRows",
+      "trainedAt",
+      "version",
+      "winProbSource"
+    ]
+  },
+  "internalPredictions": {
+    "$comment": "POST /internal/predictions の本文（batch/loader/payload.py の prediction_payload）。**teamTargets / playerPredictions / reasons は いま0件のためキーが無い** — 個人スタッツの第1段と第3段、根拠の文言が 揃ったら契約もいっしょに広げる（詳細設計 4.2 の推論）",
+    "paths": [
+      "asOf",
+      "dataAsOf",
+      "featureSnapshot",
+      "gameId",
+      "homeWinProb",
+      "isProvisional",
+      "modelBundle[].modelType",
+      "modelBundle[].modelVersion",
+      "modelBundle[].target",
+      "modelVersion",
+      "predAwayScore",
+      "predHomeScore",
+      "predMargin",
+      "predTotal",
+      "predictedAt",
+      "runId",
+      "seasonId"
+    ]
   }
 }

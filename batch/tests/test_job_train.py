@@ -14,7 +14,9 @@ import pandas as pd
 import pytest
 
 from batch.jobs import train
-from batch.model.dataset import TrainingData
+from batch.model.dataset import TrainingData, time_decay_weights
+from batch.model.evaluate import Fold
+from batch.model.params import TIME_DECAY_LAMBDA_INITIAL
 
 SEASONS = ("s1", "s2", "s3", "s4")
 
@@ -215,7 +217,7 @@ def report() -> train.Report:
 
 def test_all_four_models_are_evaluated_on_the_same_split(report: train.Report) -> None:
     """**同一の分割で比べる。** 違うウィンドウの数値を比較しても意味がない。"""
-    for ev in (report.winner, report.home, report.elo, report.full):
+    for ev in (report.winner, report.home, report.elo, report.lightgbm):
         assert ev.n == report.n
     assert len(report.test_seasons) == len(report.winner.folds)
 
@@ -332,3 +334,210 @@ def test_team_score_mae_is_nan_without_folds() -> None:
     from batch.model.evaluate import Evaluation
 
     assert math.isnan(train.team_score_mae(Evaluation(), Evaluation()))
+
+
+# --- 本番モデルは全特徴ロジスティック回帰である（要件 6.1.1） ---
+
+def test_the_winner_is_the_logistic_not_the_lightgbm(report: train.Report) -> None:
+    """**`winner` の役が入れ替わったことを固定する。**
+
+    旧版は `winner` が LightGBM で、採用判定も gain もそちらを見ていた。
+    A-09 を満たすのは全特徴ロジスティック回帰だけである（要件 6.1.1）ため、
+    **名前と役を一致させた**。ここが戻ると、A-09 未達のモデルが「本番」として
+    評価され、しかも数字は出るため気づけない。
+    """
+    reference = train.logistic_learner()
+    data = fake_data(per_season=300)
+    # **本番と同じ重みで比べる。** `np.ones` で測ると時間減衰が落ちて別物になる
+    weights = time_decay_weights(
+        data.season_ids, data.seasons, lam=TIME_DECAY_LAMBDA_INITIAL)
+    expected = train.walk_forward(data, reference, weights=weights, max_folds=5)
+    assert report.winner.brier == pytest.approx(expected.brier)
+    # LightGBM は別物である（同じなら役が入れ替わっていない）
+    assert report.lightgbm.brier != pytest.approx(expected.brier)
+
+
+def test_the_gain_comes_from_the_lightgbm_baseline(report: train.Report) -> None:
+    """寄与度（gain）は木からしか出ない。**本番モデルの寄与は係数である**（2.7）。
+
+    gain を出すのをやめない — 要件 6.2 の特徴量の採否はこれで測ってきており、
+    次に特徴量を足すときの比較相手になる。
+    """
+    assert report.gain_share
+    assert set(report.gain_share) <= set(fake_data(per_season=30).features.columns)
+
+
+# --- A-09 と判定の順序（要件 6.1） ---
+
+def difference(point: float, low: float, high: float) -> train.Difference:
+    return train.Difference(point=point, ci_low=low, ci_high=high)
+
+
+def test_a09_needs_both_significance_and_the_minimum_effect() -> None:
+    """**「有意」だけでは足りず、「0.003 以上」だけでも足りない。**"""
+    assert train.meets_a09(difference(0.004, 0.002, 0.006))
+    # 有意だが実質差が足りない
+    assert not train.meets_a09(difference(0.002, 0.001, 0.003))
+    # 実質差はあるが信頼区間が0を跨ぐ
+    assert not train.meets_a09(difference(0.004, -0.001, 0.009))
+
+
+def fold(season: str, probs: np.ndarray, actual: np.ndarray) -> Fold:
+    """`Fold` の件数の列はこの検証では使わない。**0 を置いて意味を消す。**"""
+    return Fold(
+        test_season=season, train_seasons=(), valid_season="",
+        n_train=0, n_valid=0, n_test=len(probs),
+        best_iteration=0, probs=probs, actual=actual,
+    )
+
+
+def evaluation(brier: float) -> train.Evaluation:
+    """Brier だけを持つ `Evaluation` の代用。`adopt_route` は Brier しか見ない。"""
+    n = 400
+    actual = np.array([1.0, 0.0] * (n // 2))
+    # (p - y)^2 の平均が brier になる p を置く
+    probs = np.where(actual == 1.0, 1.0 - math.sqrt(brier), math.sqrt(brier))
+    return train.Evaluation(folds=(fold("s", probs, actual),))
+
+
+def test_route_with_no_a09_candidate_is_not_adopted() -> None:
+    """**1段目。** A-09 を満たす経路が無ければ、どちらも採らない。
+
+    旧版のコードは2段目だけを書いており、**A-09 を満たさない経路を規則が
+    強制しうる**状態だった。
+    """
+    route, notes = adopt(0.2000, difference(0.001, -0.001, 0.003),
+                        0.1990, difference(0.002, -0.000, 0.004))
+    assert route == "NONE"
+    assert any("候補が0件" in n for n in notes)
+
+
+def test_single_a09_candidate_is_adopted_even_if_the_other_is_better() -> None:
+    """**3段目。** 候補が1つなら、Brier がより良い経路があってもそれを採る。
+
+    2026-10-04 に実際に起きた形である（A が A-09 を満たし、B は信頼区間の下限が
+    −0.000045 でわずかに未達だった）。
+    """
+    route, notes = adopt(0.1987, difference(0.004, 0.002, 0.006),
+                        0.1980, difference(0.002, -0.0001, 0.004))
+    assert route == "A"
+    assert any("候補が1つ" in n for n in notes)
+
+
+def test_two_candidates_prefer_b_when_the_gap_is_small() -> None:
+    """**2段目。** 差が 0.003 未満なら整合性を優先して B。"""
+    route, _ = adopt(0.1987, difference(0.004, 0.002, 0.006),
+                     0.1990, difference(0.0037, 0.0018, 0.0056))
+    assert route == "B"
+
+
+def test_two_candidates_prefer_a_when_b_is_clearly_worse() -> None:
+    """**2段目。** B が 0.003 以上悪ければ A。"""
+    route, _ = adopt(0.1950, difference(0.0077, 0.005, 0.010),
+                     0.1990, difference(0.0037, 0.0018, 0.0056))
+    assert route == "A"
+
+
+def adopt(
+    a_brier: float, a_diff: train.Difference,
+    b_brier: float, b_diff: train.Difference,
+) -> tuple[str, list[str]]:
+    return train.adopt_route((evaluation(a_brier), a_diff),
+                             (evaluation(b_brier), b_diff))
+
+
+# --- 予想スコアは勝率から導く（要件 6.1.1） ---
+
+def test_derived_score_mae_is_reported_alongside_the_old_route(
+    report: train.Report,
+) -> None:
+    """**両方出す。** 片方だけだと、乗り換えで精度が落ちたか分からない。"""
+    assert report.derived_score_mae is not None
+    assert report.derived_score_mae > 0
+    assert "チーム得点 MAE" in train.render(report)
+    assert "旧経路" in train.render(report)
+
+
+def test_derived_score_mae_rejects_mismatched_folds() -> None:
+    """fold の並びが違えば落とす。**小さく出ても意味のない MAE を返さない。**"""
+    def one(season: str) -> train.Evaluation:
+        return train.Evaluation(
+            folds=(fold(season, np.array([0.6]), np.array([1.0])),))
+
+    with pytest.raises(train.TrainError):
+        train.derived_team_score_mae(one("s1"), one("s2"), one("s1"), 12.9)
+
+
+# --- 登録（詳細設計 4.5.1） ---
+
+class FakeApi:
+    """`InternalApi.post` の代わり。**D1 にも HTTP にも触らない。**"""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, dict[str, object]]] = []
+
+    def post(self, path: str, payload: object) -> object:
+        assert isinstance(payload, dict)
+        self.sent.append((path, payload))
+        return {"version": payload.get("version")}
+
+
+def fake_report(*, adopt: bool) -> train.Report:
+    """登録の分岐だけを見るための最小の `Report`。"""
+    from batch.model.criteria import Decision
+
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    ev = train.walk_forward(
+        data, train.logistic_learner(), weights=np.ones(len(data)), max_folds=5)
+    scores = train.walk_forward(
+        data, lambda tx, ty, tw, vx, vy: (
+            (lambda f: np.full(len(f), 0.0)), 80),
+        target=data.margin, weights=np.ones(len(data)), max_folds=5)
+    return train.Report(
+        n=ev.n, seasons=data.seasons,
+        test_seasons=[f.test_season for f in ev.folds],
+        winner=ev, home=ev, elo=ev, lightgbm=ev,
+        ece_floor=0.03, difference=difference(0.004, 0.002, 0.006),
+        null_rates={"elo_diff": 0.0}, constant_columns=[],
+        decision=Decision(adopt=adopt, failures=[] if adopt else ["Brier"], notes=[]),
+        margin=scores, total=scores, margin_sigma=12.9,
+    )
+
+
+def test_register_sends_nothing_when_the_criteria_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**基準未達なら1本も送らない。** 現行モデルを継続する（詳細設計 4.5.1）。
+
+    「登録だけしておく」経路を作らない — `model_versions` に有効でない行が溜まると、
+    どれが本番かを `is_active` 以外で判断する余地が生まれる。
+    """
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    versions = train.register_models(
+        data, fake_report(adopt=False), api=api, log=lambda _m: None)  # type: ignore[arg-type]
+    assert versions == []
+    assert api.sent == []
+
+
+def test_register_activates_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
+    """判定を通ったら3本とも `activate=True` で送る。"""
+    monkeypatch.setattr(
+        "batch.model.final.train_final",
+        lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
+    )
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    versions = train.register_models(
+        data, fake_report(adopt=True), api=api, log=lambda _m: None)  # type: ignore[arg-type]
+    assert versions == ["winner-v1.0.0", "margin-v1.0.0", "total-v1.0.0"]
+    assert [p for p, _ in api.sent] == ["models"] * 3
+    assert all(body["activate"] is True for _p, body in api.sent)
+
+
+def test_register_needs_the_score_evaluations() -> None:
+    """得点差・合計得点の評価がなければ登録できない（σ が出ない）。"""
+    report = fake_report(adopt=True)
+    without = train.replace(report, margin=None, total=None)
+    with pytest.raises(train.TrainError):
+        train.evaluations_of(without)

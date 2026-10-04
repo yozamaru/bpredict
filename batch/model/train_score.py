@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from statistics import NormalDist
 
 import numpy as np
 import pandas as pd
@@ -111,4 +112,35 @@ def win_prob_from_margin(margin: Floats, sigma: float) -> Floats:
     return np.asarray(
         [(1.0 + math.erf(float(v) / math.sqrt(2.0))) / 2.0 for v in z],
         dtype=np.float64,
+    )
+
+
+def margin_from_win_prob(prob: Floats, sigma: float) -> Floats:
+    """勝率から得点差を導く（要件 6.1.1）。`win_prob_from_margin` の逆関数。
+
+        margin = σ · Φ⁻¹(p)
+
+    **向きが逆であることが要点である。** 旧版は Margin 回帰の出力を予想スコアに
+    使い、勝率は別のモデル（Winner）から出していた。両者は独立であるため
+    **符号が食い違う** — 実測で 142 / 3,031試合（4.7%）、加えて丸めて同点になる
+    試合が 167件（5.5%）あった。予想スコアを勝率から導けば食い違いは原理的に
+    起きず、受け入れ基準 A-11 は実装の検査から構造の検査に変わる。
+
+    **精度は落ちない**（チーム得点 MAE 8.832 対 8.839。2つの得点差の相関 0.97）。
+
+    σ は Margin 回帰の out-of-fold 残差であり、ここでは「勝率 → 得点差」の変換
+    係数として働く。**Margin 回帰を学習しなくなるわけではない** — σ を出すために
+    必要で、`model_versions.margin_sigma` に記録する。
+
+    `p` は開区間 (0,1) に入っていること。本番では `clamp_win_prob` を通すため
+    `[0.05, 0.95]` に収まる（`Φ⁻¹(0)` は −∞ であり、得点差が無限大になる）。
+    """
+    if not math.isfinite(sigma) or sigma <= 0:
+        raise ScoreError("σ が正の有限値でない（残差から実測した値を渡す）")
+    p = np.asarray(prob, dtype=np.float64)
+    if p.size and (float(p.min()) <= 0.0 or float(p.max()) >= 1.0):
+        raise ScoreError("勝率が開区間 (0,1) に入っていない（クランプしてから渡す）")
+    normal = NormalDist()
+    return sigma * np.asarray(
+        [normal.inv_cdf(float(v)) for v in p], dtype=np.float64,
     )

@@ -7,6 +7,9 @@
 | `test_no_club_seasons_are_sent` | **クラブ名は略称のことがある**。正式名称を上書きしない |
 | `test_two_team_rows_per_game` | チーム視点の行は1試合2本 |
 | `test_payload_matches_the_zod_schema` | 本文のキーが api 側の Zod と対応する |
+
+**推論の本文（ステップ4）も同じファイルで検証する。** どちらも
+`POST /internal/*` に送る本文であり、契約ファイルで固定する対象が同じである。
 """
 from __future__ import annotations
 
@@ -16,7 +19,13 @@ from pathlib import Path
 
 import pytest
 
-from batch.loader.payload import SeasonRef, upcoming_games_payload
+from batch.loader.payload import (
+    PayloadError,
+    SeasonRef,
+    prediction_payload,
+    upcoming_games_payload,
+)
+from batch.model.predict import Prediction
 from batch.parser.schedule_parser import ScheduleGame
 
 SEASON = SeasonRef("2026-27-PREMIER", "2026-27", "PREMIER")
@@ -167,3 +176,90 @@ def test_payload_matches_the_zod_schema() -> None:
 
 def test_body_is_json_serialisable() -> None:
     json.dumps(payload(), ensure_ascii=False)
+
+
+# --- 予測の本文（契約。詳細設計 3.7 / 4.2） ---
+
+CONTRACT = Path(__file__).resolve().parents[2] / "contracts" / "public-shapes.json"
+
+
+def key_paths(value: object, prefix: str = "") -> set[str]:
+    if isinstance(value, dict):
+        out: set[str] = set()
+        for key, child in value.items():
+            out |= key_paths(child, f"{prefix}.{key}" if prefix else key)
+        return out
+    if isinstance(value, list):
+        if not value:
+            return {f"{prefix}[]"}
+        out = set()
+        for child in value:
+            out |= key_paths(child, f"{prefix}[]")
+        return out
+    return {prefix}
+
+
+def a_prediction() -> dict[str, object]:
+    return prediction_payload(
+        game_id="g1", season_id="2026-27-PREMIER", run_id="daily-abc",
+        predicted_at="2026-10-05T21:00:00Z", as_of="2026-10-06T10:05:00Z",
+        data_as_of="2026-10-04T12:00:00Z",
+        prediction=Prediction(home_win_prob=0.68, margin=7.3, total=162.0,
+                              home_score=84.65, away_score=77.35),
+        features={"elo_diff": 80.0, "rest_days_diff": 1.0},
+        model_versions={"WINNER": "winner-v1.0.0", "MARGIN": "margin-v1.0.0",
+                        "TOTAL": "total-v1.0.0"},
+    )
+
+
+def test_prediction_payload_matches_the_contract() -> None:
+    """**`api/src/schemas/predictions.ts` の Zod と1対1で対応させる。**
+
+    api 側は契約から組んだ本文が 200 で通ることまで見る（キーの一致だけでは
+    値域を満たしていない場合を捕まえられない）。
+    """
+    contract = set(json.loads(CONTRACT.read_text(encoding="utf-8"))
+                   ["internalPredictions"]["paths"])
+    assert key_paths(a_prediction()) == contract
+
+
+def test_team_targets_and_players_are_absent_for_now() -> None:
+    """**出せないものはキーを送らない**（詳細設計 4.2 の推論）。
+
+    `teamTargets` が1件だと Zod の `refine` が拒否する（片側だけ整合化した状態は
+    原理的に誤りである）。0件は許される。**この帰結として A-01 は未達である。**
+    """
+    body = a_prediction()
+    for key in ("teamTargets", "playerPredictions", "reasons"):
+        assert key not in body
+
+
+def test_the_representative_version_is_the_winner() -> None:
+    """`predictions.model_version` は代表バージョン。全体は `modelBundle`（1.6）。"""
+    body = a_prediction()
+    assert body["modelVersion"] == "winner-v1.0.0"
+    bundle = body["modelBundle"]
+    assert isinstance(bundle, list)
+    assert {str(m["modelType"]) for m in bundle} == {"WINNER", "MARGIN", "TOTAL"}
+
+
+def test_the_prediction_is_always_provisional() -> None:
+    """エントリー情報を取得していないため常に暫定（要件 F-06 / 5.5）。"""
+    assert a_prediction()["isProvisional"] == 1
+
+
+def test_the_feature_snapshot_is_json() -> None:
+    """`feature_snapshot` は JSON 文字列（1.5 の列のコメント）。"""
+    snapshot = a_prediction()["featureSnapshot"]
+    assert isinstance(snapshot, str)
+    assert json.loads(snapshot)["elo_diff"] == pytest.approx(80.0)
+
+
+def test_an_empty_model_bundle_is_rejected() -> None:
+    """使ったモデルが分からない予測を作らない（出自を復元できなくなる。1.6）。"""
+    with pytest.raises(PayloadError):
+        prediction_payload(
+            game_id="g1", season_id="s1", run_id="r", predicted_at="t",
+            as_of="t", data_as_of="t",
+            prediction=Prediction(0.5, 0.0, 160.0, 80.0, 80.0),
+            features={}, model_versions={})

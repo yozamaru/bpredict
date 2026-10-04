@@ -1,12 +1,22 @@
 """勝敗モデルの学習と評価（工程8。詳細設計 4.5 / 4.6）。
 
+**本番の勝敗モデルは全特徴ロジスティック回帰である**（要件 6.1.1）。LightGBM は
+ベースライン3段目に降りた。両方を同じ `walk_forward` で評価し、**採用する経路は
+要件 6.1 の「判定の順序」を実装した `adopt_route` が決める**（ここで決め打ちしない）。
+
     python -m batch.jobs.train                      評価して報告する
     python -m batch.jobs.train --json out.json      数値をファイルにも残す
     python -m batch.jobs.train --refresh            特徴量のキャッシュを作り直す
+    python -m batch.jobs.train --register           採用判定を通ったら登録する
 
 **入力はスナップショットだけである**（CLAUDE.md 絶対ルール3）。D1 を読まない。
-**このジョブはモデルを登録しない** — 登録は `POST /internal/models` で、D1 の
-書き込み枠を使う。評価と登録を分けることで、採用判定を何度でもやり直せる。
+**既定では登録しない。** 登録は `POST /internal/models` で D1 の書き込み枠を使う
+ため、`--register` を付けたときだけ行う（詳細設計 4.5.1）。評価と登録を分けると、
+採用判定を何度でもやり直せる。
+
+**`--register` は採用判定を通らなければ何も送らない。** 基準未達で登録だけして
+おく経路は作らない — `model_versions` に有効でない行が溜まると、どれが本番かを
+`is_active` 以外で判断する余地が生まれる。
 
 **特徴量をキャッシュする。** 6,270試合の特徴量生成に20分かかる（基本設計 2.5 の
 実測から外挿）。**キャッシュの鍵はスナップショットの MANIFEST のハッシュ**であり、
@@ -18,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -30,6 +41,7 @@ from numpy.typing import NDArray
 
 from batch.features.builder import FEATURE_KEYS
 from batch.features.dataset import Dataset, load_snapshot
+from batch.loader.api import InternalApi, LoaderError
 from batch.model.baselines import fit_logistic, home_always
 from batch.model.criteria import Decision, Inputs, passes_criteria
 from batch.model.dataset import (
@@ -40,6 +52,7 @@ from batch.model.dataset import (
     time_decay_weights,
 )
 from batch.model.evaluate import Evaluation, Learner, walk_forward
+from batch.model.final import DEFAULT_SEMVER, Evaluations, build_records
 from batch.model.metrics import Difference, brier_difference, ece_noise_floor
 from batch.model.params import (
     ECE_FLOOR_K,
@@ -47,7 +60,12 @@ from batch.model.params import (
     MIN_EFFECT,
     TIME_DECAY_LAMBDA_INITIAL,
 )
-from batch.model.train_score import learn_score, win_prob_from_margin
+from batch.model.registry import register
+from batch.model.train_score import (
+    learn_score,
+    margin_from_win_prob,
+    win_prob_from_margin,
+)
 from batch.model.train_winner import learn_winner
 
 type Floats = NDArray[np.float64]
@@ -244,7 +262,7 @@ class Report:
     winner: Evaluation
     home: Evaluation
     elo: Evaluation
-    full: Evaluation
+    lightgbm: Evaluation
     ece_floor: float | None
     #: Elo単体との Brier 差（ベースラインとの差であり、現行モデルとの差ではない）
     difference: Difference
@@ -263,6 +281,10 @@ class Report:
     #: **採用する経路**の Elo単体に対する Brier 差。A-09 の判定はこれで行う
     adopted_route: str = "A"
     adopted_difference: Difference | None = None
+    #: `adopt_route` が通った枝（要件 6.1 の判定の順序）
+    route_notes: list[str] = field(default_factory=list)
+    #: **勝率から導いた**得点差で測ったチーム得点 MAE（要件 6.1.1）
+    derived_score_mae: float | None = None
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
@@ -277,10 +299,10 @@ class Report:
             "seasons": self.seasons,
             "test_seasons": self.test_seasons,
             "models": [
-                summarize("winner(lightgbm)", self.winner),
+                summarize("winner(all_feature_logistic)", self.winner),
                 summarize("baseline1(home_always)", self.home),
                 summarize("baseline2(elo_only_logistic)", self.elo),
-                summarize("baseline3(all_feature_logistic)", self.full),
+                summarize("baseline3(lightgbm)", self.lightgbm),
             ],
             "ece_floor_q95": self.ece_floor,
             "brier_difference_vs_elo": {
@@ -301,6 +323,8 @@ class Report:
                 "team_score_mae": team_score_mae(self.margin, self.total),
             },
             "adopted_route": self.adopted_route,
+            "route_notes": self.route_notes,
+            "derived_team_score_mae": self.derived_score_mae,
             "adopted_difference": None if self.adopted_difference is None else {
                 "point": self.adopted_difference.point,
                 "ci_low": self.adopted_difference.ci_low,
@@ -339,6 +363,79 @@ def team_score_mae(margin: Evaluation, total: Evaluation) -> float:
     return float(np.concatenate([home, away]).mean())
 
 
+def meets_a09(difference: Difference) -> bool:
+    """受け入れ基準 A-09 を満たすか（要件 12章 / 詳細設計 4.6）。
+
+    **「有意」だけでは足りない。** 点推定の差が最小実質差（0.003）以上あることも
+    要求する。逆に「0.003 以上」だけでも足りない（ノイズで届きうる）。
+    """
+    return difference.significant and difference.point >= MIN_EFFECT
+
+
+def adopt_route(
+    a: tuple[Evaluation, Difference], b: tuple[Evaluation, Difference],
+) -> tuple[str, list[str]]:
+    """採用する経路を決める（要件 6.1「判定の順序」をそのまま実装する）。
+
+    1. **A-09 を満たす経路だけを候補にする。** 品質ゲート（要件12章）は A-09 を
+       絶対条件にしており、これを満たさない経路は選べない
+    2. 候補が2つ残ったら — B が A より 0.003 以上悪ければ A、差が 0.003 未満なら
+       整合性を優先して B
+    3. 候補が1つなら、それを採る
+
+    **1段目を実装に持つ。** 旧版のコードは2段目だけを書いており、A-09 を満たさない
+    経路を規則が強制しうる状態だった（2026-10-04 に実際に衝突した）。**結論を
+    定数で埋めない** — 列や σ が変われば候補の集合も変わる。
+
+    候補が0件なら `"NONE"` を返す。呼び出し側は採用判定を落とす（`passes_criteria`
+    がベースライン比較で落とすため、ここで例外を投げる必要はない）。
+    """
+    (a_eval, a_diff), (b_eval, b_diff) = a, b
+    notes: list[str] = []
+    candidates = [
+        name for name, diff in (("A", a_diff), ("B", b_diff)) if meets_a09(diff)
+    ]
+    notes.append(f"A-09 を満たす経路: {' / '.join(candidates) or 'なし'}")
+    if not candidates:
+        notes.append("候補が0件のため経路を採用しない（要件 6.1 の1段目）")
+        return "NONE", notes
+    if len(candidates) == 1:
+        notes.append(f"候補が1つのため経路{candidates[0]}を採る（3段目）")
+        return candidates[0], notes
+    gap = b_eval.brier - a_eval.brier
+    route = "A" if gap >= MIN_EFFECT else "B"
+    notes.append(
+        f"候補が2つ。B − A = {gap:+.4f} のため経路{route}を採る（2段目）",
+    )
+    return route, notes
+
+
+def derived_team_score_mae(
+    winner: Evaluation, margin: Evaluation, total: Evaluation, sigma: float,
+) -> float:
+    """**勝率から導いた**得点差で測るチーム得点 MAE（要件 6.1.1）。
+
+    本番の予想スコアは `margin = σ · Φ⁻¹(p)` から作る。`team_score_mae` が測るのは
+    Margin 回帰の出力を使った旧経路であり、**両方を出して比べる**（実測では
+    8.832 対 8.839 で、勝率から導いた方がわずかに良い）。
+
+    fold の並びが3つで一致していることを確かめる。**一致していなければ落とす** —
+    別のシーズンの予測と実績を突き合わせた MAE は、小さく出ても意味がない。
+    """
+    seasons = [[f.test_season for f in ev.folds] for ev in (winner, margin, total)]
+    if not seasons[0] or len({tuple(s) for s in seasons}) != 1:
+        raise TrainError("fold の並びが経路間で一致しない")
+    home_err: list[Floats] = []
+    away_err: list[Floats] = []
+    for w, m, t in zip(winner.folds, margin.folds, total.folds, strict=True):
+        derived = margin_from_win_prob(w.probs, sigma)
+        dm = derived - m.actual
+        dt = t.probs - t.actual
+        home_err.append(np.abs((dt + dm) / 2.0))
+        away_err.append(np.abs((dt - dm) / 2.0))
+    return float(np.concatenate([*home_err, *away_err]).mean())
+
+
 def _home_win_of(data: TrainingData, season: str) -> Floats:
     """あるシーズンの `home_win`。**経路B の実測値に使う。**
 
@@ -363,11 +460,14 @@ def evaluate_all(
     weights = time_decay_weights(data.season_ids, data.seasons, lam=decay)
     gains: list[dict[str, float]] = []
     runs: dict[str, Evaluation] = {}
+    # **`winner` が本番モデル（全特徴ロジスティック回帰）である**（要件 6.1.1）。
+    # LightGBM はベースライン3段目。名前と役を一致させておく — 旧版は `winner` が
+    # LightGBM で、採用判定も gain もそちらを見ていた
     for name, learner in (
         ("home_always", home_always_learner()),
         ("elo_only", logistic_learner(ELO_ONLY)),
-        ("all_feature", logistic_learner()),
-        ("winner", winner_learner(gains)),
+        ("winner", logistic_learner()),
+        ("lightgbm", winner_learner(gains)),
     ):
         started = time.monotonic()
         runs[name] = walk_forward(data, learner, weights=weights, max_folds=max_folds)
@@ -391,24 +491,25 @@ def evaluate_all(
     ))
     log(f"train: 経路B を評価した（σ {sigma:.2f} / Brier {route_b.brier:.4f}）")
 
-    # **採用する経路を先に決め、有意性はその経路で測る。** 要件 6.1 の規則は
-    # 「B の Brier が A より 0.003 以上悪ければ A、差が 0.003 未満なら B」。
-    # A に対して測った有意性を B の採用根拠にすると、**判定の対象がずれる**
-    # （受け入れ基準 A-09 は「Brier が Elo単体より有意に良い」ことを求める）
-    adopted_route = "A" if route_b.brier - runs["winner"].brier >= MIN_EFFECT else "B"
-    adopted = runs["winner"] if adopted_route == "A" else route_b
-
+    # **有意性は経路ごとに測り、採用は `adopt_route` が決める。** 要件 6.1 の
+    # 判定の順序は3段あり、**1段目が「A-09 を満たす経路だけを候補にする」**で
+    # ある。A に対して測った有意性を B の採用根拠にすると判定の対象がずれる
     winner = runs["winner"]
+    elo = runs["elo_only"]
+    difference = brier_difference(elo.probs, winner.probs, winner.actual)
+    route_b_difference = brier_difference(elo.probs, route_b.probs, route_b.actual)
+    adopted_route, route_notes = adopt_route(
+        (winner, difference), (route_b, route_b_difference))
+    adopted_difference = difference if adopted_route != "B" else route_b_difference
+    log(f"train: 採用する経路は {adopted_route}（{' / '.join(route_notes)}）")
+
     floor = ece_noise_floor(winner.probs)
-    difference = brier_difference(runs["elo_only"].probs, winner.probs, winner.actual)
-    adopted_difference = brier_difference(
-        runs["elo_only"].probs, adopted.probs, adopted.actual)
     nulls = null_rates(data.features)
     constants = constant_columns(data.features)
     decision = passes_criteria(Inputs(
         n=winner.n,
         brier=winner.brier,
-        baseline_elo_brier=runs["elo_only"].brier,
+        baseline_elo_brier=elo.brier,
         null_rates=nulls,
         constant_columns=constants,
         ece=winner.ece,
@@ -424,12 +525,14 @@ def evaluate_all(
         seasons=data.seasons,
         test_seasons=[f.test_season for f in winner.folds],
         winner=winner, home=runs["home_always"],
-        elo=runs["elo_only"], full=runs["all_feature"],
+        elo=elo, lightgbm=runs["lightgbm"],
         ece_floor=floor, difference=difference,
         null_rates=nulls, constant_columns=constants,
         gain_share=gain_share(gains), decision=decision,
         margin=margin, total=total, route_b=route_b, margin_sigma=sigma,
         adopted_route=adopted_route, adopted_difference=adopted_difference,
+        route_notes=route_notes,
+        derived_score_mae=derived_team_score_mae(winner, margin, total, sigma),
     )
 
 
@@ -442,10 +545,10 @@ def render(report: Report) -> str:
         f"{'モデル':<30}{'Brier':>9}{'Accuracy':>11}{'LogLoss':>10}{'ECE':>9}",
     ]
     for name, ev in (
-        ("LightGBM（経路A: Winner）", report.winner),
+        ("全特徴ロジスティック（本番）", report.winner),
         ("1 ホーム必勝", report.home),
         ("2 Elo差単体ロジスティック", report.elo),
-        ("3 全特徴ロジスティック", report.full),
+        ("3 LightGBM", report.lightgbm),
     ):
         ece = "—" if ev.ece is None else f"{ev.ece:.4f}"
         lines.append(
@@ -475,12 +578,17 @@ def render(report: Report) -> str:
             (f"  得点差 MAE   {report.margin.mae:>7.2f}点"
              f"（残差 σ {report.margin.residual_sigma:.2f}）"),
             f"  合計得点 MAE {report.total.mae:>7.2f}点",
-            (f"  **チーム得点 MAE {team_score_mae(report.margin, report.total):>5.2f}点**"
-             "（要件 6.4 / 付録B の見立ては 8〜10点）"),
+            (f"  チーム得点 MAE {team_score_mae(report.margin, report.total):>7.2f}点"
+             "（**旧経路**。Margin 回帰の出力から）"),
         ]
+        if report.derived_score_mae is not None:
+            # 本番は勝率から導く（要件 6.1.1）。**両方出して比べる**
+            lines.append(
+                f"  **チーム得点 MAE {report.derived_score_mae:>5.2f}点**"
+                "（本番。勝率から σ·Φ⁻¹(p) で導く。付録B の見立ては 8〜10点）",
+            )
     if report.route_b is not None and report.margin_sigma is not None:
         a, b = report.winner, report.route_b
-        gap = b.brier - a.brier
         lines += [
             "",
             "勝率の導出経路（P0-11。**同一の分割で測る**）",
@@ -491,10 +599,9 @@ def render(report: Report) -> str:
              + ("—" if b.ece is None else f"{b.ece:>9.4f}")),
             "",
             f"実測した σ: {report.margin_sigma:.2f}点（out-of-fold の残差）",
-            (f"B − A の Brier 差: {gap:+.4f}  →  "
-             + ("**A を採用**（B が 0.003 以上悪い）" if gap >= MIN_EFFECT
-                else "**B を採用**（差が 0.003 未満。整合が保証される）")),
+            f"**採用する経路: {report.adopted_route}**",
         ]
+        lines += [f"  {note}" for note in report.route_notes]
         if report.adopted_difference is not None:
             d2 = report.adopted_difference
             lines.append(
@@ -517,6 +624,38 @@ def render(report: Report) -> str:
     return "\n".join(lines)
 
 
+def evaluations_of(report: Report) -> Evaluations:
+    """`Report` から登録に必要なものだけを取り出す（依存の向きを `batch.model`
+    から `batch.jobs` に向けないため）。"""
+    if report.margin is None or report.total is None:
+        raise TrainError("得点差・合計得点の評価がない（登録できない）")
+    return Evaluations(
+        winner=report.winner, home=report.home, elo=report.elo,
+        margin=report.margin, total=report.total,
+        ece_floor=report.ece_floor, null_rates=report.null_rates,
+    )
+
+
+def register_models(
+    data: TrainingData, report: Report, *, api: InternalApi,
+    semver: str = DEFAULT_SEMVER, log: Callable[[str], None] = print,
+) -> list[str]:
+    """採用判定を通ったときだけ3本を登録して有効化する（詳細設計 4.5.1）。
+
+    **判定を通らなければ空を返す。** 現行モデルを継続する。
+    """
+    if not report.decision.adopt:
+        log(f"train: 採用基準を満たさないため登録しない（{report.decision.summary}）")
+        return []
+    records = build_records(data, evaluations_of(report), semver=semver)
+    registered: list[str] = []
+    for record in records:
+        size = register(api, record, activate=True)
+        log(f"train: {record.version} を登録して有効化した（artifact {size:,} バイト）")
+        registered.append(record.version)
+    return registered
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="勝敗モデルを評価する（登録はしない）")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
@@ -524,6 +663,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--refresh", action="store_true", help="特徴量を作り直す")
     parser.add_argument("--max-folds", type=int, default=MAX_FOLDS)
     parser.add_argument("--json", type=Path, help="数値を書き出す先")
+    parser.add_argument(
+        "--register", action="store_true",
+        help="採用判定を通ったら WINNER / MARGIN / TOTAL を登録して有効化する")
+    parser.add_argument("--model-version", default=DEFAULT_SEMVER,
+                        help="版（既定 1.0.0。学習条件を変えたら上げる）")
+    parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")
     args = parser.parse_args(argv)
 
     try:
@@ -545,6 +690,27 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(report.as_dict(), ensure_ascii=False, indent=2), encoding="utf-8",
         )
         print(f"train: {args.json} に書き出した")
+
+    if args.register:
+        try:
+            api = InternalApi(
+                os.environ.get("API_BASE_URL", ""),
+                os.environ.get("INGEST_TOKEN", ""),
+                dry_run=args.dry_run,
+            )
+            versions = register_models(
+                data, report, api=api, semver=args.model_version)
+        except (TrainError, LoaderError) as error:
+            # **自前の文言を出す。** これらの例外は URL も応答本文もトークンも
+            # 含まない（基本設計 4.3）。型名だけにすると切り分けに再実行が要る
+            print(f"train: 登録に失敗（{type(error).__name__}: {error}）",
+                  file=sys.stderr)
+            return 1
+        except Exception as error:  # noqa: BLE001 — 本文に何が入るか保証できない
+            print(f"train: 登録に失敗（{type(error).__name__}）", file=sys.stderr)
+            return 1
+        if not versions:
+            return 1          # 採用基準未達は PARTIAL 相当。通知に乗せる
     return 0
 
 

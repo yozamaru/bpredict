@@ -21,6 +21,7 @@ from batch.static_json.builder import (
     GameInput,
     GameListInput,
     PredictionInput,
+    ReasonInput,
 )
 
 
@@ -37,6 +38,9 @@ class PredictedGame:
     pred_home_score: float
     pred_away_score: float
     model_version: str
+    #: 根拠（詳細設計 2.7.1）。**現在の21列では2件**（`VENUE` に該当列がなく、
+    #: `PLAYER` の3列は定数で寄与が厳密に 0）。空のこともある
+    reasons: tuple[ReasonInput, ...] = ()
 
 
 def _clubs(ds: Dataset) -> dict[str, tuple[str, str]]:
@@ -148,7 +152,10 @@ def build_inputs(
         rows[str(row.game_date)].append((game, prediction))
         if str(row.game_date) == today:
             # **詳細は当日の試合だけ**（詳細設計 3.7。7日窓にすると年460MB 積む）
-            details.append(GameDetailInput(game=game, prediction=prediction))
+            details.append(GameDetailInput(
+                game=game, prediction=prediction,
+                reasons=[] if found is None else list(found.reasons),
+            ))
 
     # **的中率は渡さない（null）。** `accuracy_summary` は D1 にあり読む口が無く、
     # そもそも1試合も照合していない間は存在しない（詳細設計 4.2 のステップ5）

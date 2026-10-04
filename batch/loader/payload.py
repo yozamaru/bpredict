@@ -295,19 +295,21 @@ def prediction_payload(
     prediction: Prediction,
     features: Mapping[str, float],
     model_versions: Mapping[str, str],
+    reasons: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object]:
     """`POST /internal/predictions` の本文（詳細設計 4.2 のステップ4）。
 
     **1リクエストに1試合である**（3.4 の口がそう作られている）。
 
-    **出せないものはキーを送らない。** `teamTargets` / `playerPredictions` /
-    `reasons` は、TeamRate が未登録（4.5.1）・個人スタッツの第1段と第3段が
-    組めない（2.3.1）・根拠の文言が未定（工程13）であるため0件になる。
-    **`teamTargets` は「2件か0件」でなければ Zod が拒否する** — 1件は片側だけ
-    整合化した状態であり、原理的に誤りである。
+    **出せないものはキーを送らない。** `teamTargets` / `playerPredictions` は、
+    TeamRate が未登録（4.5.1）・個人スタッツの第1段と第3段が組めない（2.3.1）
+    ため0件になる。**`teamTargets` は「2件か0件」でなければ Zod が拒否する** —
+    1件は片側だけ整合化した状態であり、原理的に誤りである。
 
-    **この帰結として受け入れ基準 A-01 は満たさない**（根拠3件以上と個人スタッツを
-    求めている）。満たさないことを承知のうえで、勝敗確率と予想スコアを先に通す。
+    **`reasons` は工程13 で出るようになったが、現在の21列では2件である**
+    （`VENUE` に該当列がなく、`PLAYER` の3列は定数で寄与が厳密に 0。2.7.1）。
+    **したがって受け入れ基準 A-01（根拠3件以上と個人スタッツ）は依然として
+    満たさない。** 満たさないことを承知のうえで、勝敗確率と予想スコアを先に通す。
 
     **`isProvisional` は常に 1。** エントリー情報を取得していない（`game_entries`
     は0行）。確定するのは `gameday_update` が入ってからである。
@@ -336,6 +338,7 @@ def prediction_payload(
             {"modelType": model_type, "target": "", "modelVersion": version}
             for model_type, version in model_versions.items()
         ],
+        **({"reasons": [dict(r) for r in reasons]} if reasons else {}),
     }
 
 

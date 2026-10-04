@@ -21,7 +21,8 @@ COLUMNS = ["elo_diff", "rest_days_diff"]
 
 def logistic_artifact() -> str:
     return dump_logistic(
-        Logistic(intercept=0.1, coefficients=np.array([0.01, 0.05])), COLUMNS)
+        Logistic(intercept=0.1, coefficients=np.array([0.01, 0.05])),
+        COLUMNS, np.array([5.0, 0.5]))
 
 
 class FakeApi:

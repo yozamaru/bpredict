@@ -1,0 +1,173 @@
+{
+ "data": {
+  "accuracy": null,
+  "gameDate": "2026-10-07",
+  "games": [
+   {
+    "away": {
+     "clubId": "2486",
+     "name": "アルティーリ千葉",
+     "shortName": "A千葉",
+     "slug": "altiri-chiba"
+    },
+    "competition": "REGULAR",
+    "gameId": "506431",
+    "home": {
+     "clubId": "692",
+     "name": "仙台89ERS",
+     "shortName": "仙台",
+     "slug": "sendai-89ers"
+    },
+    "prediction": {
+     "homeWinProb": 0.7394248966755319,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.0.0",
+     "predAwayScore": 75.07547275109066,
+     "predHomeScore": 83.38147618664625
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-07T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "721",
+     "name": "広島ドラゴンフライズ",
+     "shortName": "広島",
+     "slug": "hiroshima-dragonflies"
+    },
+    "competition": "REGULAR",
+    "gameId": "506432",
+    "home": {
+     "clubId": "712",
+     "name": "茨城ロボッツ",
+     "shortName": "茨城",
+     "slug": "ibaraki-robots"
+    },
+    "prediction": {
+     "homeWinProb": 0.2703195970479935,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.0.0",
+     "predAwayScore": 83.42861819564769,
+     "predHomeScore": 75.50746576088494
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-07T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "699",
+     "name": "京都ハンナリーズ",
+     "shortName": "京都",
+     "slug": "kyoto-hannaryz"
+    },
+    "competition": "REGULAR",
+    "gameId": "506433",
+    "home": {
+     "clubId": "696",
+     "name": "富山グラウジーズ",
+     "shortName": "富山",
+     "slug": "toyama-grouses"
+    },
+    "prediction": {
+     "homeWinProb": 0.32229576158779094,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.0.0",
+     "predAwayScore": 82.26821602382894,
+     "predHomeScore": 76.2962334949283
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-07T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "726",
+     "name": "東京サンロッカーズ",
+     "shortName": "東京SR",
+     "slug": "tokyo-sunrockers"
+    },
+    "competition": "REGULAR",
+    "gameId": "506434",
+    "home": {
+     "clubId": "698",
+     "name": "滋賀レイクス",
+     "shortName": "滋賀",
+     "slug": "shiga-lakes"
+    },
+    "prediction": {
+     "homeWinProb": 0.44525377267380783,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.0.0",
+     "predAwayScore": 80.09270410043145,
+     "predHomeScore": 78.31049006274937
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-07T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "694",
+     "name": "横浜ビー・コルセアーズ",
+     "shortName": "横浜BC",
+     "slug": "yokohama-b-corsairs"
+    },
+    "competition": "REGULAR",
+    "gameId": "506435",
+    "home": {
+     "clubId": "700",
+     "name": "大阪エヴェッサ",
+     "shortName": "大阪",
+     "slug": "osaka-evessa"
+    },
+    "prediction": {
+     "homeWinProb": 0.30949290655937134,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.0.0",
+     "predAwayScore": 82.81924255577962,
+     "predHomeScore": 76.38119868389927
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-07T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "702",
+     "name": "レバンガ北海道",
+     "shortName": "北海道",
+     "slug": "levanga-hokkaido"
+    },
+    "competition": "REGULAR",
+    "gameId": "506436",
+    "home": {
+     "clubId": "720",
+     "name": "島根スサノオマジック",
+     "shortName": "島根",
+     "slug": "shimane-susanoo-magic"
+    },
+    "prediction": {
+     "homeWinProb": 0.4260342207567577,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.0.0",
+     "predAwayScore": 80.57752651520774,
+     "predHomeScore": 78.16330132301901
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-07T10:05:00Z"
+   }
+  ]
+ },
+ "meta": {
+  "generatedAt": "2026-10-04T17:12:21Z"
+ }
+}

@@ -19,7 +19,7 @@
      "slug": "levanga-hokkaido"
     },
     "prediction": {
-     "homeWinProb": 0.6547350240209492,
+     "homeWinProb": 0.6547350240209491,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -73,7 +73,7 @@
      "slug": "kobe-storks"
     },
     "prediction": {
-     "homeWinProb": 0.5082067308523602,
+     "homeWinProb": 0.5082067308523605,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -127,7 +127,7 @@
      "slug": "nagasaki-velca"
     },
     "prediction": {
-     "homeWinProb": 0.21598194479318297,
+     "homeWinProb": 0.21598194479318295,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -181,7 +181,7 @@
      "slug": "ryukyu-golden-kings"
     },
     "prediction": {
-     "homeWinProb": 0.5994225675308557,
+     "homeWinProb": 0.5994225675308558,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -195,6 +195,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-04T20:50:29Z"
+  "generatedAt": "2026-10-04T21:15:41Z"
  }
 }

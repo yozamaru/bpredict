@@ -9,7 +9,7 @@
 | **1. 前日の結果取得** | **あり**（`--only-yesterday`。1試合ごとの取り込みは `backfill` と共有する） |
 | **1b. 未実施の試合の取り込み** | **あり**（`--only-upcoming`） |
 | **2. スナップショット更新** | **あり**（1b が送った行を同じ本文から写す） |
-| 3. 照合・集計・Elo | まだ（`batch.jobs.evaluate` / `recompute_ratings` が別に持つ） |
+| **3. 照合・集計・Elo** | **あり**（`--only-settle`。`batch.jobs.evaluate` と `recompute_ratings` を呼ぶ） |
 | **4. 推論** | **あり**（`--only-inference`） |
 | **5. 静的JSON の書き出し** | **あり**（`--only-inference` の後段） |
 | 12. `ingestion_logs` | **あり** |
@@ -48,6 +48,9 @@ from batch.features.dataset import (
     write_snapshot,
 )
 from batch.features.prepared import prepare
+from batch.jobs import evaluate as evaluate_job
+from batch.jobs import recompute_ratings as ratings_job
+from batch.jobs.evaluate import EvaluateError
 from batch.jobs.game_ingest import ingest_game
 from batch.jobs.schedule_walk import walk_schedule
 from batch.jobs.seed_master import Season, load_club_source_ids, load_seasons
@@ -104,6 +107,9 @@ UPCOMING_DAYS = 7
 EVENTS = (3, 2)
 
 DEFAULT_STATE_PATH = Path("batch/.scraper-state/state.json")
+
+#: スナップショットの置き場。**入力はここだけである**（絶対ルール3）。
+DEFAULT_SNAPSHOT = Path("batch/snapshot")
 ROWS_PER_REQUEST = max_rows_per_request("games")
 
 
@@ -603,10 +609,54 @@ def apply_to_snapshot(
     return written
 
 
-# --- ステップ4: 推論（詳細設計 4.2 の「推論（ステップ4）」） ---
+# --- ステップ3: 照合・集計・Elo 再計算（詳細設計 4.2 のステップ3） ---
 
-#: スナップショットの置き場。**入力はここだけである**（絶対ルール3）。
-DEFAULT_SNAPSHOT = Path("batch/snapshot")
+def run_settle(
+    api: InternalApi, *, snapshot: Path = DEFAULT_SNAPSHOT,
+    log: Callable[[str], None] = print,
+) -> str:
+    """照合（A-04）と Elo の再計算を回す。`"SUCCESS"` か `"PARTIAL"` を返す。
+
+    **cron を置いたことで、ここを結線しないと Elo が毎日1日ずつ古くなる。**
+    ステップ1 が結果を取り込んでも `team_ratings` は書き変わらず、推論が読む Elo は
+    **最後に `rebuild-derived` を手で回した日のまま**になる。
+
+    **推論より前に呼ぶ。** 推論はスナップショットの `team_ratings` を読むため、
+    後に回すとその日の推論が古い Elo を使う。
+
+    **照合が失敗しても Elo は回す。** 互いに依存せず、**Elo を止める方が予測に
+    直接効く**（`elo_diff` は寄与度が最大の列である）。どちらも冪等なので、
+    失敗しても翌日やり直せる。
+    """
+    status = "SUCCESS"
+    try:
+        outcome = evaluate_job.run(api=api, snapshot_dir=snapshot)
+        counted = [r for r in outcome.results if r.counted]
+        log(
+            f"daily_ingest: 照合={len(outcome.results)}件"
+            f"（母数に入る {len(counted)}件 / 飛ばした {len(outcome.skipped)}件）"
+        )
+    except (EvaluateError, LoaderError, SnapshotError) as error:
+        # **型名だけにしない**（詳細設計 4.3）。いずれも自前の文言を持つ
+        log(f"  - 照合に失敗（{type(error).__name__}: {error}）")
+        status = "PARTIAL"
+
+    try:
+        ratings = ratings_job.run(api=api, snapshot_dir=snapshot)
+        log(
+            f"daily_ingest: Elo を再計算した（{ratings.rows}行"
+            f" / 送った {ratings.requests}リクエスト"
+            f" / {ratings.from_date or '—'}〜{ratings.to_date or '—'}）"
+        )
+        for note in ratings.notes:
+            log(f"  - {note}")
+    except (LoaderError, SnapshotError, ValueError) as error:
+        log(f"  - Elo の再計算に失敗（{type(error).__name__}: {error}）")
+        status = "PARTIAL"
+    return status
+
+
+# --- ステップ4: 推論（詳細設計 4.2 の「推論（ステップ4）」） ---
 
 
 @dataclass
@@ -830,6 +880,9 @@ def main(argv: list[str] | None = None) -> int:
         "--only-upcoming", action="store_true",
         help="未実施の試合の取り込み（ステップ1b）を行う")
     parser.add_argument(
+        "--only-settle", action="store_true",
+        help="照合・集計・Elo 再計算（ステップ3）。外部サイトへはアクセスしない")
+    parser.add_argument(
         "--only-inference", action="store_true",
         help="推論と静的JSON の書き出し（ステップ4と5）。外部サイトへはアクセスしない")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
@@ -840,10 +893,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # **どのステップを行うかを必ず明示させる。** 既定の動作を持たせない —
     # 全ステップが揃うまで「回したつもりで半分しか動いていない」が起きる
-    if not (args.only_yesterday or args.only_upcoming or args.only_inference):
+    if not (args.only_yesterday or args.only_upcoming or args.only_settle
+            or args.only_inference):
         parser.error(
-            "--only-yesterday / --only-upcoming / --only-inference の"
-            "いずれかを指定する")
+            "--only-yesterday / --only-upcoming / --only-settle / "
+            "--only-inference のいずれかを指定する")
 
     api = InternalApi(
         os.environ.get("API_BASE_URL", ""),
@@ -925,6 +979,11 @@ def main(argv: list[str] | None = None) -> int:
         if result.unmatched_clubs:
             print(f"  クラブ一覧にない相手: {' / '.join(result.unmatched_clubs)}")
         rows += result.ingested
+
+    # **推論より前に置く。** 推論はスナップショットの `team_ratings` を読むため、
+    # 後に回すとその日の推論が古い Elo を使う（詳細設計 4.2 のステップ3）
+    if args.only_settle and run_settle(api, snapshot=args.snapshot) != "SUCCESS":
+        status = "PARTIAL"
 
     if args.only_inference:
         try:

@@ -35,6 +35,11 @@ on:
         required: false
         type: boolean
         default: true
+      settle:
+        description: '照合・集計・Elo 再計算（ステップ3）。外部アクセスなし'
+        required: false
+        type: boolean
+        default: true
       inference:
         description: '推論と静的JSON の書き出し（ステップ4と5）'
         required: false
@@ -117,16 +122,18 @@ jobs:
         env:
           YESTERDAY: ${{ github.event_name == 'schedule' || inputs.yesterday }}
           UPCOMING: ${{ github.event_name == 'schedule' || inputs.upcoming }}
+          SETTLE: ${{ github.event_name == 'schedule' || inputs.settle }}
           INFERENCE: ${{ github.event_name == 'schedule' || inputs.inference }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=()
           [[ "$YESTERDAY" == 'true' ]] && args+=(--only-yesterday)
           [[ "$UPCOMING" == 'true' ]] && args+=(--only-upcoming)
+          [[ "$SETTLE" == 'true' ]] && args+=(--only-settle)
           [[ "$INFERENCE" == 'true' ]] && args+=(--only-inference)
           [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
           if (( ${#args[@]} == 0 )); then
-            echo '::error::ステップを1つ以上選ぶ（yesterday / upcoming / inference）'
+            echo '::error::ステップを1つ以上選ぶ（yesterday / upcoming / settle / inference）'
             exit 1
           fi
           python -m batch.jobs.daily_ingest "${args[@]}"

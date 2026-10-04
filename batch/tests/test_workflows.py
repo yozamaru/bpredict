@@ -281,7 +281,7 @@ def test_the_schedule_run_turns_on_every_step():
     取り込まない状態に静かになるのを防ぐ。
     """
     body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    for name in ("yesterday", "upcoming", "inference"):
+    for name in ("yesterday", "upcoming", "settle", "inference"):
         assert f"github.event_name == 'schedule' || inputs.{name}" in body, name
 
 

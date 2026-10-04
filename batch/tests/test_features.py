@@ -316,3 +316,23 @@ def test_season_progress_is_not_implemented() -> None:
     from batch.features.builder import FEATURE_KEYS
 
     assert "season_progress" not in FEATURE_KEYS
+
+
+def test_attendance_is_not_implemented() -> None:
+    """**動員（#29）は3系統すべて実装しない**（詳細設計 2.2）。
+
+    - チーム別の数（`attendance_avg_home`）は**実装して測り、落とした** —
+      採用経路B の Brier が +0.000369 悪化した
+    - 会場別の数（`attendance_avg_venue`）は**着手しない** — 上が効かなかったため
+    - 率（`attendance_rate_home`）と収容人数（`venue_capacity`）は
+      `venue_revisions.capacity` が**全件 NULL** で、入れると定数列になる
+
+    再実装するなら、まず `verification/RESULTS.md` の測定を読むこと。
+    """
+    from batch.features.builder import FEATURE_KEYS
+
+    for key in (
+        "attendance_avg_home", "attendance_avg_venue",
+        "attendance_rate_home", "venue_capacity",
+    ):
+        assert key not in FEATURE_KEYS

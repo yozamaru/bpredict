@@ -263,14 +263,26 @@ def test_backfill_carries_the_exclusion_list_home():
 
 # --- cron を置く条件（詳細設計 4.2） ---
 
-def test_daily_ingest_runs_at_0600_jst():
-    """cron は UTC で書く。06:00 JST = 21:00 UTC（CLAUDE.md 時刻の扱い）。
+def test_daily_ingest_runs_four_times_a_day():
+    """**1日4回回す**（運営者の指示。2026-10-05）。
 
-    **ステップ1（前日の結果取得）が入ってから置いた。** それまでは、毎日回しても
-    未実施の試合と予測だけが新しくなり、**特徴量の入力は止まったまま**だった。
+    cron は UTC で書く（CLAUDE.md 時刻の扱い）。06:00 JST = 21:00 UTC、
+    11:00 / 13:00 / 16:00 JST = 02:00 / 04:00 / 07:00 UTC。スロットの時刻は
+    設計 4.1 の `gameday_update` と同じである。
     """
     body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
     assert "cron: '0 21 * * *'" in body
+    assert "cron: '0 2,4,7 * * *'" in body
+
+
+def test_only_the_morning_slot_walks_the_upcoming_schedule():
+    """**06:00 以外ではステップ1b を回さない**（日程の walk を1回節約する）。
+
+    要件 5.2「取得は必要最小限のページに限る」。未実施の試合の追加・延期は
+    1日1回の反映で足りる。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    assert "github.event.schedule == '0 21 * * *'" in body
 
 
 def test_the_schedule_run_turns_on_every_step():
@@ -281,7 +293,7 @@ def test_the_schedule_run_turns_on_every_step():
     取り込まない状態に静かになるのを防ぐ。
     """
     body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    for name in ("yesterday", "upcoming", "settle", "inference"):
+    for name in ("results", "settle", "inference"):
         assert f"github.event_name == 'schedule' || inputs.{name}" in body, name
 
 

@@ -1,14 +1,24 @@
 # 日次の取り込みと推論（詳細設計 4.2）。
 #
-# **cron は `0 21 * * *`（06:00 JST）である**（設計 4.1）。ステップ1（前日の結果
-# 取得）が入ったため置いた — それまでは、毎日回しても未実施の試合と予測だけが
-# 新しくなり、**特徴量の入力は止まったまま**になる状態だった（`data_as_of` が
-# 過去に固定され、予測は日ごとに悪くなる）。
+# **1日4回回す**（運営者の指示。2026-10-05。詳細設計 4.2）。
+#
+# | cron (UTC) | JST | ステップ |
+# |---|---|---|
+# | `0 21 * * *` | **06:00** | **すべて**（1 / 1b / 3 / 4 / 5） |
+# | `0 2,4,7 * * *` | 11:00 / 13:00 / 16:00 | 1 / 3 / 4 / 5 |
+#
+# **06:00 以外ではステップ1b を回さない。** 日程の walk を1回節約する
+# （要件 5.2「取得は必要最小限のページに限る」）。未実施の試合の追加・延期は
+# 1日1回の反映で足りる。
+#
+# **ワークフローを2つに分けない。** 設計 4.1 は `gameday_update` を別ジョブとして
+# 定めるが、**エントリー取得が未実装である今、行う処理は同じ**である。同じコマンドを
+# 呼ぶワークフローを2つ持つと cron 以外に違いがなく、**片方だけ直す事故**が増える。
 #
 # **`schedule` では `inputs` が空になる。** 真偽値の入力も `''` になるため、
-# `inputs.yesterday` をそのまま使うと**全ステップが false になりジョブが
-# エラーで終わる**。`github.event_name == 'schedule'` を先に見て、定期実行では
-# 全ステップを回す。
+# `inputs.results` をそのまま使うと**全ステップが false になりジョブがエラーで
+# 終わる**。`github.event_name == 'schedule'` を先に見る。どのステップを回すかは
+# **`github.event.schedule`（cron 式そのもの）で分ける。**
 #
 # **`contents: write` を与える2つのワークフローのうちの1つ**（基本設計 7.3）。
 # スナップショット（ステップ2）と静的JSON（ステップ5）をコミットするために要る。
@@ -20,13 +30,14 @@
 name: daily-ingest
 
 on:
-  # 06:00 JST。**UTC で書く**（CLAUDE.md 時刻の扱い）。
+  # **UTC で書く**（CLAUDE.md 時刻の扱い）。06:00 / 11:00 / 13:00 / 16:00 JST。
   schedule:
     - cron: '0 21 * * *'
+    - cron: '0 2,4,7 * * *'
   workflow_dispatch:
     inputs:
-      yesterday:
-        description: '前日の結果を取り込む（ステップ1 と2。公式サイトへ取得する）'
+      results:
+        description: '結果を取り込む（ステップ1 と2。窓は [前日, 当日]。公式サイトへ取得する）'
         required: false
         type: boolean
         default: true
@@ -81,7 +92,7 @@ jobs:
       # 空の User-Agent や規約ハッシュ未確認で取得すると絶対ルール6を破る。
       - name: 設定の確認
         env:
-          YESTERDAY: ${{ github.event_name == 'schedule' || inputs.yesterday }}
+          RESULTS: ${{ github.event_name == 'schedule' || inputs.results }}
           UPCOMING: ${{ github.event_name == 'schedule' || inputs.upcoming }}
         shell: bash
         run: |
@@ -89,7 +100,7 @@ jobs:
           for name in API_BASE_URL INGEST_TOKEN; do
             [[ -z "${!name}" ]] && missing+=("$name")
           done
-          if [[ "$YESTERDAY" == 'true' || "$UPCOMING" == 'true' ]]; then
+          if [[ "$RESULTS" == 'true' || "$UPCOMING" == 'true' ]]; then
             for name in SCRAPER_USER_AGENT SCRAPER_ROBOTS_SHA256 SCRAPER_TERMS_SHA256; do
               [[ -z "${!name}" ]] && missing+=("$name")
             done
@@ -103,7 +114,7 @@ jobs:
       # 引き継ぐ。`parser-canary` / `backfill` と同じキー空間を共有し、
       # **合計で上限を守る**（詳細設計 4.8）。
       - name: スクレイパの状態を復元
-        if: ${{ github.event_name == 'schedule' || inputs.yesterday || inputs.upcoming }}
+        if: ${{ github.event_name == 'schedule' || inputs.results || inputs.upcoming }}
         uses: actions/cache@v4
         with:
           path: batch/.scraper-state
@@ -120,20 +131,21 @@ jobs:
       # inputs を `run:` に直接展開しない（env へ渡す）。
       - name: 取り込みと推論
         env:
-          YESTERDAY: ${{ github.event_name == 'schedule' || inputs.yesterday }}
-          UPCOMING: ${{ github.event_name == 'schedule' || inputs.upcoming }}
+          RESULTS: ${{ github.event_name == 'schedule' || inputs.results }}
+          # **ステップ1b は 06:00 だけ**（日程の walk を節約する。詳細設計 4.2）
+          UPCOMING: ${{ github.event_name == 'schedule' && github.event.schedule == '0 21 * * *' || github.event_name != 'schedule' && inputs.upcoming }}
           SETTLE: ${{ github.event_name == 'schedule' || inputs.settle }}
           INFERENCE: ${{ github.event_name == 'schedule' || inputs.inference }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=()
-          [[ "$YESTERDAY" == 'true' ]] && args+=(--only-yesterday)
+          [[ "$RESULTS" == 'true' ]] && args+=(--only-results)
           [[ "$UPCOMING" == 'true' ]] && args+=(--only-upcoming)
           [[ "$SETTLE" == 'true' ]] && args+=(--only-settle)
           [[ "$INFERENCE" == 'true' ]] && args+=(--only-inference)
           [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
           if (( ${#args[@]} == 0 )); then
-            echo '::error::ステップを1つ以上選ぶ（yesterday / upcoming / settle / inference）'
+            echo '::error::ステップを1つ以上選ぶ（results / upcoming / settle / inference）'
             exit 1
           fi
           python -m batch.jobs.daily_ingest "${args[@]}"

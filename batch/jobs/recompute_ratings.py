@@ -20,6 +20,7 @@ D1 側は表示のための複製であり、**特徴量生成が D1 の `team_r
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 import uuid
@@ -47,7 +48,48 @@ class Result:
     requests: int = 0
     from_date: str = ""
     to_date: str = ""
+    #: 保存済みと一致したため何も書かなかった（`only_changed` のとき）
+    unchanged: bool = False
     notes: list[str] = field(default_factory=list)
+
+
+#: 行の同一性を見る列（主キー以外）。**`as_of_date` と `club_id` は鍵なので入れない。**
+VALUE_COLUMNS = ("season_id", "elo", "off_rating", "def_rating", "pace", "games_played")
+
+
+def _rows(frame: pd.DataFrame) -> dict[tuple[str, str], tuple[object, ...]]:
+    """`(club_id, as_of_date)` → 値の組。**NaN を None に正規化する。**
+
+    `off_rating` / `def_rating` / `pace` は全件 NaN であり（詳細設計 2.5）、
+    素朴に `!=` で比べると **NaN != NaN のため全行が「変わった」になる**。
+    """
+    if frame.empty:
+        return {}
+    out: dict[tuple[str, str], tuple[object, ...]] = {}
+    for row in frame[["club_id", "as_of_date", *VALUE_COLUMNS]].itertuples(index=False):
+        values = tuple(
+            None if isinstance(v, float) and math.isnan(v) else v
+            for v in tuple(row)[2:]
+        )
+        out[(str(row.club_id), str(row.as_of_date))] = values
+    return out
+
+
+def first_changed_date(stored: pd.DataFrame, computed: pd.DataFrame) -> str | None:
+    """保存済みと計算結果が食い違う最も早い `as_of_date`。同じなら None。
+
+    **Elo の変化は前へ伝播しない。** ある日の結果はその日以降の行だけを動かすため、
+    「最も早い食い違い」以降を洗い替えれば足りる（詳細設計 4.2 のステップ3）。
+
+    **消えた行も食い違いとして数える。** 通常は起きないが、起きたときに黙って
+    D1 に残り続けるのを防ぐ。
+    """
+    before, after = _rows(stored), _rows(computed)
+    changed = [
+        key[1] for key in set(before) | set(after)
+        if before.get(key) != after.get(key)
+    ]
+    return min(changed) if changed else None
 
 
 def _iso_now() -> str:
@@ -99,14 +141,39 @@ def run(
     api: InternalApi,
     snapshot_dir: Path = DEFAULT_SNAPSHOT,
     from_date: str | None = None,
+    only_changed: bool = False,
     params: EloParams = DEFAULT_PARAMS,
 ) -> Result:
+    """Elo を再計算して書き出す。
+
+    **計算は常に全期間を replay する**（詳細設計 2.5）。途中から始めると開始状態を
+    保存済みの値から拾うことになり、丸め差が世代を追って蓄積する。
+    `from_date` と `only_changed` が絞るのは **D1 へ送る範囲だけ**である。
+
+    `only_changed=True` のとき、保存済みのスナップショットと食い違う最も早い日付を
+    自分で求め、そこから送る。**日次に毎回全期間（12,584行）を送ると、書き込み枠の
+    12.6% を Elo だけで使う**（4回回すと50%）。一致していれば何も書かない。
+    """
     dataset = load_snapshot(snapshot_dir)
     ratings = recompute(dataset.table("games"), dataset.table("seasons"), params=params)
     result = Result(rows=len(ratings))
     if ratings.empty:
         result.notes.append("結果が確定した試合がないため書き出さない")
         return result
+
+    if only_changed and from_date is None:
+        stored = (
+            dataset.tables["team_ratings"]
+            if "team_ratings" in dataset.tables
+            else pd.DataFrame(columns=list(ratings.columns))
+        )
+        from_date = first_changed_date(stored, ratings)
+        if from_date is None:
+            # **スナップショットも書かない。** 内容が同じファイルを書き直すと、
+            # リポジトリの差分が無意味に膨らむ（基本設計 2.2 の部分書き出し）
+            result.unchanged = True
+            result.notes.append("保存済みと一致したため書き出さない")
+            return result
 
     # 特徴量生成が読むのはこちら。**D1 より先に書く。**
     updated = Dataset(tables={**dataset.tables, "team_ratings": ratings})
@@ -155,6 +222,9 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--full", action="store_true", help="全期間を洗い替える")
     group.add_argument("--from-date", help="この日付以降を洗い替える（YYYY-MM-DD）")
+    group.add_argument(
+        "--changed", action="store_true",
+        help="保存済みと食い違う日付以降だけを洗い替える（日次の既定）")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")
     args = parser.parse_args(argv)
@@ -168,7 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         result = run(
             api=api,
             snapshot_dir=args.snapshot,
-            from_date=None if args.full else args.from_date,
+            from_date=None if (args.full or args.changed) else args.from_date,
+            only_changed=args.changed,
         )
         _log(api, result)
     except LoaderError as error:

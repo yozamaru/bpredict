@@ -515,3 +515,67 @@ def test_module_does_not_compute_elo_in_features():
     root = pathlib.Path(elo_module.__file__).resolve().parents[2] / "features"
     for path in root.glob("*.py"):
         assert "batch.ratings" not in path.read_text(encoding="utf-8"), path.name
+
+
+# --- D1 へ送る範囲を絞る（詳細設計 4.2 のステップ3） ---
+
+
+def _ratings_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
+    return pd.DataFrame(rows, columns=[
+        "club_id", "as_of_date", "season_id", "elo",
+        "off_rating", "def_rating", "pace", "games_played"])
+
+
+def _row(club: str, day: str, elo: float, played: int = 1) -> dict[str, object]:
+    return {
+        "club_id": club, "as_of_date": day, "season_id": "s1", "elo": elo,
+        "off_rating": float("nan"), "def_rating": float("nan"),
+        "pace": float("nan"), "games_played": played,
+    }
+
+
+def test_nothing_changed_returns_none() -> None:
+    """**NaN を None に正規化する。**
+
+    `off_rating` / `def_rating` / `pace` は全件 NaN であり、素朴に `!=` で
+    比べると **NaN != NaN のため全行が「変わった」になる**。
+    """
+    frame = _ratings_frame([_row("a", "2026-10-01", 1500.0)])
+    assert recompute_ratings.first_changed_date(frame, frame.copy()) is None
+
+
+def test_the_earliest_difference_is_returned() -> None:
+    """**Elo の変化は前へ伝播しない。** その日以降を洗い替えれば足りる。"""
+    before = _ratings_frame([
+        _row("a", "2026-10-01", 1500.0), _row("a", "2026-10-02", 1510.0)])
+    after = _ratings_frame([
+        _row("a", "2026-10-01", 1500.0), _row("a", "2026-10-02", 1520.0)])
+    assert recompute_ratings.first_changed_date(before, after) == "2026-10-02"
+
+
+def test_a_new_row_counts_as_a_difference() -> None:
+    before = _ratings_frame([_row("a", "2026-10-01", 1500.0)])
+    after = _ratings_frame([
+        _row("a", "2026-10-01", 1500.0), _row("a", "2026-10-02", 1510.0)])
+    assert recompute_ratings.first_changed_date(before, after) == "2026-10-02"
+
+
+def test_a_removed_row_counts_as_a_difference() -> None:
+    """**消えた行も食い違いとして数える。** 黙って D1 に残り続けるのを防ぐ。"""
+    before = _ratings_frame([
+        _row("a", "2026-10-01", 1500.0), _row("a", "2026-10-02", 1510.0)])
+    after = _ratings_frame([_row("a", "2026-10-01", 1500.0)])
+    assert recompute_ratings.first_changed_date(before, after) == "2026-10-02"
+
+
+def test_an_empty_stored_table_means_everything_changed() -> None:
+    after = _ratings_frame([_row("a", "2026-10-01", 1500.0)])
+    empty = _ratings_frame([])
+    assert recompute_ratings.first_changed_date(empty, after) == "2026-10-01"
+
+
+def test_games_played_is_compared_too() -> None:
+    """Elo が同じでも `games_played` が違えば送り直す（表示に出る列である）。"""
+    before = _ratings_frame([_row("a", "2026-10-01", 1500.0, played=1)])
+    after = _ratings_frame([_row("a", "2026-10-01", 1500.0, played=2)])
+    assert recompute_ratings.first_changed_date(before, after) == "2026-10-01"

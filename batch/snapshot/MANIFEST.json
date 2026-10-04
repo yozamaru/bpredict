@@ -2,7 +2,7 @@
   "files": {
     "club_seasons": {
       "rows": 238,
-      "sha256": "bb59a9e30d7a93ed55fb2920a7c4fa07ed4e58ed5bf259338b1afd229dc62ee6"
+      "sha256": "180a31fe17731749104a597918942f4eba5ceb36ee377898e1c7ef9c0709cef0"
     },
     "clubs": {
       "rows": 30,
@@ -14,11 +14,11 @@
     },
     "games": {
       "rows": 6329,
-      "sha256": "584e578040ca52a05b359c9b8b7ffbb400b2db25f95c31a2e7b7b3ede080c83a"
+      "sha256": "29e2adc64cadd8961d5dcbc17deb45e268452fc9f0a50745da9b5ce02d2926ae"
     },
     "player_game_stats": {
       "rows": 147082,
-      "sha256": "f9c490a140b904d2fba3b556521aa1011597cf2ff7f58fcc7d124e8c9035aea3"
+      "sha256": "adf345da4e8d909453f4095d12e1e84fc249fd459ef79f1620c946effaed3d5a"
     },
     "player_seasons": {
       "rows": 0,
@@ -26,7 +26,7 @@
     },
     "players": {
       "rows": 1028,
-      "sha256": "c265af3ffa5ee8f08859ff510c8228754d055e3af7252ed42d3151089be65e67"
+      "sha256": "75d0cffde1b06f163f55a39e3a45dff0de3e403f1c6b0f1c286b472cc441c286"
     },
     "seasons": {
       "rows": 11,
@@ -34,11 +34,11 @@
     },
     "team_game_stats": {
       "rows": 12592,
-      "sha256": "ca1aeec6379697247968521e79f6e8ef16038271a9a7434814cc3366f4f44772"
+      "sha256": "11cb62ab1f5b48899228d3a52c37bb0b848b40838dcd37e67b58cd293f50ee1f"
     },
     "team_games": {
       "rows": 12658,
-      "sha256": "1f963ada29cffb4dd6df2e7d55360d138311e9156f19ed88684cf13fd37f8683"
+      "sha256": "e0fbb2d11274f897af959215e8849c9c32b1f0e0baf05ac42a0578ebc83261ff"
     },
     "team_ratings": {
       "rows": 12584,
@@ -50,10 +50,10 @@
     },
     "venues": {
       "rows": 152,
-      "sha256": "c779a9f9b0354d669bb26cc30a237063b936aecac418a006e8df1ed42c89691a"
+      "sha256": "e78ddb99bace09d3527a493ca3743272979f812394bd94ee70beb605a47fa98a"
     }
   },
-  "generated_at": "2026-10-04T17:11:14Z",
+  "generated_at": "2026-10-04T20:46:58Z",
   "max_finished_at": "2026-10-04T08:05:00Z",
   "version": 1
 }

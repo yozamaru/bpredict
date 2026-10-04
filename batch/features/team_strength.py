@@ -226,3 +226,23 @@ def winrate_season_shrunk(context: Context, club_id: str) -> float | None:
         return None
     wins = float(results.sum())
     return (wins + SHRINK_K * prior) / (played + SHRINK_K)
+
+
+def strength_of_schedule(context: Context, club_id: str) -> float | None:
+    """当季にこれまで対戦した相手の、**対象試合日の直前の** Elo の平均
+    （詳細設計 2.2 の `sos_diff`・**検証区分**）。
+
+    **窓と Elo の時点は既にあるものに合わせる**（詳細設計 2.2）。窓は当季
+    （`margin_season` と同じ）、Elo の時点は対象試合日の直前（`elo()` と同じ）。
+    **「対戦した当時の Elo」は採らない** — 同じ行列の中で Elo の時点が2種類あると、
+    `elo_diff` との比較が何を意味するのか読めなくなる。
+
+    相手の Elo が引けない試合は平均から落とす（関数内で 1500 を埋めない。規約5）。
+    1試合も引けなければ None を返す。
+    """
+    history = context.club_history(club_id, season_only=True)
+    if history.empty:
+        return None
+    ratings = [elo(context, str(opponent)) for opponent in history["opponent_id"]]
+    known = [r for r in ratings if r is not None]
+    return float(sum(known) / len(known)) if known else None

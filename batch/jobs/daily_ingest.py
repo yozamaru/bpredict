@@ -63,6 +63,12 @@ from batch.scraper.client import (
     ScrapingStopped,
 )
 from batch.scraper.schedule import schedule_html_url
+from batch.static_json.from_snapshot import PredictedGame, build_inputs
+from batch.static_json.writer import (
+    DATA_DIR,
+    SCHEDULE_WINDOW_DAYS,
+    write_static_json,
+)
 
 #: 予測の対象にする窓（詳細設計 4.2 のステップ8「向こう7日間」）。
 UPCOMING_DAYS = 7
@@ -255,6 +261,10 @@ class InferenceResult:
     skipped_after_tipoff: list[str] = field(default_factory=list)
     data_as_of: str | None = None
     model_versions: dict[str, str] = field(default_factory=dict)
+    #: ステップ5（静的JSON）に渡す。**D1 から読み戻さない**（詳細設計 4.2）
+    rows: list[PredictedGame] = field(default_factory=list)
+    #: 書き出したファイル数（0 なら書いていない）
+    written: int = 0
 
 
 def upcoming_for_inference(
@@ -283,17 +293,19 @@ def upcoming_for_inference(
 
 
 def run_inference(
-    api: InternalApi, *, run_id: str, snapshot: Path = DEFAULT_SNAPSHOT,
+    api: InternalApi, *, ds: Dataset, run_id: str,
     now: datetime | None = None, log: Callable[[str], None] = print,
 ) -> InferenceResult:
     """ステップ4。**外部サイトへは一度もアクセスしない。**
 
     **3本が揃わなければ1件も書かない**（`load_active` が落とす）。勝率だけ出して
     予想スコアを NULL にする経路を作らない（要件 F-02 / F-03）。
+
+    **スナップショットは呼び出し側が読む。** ステップ5（静的JSON）も同じものを
+    読むため、ここで読むと2回読むことになる。
     """
     moment = (now or datetime.now(UTC)).astimezone(UTC)
     stamp = moment.isoformat(timespec="seconds").replace("+00:00", "Z")
-    ds = load_snapshot(snapshot)
     models: ActiveModels = load_active(api, list(FEATURE_KEYS))
     result = InferenceResult(
         data_as_of=ds.max_finished_at, model_versions=dict(models.versions))
@@ -334,7 +346,46 @@ def run_inference(
             result.skipped_after_tipoff.append(game_id)
             continue
         result.predicted += 1
+        result.rows.append(PredictedGame(
+            game_id=game_id,
+            home_win_prob=prediction.home_win_prob,
+            pred_home_score=prediction.home_score,
+            pred_away_score=prediction.away_score,
+            model_version=models.versions["WINNER"],
+        ))
     return result
+
+
+# --- ステップ5: 静的JSON の書き出し（詳細設計 4.2 の「静的JSON の書き出し」） ---
+
+def write_json(
+    ds: Dataset, result: InferenceResult, *, today: str, status: str,
+    root: Path = DATA_DIR, log: Callable[[str], None] = print,
+) -> int:
+    """窓の全ファイルを書き直す。書いたファイル数を返す。
+
+    **試合が1件も無い日も書く。** 書かないと古い `today.json` が残り、昨日の試合が
+    「今日の試合」として配信され続ける。
+
+    **推論に失敗したときは呼ばない**（前回のものを維持する。基本設計 4.3）。
+    呼ぶかどうかの判断は呼び出し側にある。
+    """
+    today_list, upcoming, details = build_inputs(
+        ds, result.rows, today=today, days=SCHEDULE_WINDOW_DAYS)
+    written = write_static_json(
+        today=today_list, upcoming=upcoming, details=details,
+        generated_at=datetime.now(UTC).isoformat(timespec="seconds").replace(
+            "+00:00", "Z"),
+        data_as_of=result.data_as_of,
+        last_run_status=status,
+        model_versions=sorted(result.model_versions.values()),
+        root=root,
+    )
+    log(
+        f"daily_ingest: 静的JSON を書いた（{len(written.written)}件"
+        f" / 削除 {len(written.removed)}件 / {root}）"
+    )
+    return len(written.written)
 
 
 def new_run_id() -> str:
@@ -369,8 +420,10 @@ def main(argv: list[str] | None = None) -> int:
         help="未実施の試合の取り込み（ステップ1b）を行う")
     parser.add_argument(
         "--only-inference", action="store_true",
-        help="推論（ステップ4）を行う。外部サイトへはアクセスしない")
+        help="推論と静的JSON の書き出し（ステップ4と5）。外部サイトへはアクセスしない")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
+    parser.add_argument("--data", type=Path, default=DATA_DIR,
+                        help="静的JSON の書き出し先")
     parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")
     args = parser.parse_args(argv)
 
@@ -427,7 +480,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.only_inference:
         try:
-            inferred = run_inference(api, run_id=run_id, snapshot=args.snapshot)
+            ds = load_snapshot(args.snapshot)
+            inferred = run_inference(api, ds=ds, run_id=run_id)
         except (PredictError, SnapshotError) as error:
             # **有効モデルが揃っていなければ推論を行わない**（PARTIAL）。
             # 前回の静的JSONを維持する（基本設計 4.3）
@@ -456,6 +510,9 @@ def main(argv: list[str] | None = None) -> int:
         if inferred.skipped_features or inferred.skipped_after_tipoff:
             status = "PARTIAL"
         rows += inferred.predicted
+        # --- ステップ5。**推論が通ったときだけ書く**（基本設計 4.3） ---
+        inferred.written = write_json(
+            ds, inferred, today=jst_today(), status=status, root=args.data)
 
     if not args.dry_run:
         _log(api, status, rows, run_id)

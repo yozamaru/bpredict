@@ -263,17 +263,36 @@ def test_backfill_carries_the_exclusion_list_home():
 
 # --- cron を置く条件（詳細設計 4.2） ---
 
-def test_daily_ingest_has_no_cron_yet():
-    """**ステップ1（前日の結果取得）が入るまで cron を置かない。**
+def test_daily_ingest_runs_at_0600_jst():
+    """cron は UTC で書く。06:00 JST = 21:00 UTC（CLAUDE.md 時刻の扱い）。
 
-    この状態で毎日回すと、未実施の試合と予測だけが新しくなり、**特徴量の入力は
-    止まったまま**になる（`data_as_of` が過去に固定され、予測は日ごとに悪くなる）。
-
-    **ステップ1 を実装したらこのテストを消して cron を足す**（設計 4.1 の
-    `0 21 * * *`）。テストで止めてあるのは、忘れて先に cron を置かないためである。
+    **ステップ1（前日の結果取得）が入ってから置いた。** それまでは、毎日回しても
+    未実施の試合と予測だけが新しくなり、**特徴量の入力は止まったまま**だった。
     """
     body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    assert "schedule:" not in body, "ステップ1 の実装より先に cron を置いている"
+    assert "cron: '0 21 * * *'" in body
+
+
+def test_the_schedule_run_turns_on_every_step():
+    """**`schedule` では `inputs` が空になる。**
+
+    真偽値の入力も `''` になるため、`inputs.yesterday` をそのまま使うと
+    **全ステップが false になりジョブがエラーで終わる**。定期実行で何も
+    取り込まない状態に静かになるのを防ぐ。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    for name in ("yesterday", "upcoming", "inference"):
+        assert f"github.event_name == 'schedule' || inputs.{name}" in body, name
+
+
+def test_the_schedule_run_commits_its_output():
+    """定期実行でもスナップショットと静的JSON をコミットすること。
+
+    `!inputs.dry_run` は `schedule` では `!''` = true になるため動くが、
+    **偶然に頼らない**（`dry_run` の既定値が変わったら静かに止まる）。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    assert "github.event_name == 'schedule' || !inputs.dry_run" in body
 
 
 def test_train_does_not_register_by_default():

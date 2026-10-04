@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from batch.parser.models import BoxScore
+from batch.parser.schedule_parser import ScheduleGame
 
 #: 観客制限期間。入場者数が非公開の試合を取りこぼさないため**期間指定で強制的に 1**
 #: とする（詳細設計 1.3）。`attendance / capacity < 0.2` の判定より優先する。
@@ -206,3 +207,75 @@ _COUNT_FIELDS = (
     "pts", "fg2m", "fg2a", "fg3m", "fg3a", "ftm", "fta", "oreb", "dreb",
     "ast", "tov", "stl", "blk", "pf", "fd",
 )
+
+
+def upcoming_games_payload(
+    games: Sequence[ScheduleGame],
+    *,
+    season: SeasonRef,
+    club_ids: Mapping[str, str],
+    series_game_no: Mapping[str, int],
+    fetched_at: str,
+) -> dict[str, object]:
+    """未実施の試合の `POST /internal/games` の本文（詳細設計 4.2 のステップ1b）。
+
+    **`games_payload` と分けてある。** あちらはボックススコア（試合後）を入力に取る。
+    未実施の試合には**スコアも会場IDも無い**ため、同じ関数では組めない。
+
+    **会場を送らない。** 日程ページは会場名の文字しか持たず、公式の `StadiumCD` は
+    ボックススコアにしかない（詳細設計 2.2）。`venueId` と `venueNameAtGame` は
+    NULL のままにし、**試合後にステップ1（ボックススコアの取り込み）が埋める**。
+
+    **`clubSeasons` を送らない。** `ScheduleGame` のクラブ名は**略称のことがある**
+    （2020-21 の `千葉J` / `横浜BC`。詳細設計 4.4）。`club_seasons.name` は
+    ボックススコアの `TeamNameJ`（その試合時点の正式名称）が出典であり、
+    **ここで略称を入れると正式名称を上書きする**。
+
+    **`result` と `margin` は NULL。** DDL は「NULL = 未実施」と定めている（1.3）。
+    0 を入れると「引き分け」の意味になる。
+    """
+    rows: list[dict[str, object]] = []
+    team_rows: list[dict[str, object]] = []
+    for game in games:
+        home = resolve_club(game.home_source_id, club_ids)
+        away = resolve_club(game.away_source_id, club_ids)
+        rows.append(
+            {
+                "id": game.game_id,
+                "seasonId": season.season_id,
+                "league": season.league,
+                "competition": game.competition,
+                "gameDate": game.game_date,
+                "tipoffAt": game.tipoff_at,
+                "finishedAt": None,
+                "finishedAtIsEstimated": 0,
+                "homeClubId": home,
+                "awayClubId": away,
+                "venueId": None,
+                "venueNameAtGame": None,
+                "seriesGameNo": series_game_no.get(game.game_id),
+                "status": game.status,
+                "homeScore": None,
+                "awayScore": None,
+                "attendance": None,
+                "spectatorRestricted": spectator_restricted(season.label, None),
+                "sourceUrl": game.source_url,
+                "fetchedAt": fetched_at,
+            }
+        )
+        team_rows.extend(
+            {
+                "gameId": game.game_id,
+                "clubId": club,
+                "opponentId": opponent,
+                "seasonId": season.season_id,
+                "gameDate": game.game_date,
+                "finishedAt": None,
+                "isHome": is_home,
+                "competition": game.competition,
+                "result": None,
+                "margin": None,
+            }
+            for club, opponent, is_home in ((home, away, 1), (away, home, 0))
+        )
+    return {"games": rows, "teamGames": team_rows}

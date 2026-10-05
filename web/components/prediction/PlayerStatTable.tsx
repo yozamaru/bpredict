@@ -108,6 +108,12 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
       <p className="mt-2 text-[11px] leading-relaxed text-ink-3">
         スティールとブロックは1試合あたりの回数が少なく、予測はその選手の平均に近い値になります。
       </p>
+      {/* 成功率も試投数が少なく、**学習しないベースラインに負ける項目である**
+          （`fg3_pct` −0.15% / `ft_pct` −1.98%。詳細設計 2.3.1 の実測）。
+          **ST / BS と同じ扱いにする** — 隠さず1行で書く（運営者の判断。2026-10-05） */}
+      <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
+        1試合の成功率は試投数が少なく、誤差が大きい項目です。
+      </p>
       {/* 固定注記。**省略しない**（ui-implementation スキル / 要件 4.5.4） */}
       <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
         個人予測は過去の公式記録から算出した統計的推定値であり、選手の能力や評価を示すものではありません。

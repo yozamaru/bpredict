@@ -1,6 +1,8 @@
 """採用基準（詳細設計 4.6）。純粋な関数なので合成データだけで検証する。"""
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from batch.model.criteria import (
@@ -308,3 +310,49 @@ def test_thresholds_are_not_defined_twice() -> None:
     assert (MIN_EVAL_N, MIN_EFFECT, ECE_FLOOR_K, MAX_FEATURE_NULL_RATE) == (
         params.MIN_EVAL_N, params.MIN_EFFECT, params.ECE_FLOOR_K, params.MAX_FEATURE_NULL_RATE,
     )
+
+
+# --- 条件4の例外（要件 6.5 / 詳細設計 4.6） ---
+
+def test_the_ece_gate_can_be_waived() -> None:
+    """**確率を画面に出さないモデルには課さない**（第1段。要件 6.5）。
+
+    実測の値（ECE 0.014220 / 閾値 0.010）をそのまま使う。
+    """
+    tight = 0.010 / ECE_FLOOR_K
+    failing = inputs(ece=0.014220, ece_floor=tight)
+    assert not passes_criteria(failing).adopt
+
+    waived = passes_criteria(replace(failing, skip_ece=True))
+    assert waived.adopt
+    assert not any("ECE" in f for f in waived.failures)
+
+
+def test_waiving_still_records_the_measurement() -> None:
+    """**課さないが、黙らない。**
+
+    実測と閾値が記録に無いと、後から「この確率は信用できるのか」を
+    再評価できない（詳細設計 4.6）。
+    """
+    decision = passes_criteria(
+        replace(inputs(ece=0.014220, ece_floor=0.010 / ECE_FLOOR_K), skip_ece=True))
+    note = " ".join(decision.notes)
+    assert "0.0142" in note and "条件4" in note
+    assert "落ちる" in note, "単独では落ちることまで残す"
+
+
+def test_waiving_does_not_hide_other_failures() -> None:
+    """**例外は条件4だけに効く。** 他の門は通さない。"""
+    decision = passes_criteria(
+        replace(inputs(ece=0.014220, ece_floor=0.010 / ECE_FLOOR_K,
+                       constant_columns=["elo_diff"]), skip_ece=True))
+    assert not decision.adopt
+    assert any("elo_diff" in f for f in decision.failures)
+
+
+def test_the_waiver_is_off_by_default() -> None:
+    """**既定では課す。** 種別から自動で判定しない（新しいモデルで門が外れる）。"""
+    from batch.model.criteria import Inputs
+    assert Inputs.skip_ece is False or not Inputs(
+        n=1_000, brier=0.19, baseline_elo_brier=0.21,
+        null_rates={}, constant_columns=[]).skip_ece

@@ -50,7 +50,7 @@ export const COLUMN_COUNTS = {
   model_versions: 25,
   prediction_model_bundle: 4,
   prediction_results: 14,
-  accuracy_summary: 9,
+  accuracy_summary: 10,
   ingestion_logs: 9,
 } as const;
 

@@ -25,6 +25,8 @@ type SummaryRow = {
   brier: number;
   actual_rate: number | null;
   baseline_accuracy: number | null;
+  /** 予想スコアの誤差（**1チームあたり**。詳細設計 1.6）。母数は `n` と同じ */
+  score_mae: number | null;
 };
 
 /** モデル横断の集計では `model_version` に空文字が入る（詳細設計 1.6）。 */
@@ -38,6 +40,7 @@ function overall(rows: SummaryRow[]) {
     brier: row.brier,
     n: row.n,
     baselineAccuracy: row.baseline_accuracy,
+    scoreMae: row.score_mae,
   };
 }
 
@@ -53,7 +56,8 @@ accuracy.get('/accuracy', async (c) => {
   // 1クエリで全 scope を取る。数十行しかない
   const { results } = await c.env.DB.prepare(
     'SELECT scope, scope_key, model_version, n, accuracy, brier, actual_rate,'
-    + ' baseline_accuracy FROM accuracy_summary ORDER BY scope, scope_key, model_version',
+    + ' baseline_accuracy, score_mae'
+    + ' FROM accuracy_summary ORDER BY scope, scope_key, model_version',
   ).all<SummaryRow>();
 
   const rows = results ?? [];
@@ -69,6 +73,7 @@ accuracy.get('/accuracy', async (c) => {
           brier: r.brier,
           n: r.n,
           baselineAccuracy: r.baseline_accuracy,
+          scoreMae: r.score_mae,
         })),
       byModel: rows
         .filter((r) => r.scope === 'MODEL')
@@ -77,6 +82,7 @@ accuracy.get('/accuracy', async (c) => {
           accuracy: r.accuracy,
           brier: r.brier,
           n: r.n,
+          scoreMae: r.score_mae,
         })),
       // **較正は「予想した確率」と「実際に勝った割合」の対比。** 母数を必ず添える
       calibration: rows

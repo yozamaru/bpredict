@@ -321,3 +321,59 @@ def test_void_rows_keep_every_key() -> None:
     """
     void = [evaluate_one(prediction(), game(status="CANCELLED"))]
     assert key_paths(_result_payload(void)) == contract("internalEvaluate")
+
+
+# --- 予想スコアの誤差（基本設計 5.2 / 詳細設計 4.12） ---
+
+def test_score_mae_is_per_team() -> None:
+    """**1チームあたりの平均絶対誤差。** 得点差の MAE とは別物である（要件 6.4）。
+
+    予想 84–78 / 実際 88–81 なら、ホーム4点・アウェイ3点 → 平均 3.5点。
+    得点差は 6 対 7 で誤差1点であり、**値が違う**。
+    """
+    result = evaluate_one(prediction(), game())
+    assert result.score_mae == pytest.approx(3.5)
+
+
+def test_score_mae_is_averaged_over_the_scope() -> None:
+    rows = summarize(sample())
+    overall = next(r for r in rows if r.scope == "OVERALL")
+    counted = [r for r in sample() if r.counted]
+    expected = sum(r.score_mae or 0.0 for r in counted) / len(counted)
+    assert overall.score_mae == pytest.approx(expected)
+
+
+def test_score_mae_is_null_when_any_row_lacks_it() -> None:
+    """**1行でも欠けていれば NULL**（4.12）。
+
+    欠けた行を除いて平均すると、画面の「N試合中…」の隣に**母数の違う数字が
+    並ぶ**。要件 8.3 の「母数を併記する」は、併記した母数がその数字のもので
+    あることを前提にしている。
+    """
+    rows = summarize([
+        evaluate_one(prediction(), game()),
+        evaluate_one(
+            prediction(predictionId="b", gameId="g2", predHomeScore=None,
+                       predAwayScore=None),
+            game(id="g2")),
+    ])
+    overall = next(r for r in rows if r.scope == "OVERALL")
+    assert overall.n == 2, "勝敗の母数は2件のまま"
+    assert overall.score_mae is None, "除いて平均しない"
+
+
+def test_score_mae_is_not_zero_when_missing() -> None:
+    """**0 を入れない。** 0 は「誤差なし」という意味を持つ。"""
+    rows = summarize([
+        evaluate_one(
+            prediction(predHomeScore=None, predAwayScore=None), game()),
+    ])
+    assert next(r for r in rows if r.scope == "OVERALL").score_mae is None
+
+
+def test_every_scope_carries_the_score_mae() -> None:
+    """**集計の規則をスコープで分けない**（4.12）。画面に出すのは3つだけだが。"""
+    rows = summarize(sample())
+    assert {r.scope for r in rows} >= {"OVERALL", "SEASON", "MODEL", "BUCKET"}
+    for row in rows:
+        assert row.score_mae is not None, row.scope

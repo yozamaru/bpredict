@@ -3,9 +3,9 @@
 | 項目 | 内容 |
 |---|---|
 | 生成 | **`python3 scripts/describe_schema.py` が生成する。手で編集しない** |
-| 生成日 | 2026-10-01 |
+| 生成日 | 2026-10-05 |
 | 構造の出典 | `db/migrations/*.sql`（列の説明は DDL のコメント） |
-| 行数の出典 | D1 の本番データ（2026-10-01 の `wrangler d1 export`） |
+| 行数の出典 | D1 の本番データ（`wrangler d1 export`） |
 | 定義と設計の理由 | **`docs/design-detail.md` 1章**。この文書では繰り返さない |
 
 この文書は「**いま実際に何が入っているか**」だけを扱う。列の意味・制約の理由・
@@ -15,49 +15,61 @@
 
 | 表 | 分類 | 列数 | 行数 | 役割 |
 |---|---|---:|---:|---|
-| [`accuracy_summary`](#accuracy_summary) | 評価 | 9 | 0 | 的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため） |
-| [`club_seasons`](#club_seasons) | マスタ | 8 | 238 | シーズンごとのクラブ断面。名称・リーグ・本拠は年度で変わる。**backfill が試合データから作る** |
-| [`club_source_ids`](#club_source_ids) | マスタ | 5 | 30 | 公式サイトのチームIDを `club_id` に解決する対応表。旧B1と新リーグをまたいで名寄せする |
-| [`clubs`](#clubs) | マスタ | 5 | 30 | 恒久的なクラブ。改称・リーグ移動があっても不変。表示名は `club_seasons` が持つ |
+| [`accuracy_summary`](#accuracy_summary) | 評価 | 10 | 0 | 的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため） |
+| [`club_seasons`](#club_seasons) | マスタ | 8 | 0 | シーズンごとのクラブ断面。名称・リーグ・本拠は年度で変わる。**backfill が試合データから作る** |
+| [`club_source_ids`](#club_source_ids) | マスタ | 5 | 0 | 公式サイトのチームIDを `club_id` に解決する対応表。旧B1と新リーグをまたいで名寄せする |
+| [`clubs`](#clubs) | マスタ | 5 | 0 | 恒久的なクラブ。改称・リーグ移動があっても不変。表示名は `club_seasons` が持つ |
 | [`game_entries`](#game_entries) | ファクト | 6 | 0 | 試合ごとの出場登録。**取得のたびに全行を洗い替える**（推定行が残ると「暫定」が解除されない） |
-| [`games`](#games) | ファクト | 25 | 6,270 | 試合。主キーは公式試合ID（自然キーにしない — 延期で日付が変わると別レコードになる） |
-| [`ingestion_logs`](#ingestion_logs) | 運用 | 9 | 25 | ジョブの実行履歴。**例外オブジェクトをそのまま入れない**（型名と自前の短いメッセージに限る） |
+| [`games`](#games) | ファクト | 25 | 0 | 試合。主キーは公式試合ID（自然キーにしない — 延期で日付が変わると別レコードになる） |
+| [`ingestion_logs`](#ingestion_logs) | 運用 | 9 | 0 | ジョブの実行履歴。**例外オブジェクトをそのまま入れない**（型名と自前の短いメッセージに限る） |
 | [`model_versions`](#model_versions) | 評価（モデル） | 25 | 0 | 学習済みモデル。artifact をテキストで格納する（1.5MB 上限）。有効なものは種別ごとに常に1本 |
-| [`player_game_stats`](#player_game_stats) | ファクト | 24 | 146,463 | 選手別のボックススコア。`fgm` / `fga` / `reb` は持たず導出する（冗長列は不整合の余地になる） |
+| [`player_game_stats`](#player_game_stats) | ファクト | 24 | 0 | 選手別のボックススコア。`fgm` / `fga` / `reb` は持たず導出する（冗長列は不整合の余地になる） |
 | [`player_predictions`](#player_predictions) | 予測 | 31 | 0 | 選手単位の予測。**チーム予測へ整合化した後の値**を入れる。成功数と得点は導出するため列を持たない |
 | [`player_seasons`](#player_seasons) | マスタ | 8 | 0 | 選手の所属断面。シーズン途中の移籍にも対応する |
-| [`players`](#players) | マスタ | 5 | 1,024 | 恒久的な選手の人物マスタ。所属は持たない（`player_seasons` と実績側が持つ） |
+| [`players`](#players) | マスタ | 5 | 0 | 恒久的な選手の人物マスタ。所属は持たない（`player_seasons` と実績側が持つ） |
 | [`prediction_model_bundle`](#prediction_model_bundle) | 予測 | 4 | 0 | その予測に使ったモデル一式。1本の予測は最大33本のモデルの合成である |
 | [`prediction_reasons`](#prediction_reasons) | 予測 | 8 | 0 | 判断根拠。個別特徴ではなく**要因グループ**に集約した SHAP 値を持つ |
 | [`prediction_results`](#prediction_results) | 評価 | 14 | 0 | 確定予測と実績の照合結果。**中止・延期は `VOID` として的中率の母数から外す** |
 | [`prediction_team_targets`](#prediction_team_targets) | 予測 | 17 | 0 | 整合化の目標値。**試投数と成功率の組**で持ち、`成功数 ≤ 試投数` を構造的に保証する |
 | [`predictions`](#predictions) | 予測 | 19 | 0 | 試合単位の予測。**追記のみ**で、再推論は旧行を `is_active = 0` にして新しい行を足す |
-| [`seasons`](#seasons) | マスタ | 5 | 11 | シーズン。`id` にリーグを含める（同一シーズンの PREMIER と ONE を同時に持てるようにする） |
-| [`team_game_stats`](#team_game_stats) | ファクト | 22 | 12,540 | チームのボックススコア。選手側と同じ粒度で持つ（整合化の基準になる） |
-| [`team_games`](#team_games) | ファクト | 10 | 12,540 | チーム視点の試合行。`games` への OR 条件つき JOIN を消すためにある。日程系の特徴量はここだけを読む |
+| [`seasons`](#seasons) | マスタ | 5 | 0 | シーズン。`id` にリーグを含める（同一シーズンの PREMIER と ONE を同時に持てるようにする） |
+| [`team_game_stats`](#team_game_stats) | ファクト | 22 | 0 | チームのボックススコア。選手側と同じ粒度で持つ（整合化の基準になる） |
+| [`team_games`](#team_games) | ファクト | 10 | 0 | チーム視点の試合行。`games` への OR 条件つき JOIN を消すためにある。日程系の特徴量はここだけを読む |
 | [`team_ratings`](#team_ratings) | 派生 | 8 | 0 | 試合日ごとの Elo ほかのスナップショット。**1行はその試合日の終了時点の値である** |
 | [`venue_revisions`](#venue_revisions) | マスタ | 5 | 0 | 会場の改称と収容人数の履歴。過去試合は当時の値で表示する。**全期間を再計算して洗い替える派生** |
-| [`venue_source_keys`](#venue_source_keys) | マスタ | 2 | 149 | 公式の会場ID（`StadiumCD`）を `venue_id` に解決する対応表 |
-| [`venues`](#venues) | マスタ | 7 | 149 | 恒久的な会場。`id` は公式サイトの `StadiumCD`。`name` は初出の名称で固定する |
+| [`venue_source_keys`](#venue_source_keys) | マスタ | 2 | 0 | 公式の会場ID（`StadiumCD`）を `venue_id` に解決する対応表 |
+| [`venues`](#venues) | マスタ | 7 | 0 | 恒久的な会場。`id` は公式サイトの `StadiumCD`。`name` は初出の名称で固定する |
 
-**12 表にデータがあり、12 表が空である。**
+**0 表にデータがあり、24 表が空である。**
 
 ### 空の表とその理由
 
 | 表 | 理由 |
 |---|---|
 | `accuracy_summary` | `prediction_results` を畳んだ表。照合が始まってから（工程9b 以降） |
+| `club_seasons` | **理由が未記載** |
+| `club_source_ids` | **理由が未記載** |
+| `clubs` | **理由が未記載** |
 | `game_entries` | 取得するのは `gameday_update` で、まだ実装されていない（詳細設計 4.1） |
+| `games` | **理由が未記載** |
+| `ingestion_logs` | **理由が未記載** |
 | `model_versions` | 学習済みモデルの登録は工程8 |
+| `player_game_stats` | **理由が未記載** |
 | `player_predictions` | 親の `predictions` が空（工程9b） |
 | `player_seasons` | 登録区分とポジションの正規化が未決のため backfill が作らない（詳細設計 3.4） |
+| `players` | **理由が未記載** |
 | `prediction_model_bundle` | 親の `predictions` が空（工程9b） |
 | `prediction_reasons` | 親の `predictions` が空（工程9b） |
 | `prediction_results` | 照合は予測が入ってから（工程9b 以降） |
 | `prediction_team_targets` | 親の `predictions` が空（工程9b） |
 | `predictions` | 推論の結線は工程9b（詳細設計 9章） |
+| `seasons` | **理由が未記載** |
+| `team_game_stats` | **理由が未記載** |
+| `team_games` | **理由が未記載** |
 | `team_ratings` | **スナップショット側には 12,532 行ある。** D1 への書き戻しが未実施（詳細設計 4.1 の `rebuild-derived`） |
 | `venue_revisions` | **スナップショット側には 173 区間ある。** D1 への書き戻しが未実施（同上の `rebuild-derived`） |
+| `venue_source_keys` | **理由が未記載** |
+| `venues` | **理由が未記載** |
 
 ## 関連（ER図）
 
@@ -161,51 +173,52 @@ erDiagram
 | `actual_rate` | REAL | 可 | — | — | calibration 用 |
 | `baseline_accuracy` | REAL | 可 | — | — | 比較対象（ホーム必勝）の的中率 |
 | `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+| `score_mae` | REAL | 可 | — | — | 予想スコアの誤差。**1チームあたりの平均絶対誤差**で、得点差の MAE とは別物である。母数は `n` と同じ（食い違う場合は NULL） |
 
 ### club_seasons
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **238 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
 
 シーズンごとのクラブ断面。名称・リーグ・本拠は年度で変わる。**backfill が試合データから作る**
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `club_id` 🔑 | TEXT | 不可 | — | 100% | `clubs.id` への参照 |
-| `season_id` 🔑 | TEXT | 不可 | — | 100% | `seasons.id` への参照 |
-| `name` | TEXT | 不可 | — | 100% | その年度の正式名称。出典はボックススコアの `TeamNameJ`（当時の名称が入る） |
-| `short_name` | TEXT | 不可 | — | 100% | 短縮表記。出典は試合一覧のクラブ選択肢 |
-| `league` | TEXT | 不可 | — | 100% | リーグ区分 許容値: `B1` / `B2` / `B3` / `PREMIER` / `ONE` / `NEXT` |
-| `primary_venue_id` | TEXT | 可 | — | **0%** | `venues.id` への参照 |
-| `color_primary` | TEXT | 可 | — | **0%** | クラブカラー。**公式のロゴ・エンブレムは使わない** |
-| `color_secondary` | TEXT | 可 | — | **0%** | 同上 |
+| `club_id` 🔑 | TEXT | 不可 | — | — | `clubs.id` への参照 |
+| `season_id` 🔑 | TEXT | 不可 | — | — | `seasons.id` への参照 |
+| `name` | TEXT | 不可 | — | — | その年度の正式名称。出典はボックススコアの `TeamNameJ`（当時の名称が入る） |
+| `short_name` | TEXT | 不可 | — | — | 短縮表記。出典は試合一覧のクラブ選択肢 |
+| `league` | TEXT | 不可 | — | — | リーグ区分 許容値: `B1` / `B2` / `B3` / `PREMIER` / `ONE` / `NEXT` |
+| `primary_venue_id` | TEXT | 可 | — | — | `venues.id` への参照 |
+| `color_primary` | TEXT | 可 | — | — | クラブカラー。**公式のロゴ・エンブレムは使わない** |
+| `color_secondary` | TEXT | 可 | — | — | 同上 |
 
 ### club_source_ids
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **30 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
 
 公式サイトのチームIDを `club_id` に解決する対応表。旧B1と新リーグをまたいで名寄せする
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `source_id` 🔑 | TEXT | 不可 | — | 100% | 公式サイトのチームID |
-| `club_id` | TEXT | 不可 | — | 100% | `clubs.id` への参照 |
-| `valid_from` | TEXT | 不可 | — | 100% | この行が有効になる日 |
-| `valid_to` | TEXT | 不可 | `'9999-12-31'` | 100% | この行が有効な最後の日（終端は `9999-12-31`） |
-| `note` | TEXT | 可 | — | 100% | 名寄せの根拠を残す欄 |
+| `source_id` 🔑 | TEXT | 不可 | — | — | 公式サイトのチームID |
+| `club_id` | TEXT | 不可 | — | — | `clubs.id` への参照 |
+| `valid_from` | TEXT | 不可 | — | — | この行が有効になる日 |
+| `valid_to` | TEXT | 不可 | `'9999-12-31'` | — | この行が有効な最後の日（終端は `9999-12-31`） |
+| `note` | TEXT | 可 | — | — | 名寄せの根拠を残す欄 |
 
 ### clubs
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **30 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
 
 恒久的なクラブ。改称・リーグ移動があっても不変。表示名は `club_seasons` が持つ
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `id` 🔑 | TEXT | 不可 | — | 100% | 公式サイトのチームID。**シーズン・改称・リーグ再編をまたいで不変** |
-| `slug` | TEXT | 不可 | — | 100% | `/teams/[slug]` の識別子。**手で決め、改称でも変えない** |
-| `name` | TEXT | 不可 | — | 100% | 現在の表示名 |
-| `created_at` | TEXT | 不可 | `datetime('now')` | 100% | 行を作った時刻 |
-| `updated_at` | TEXT | 不可 | `datetime('now')` | 100% | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+| `id` 🔑 | TEXT | 不可 | — | — | 公式サイトのチームID。**シーズン・改称・リーグ再編をまたいで不変** |
+| `slug` | TEXT | 不可 | — | — | `/teams/[slug]` の識別子。**手で決め、改称でも変えない** |
+| `name` | TEXT | 不可 | — | — | 現在の表示名 |
+| `created_at` | TEXT | 不可 | `datetime('now')` | — | 行を作った時刻 |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 
 ### game_entries
 
@@ -226,55 +239,55 @@ erDiagram
 
 ### games
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **6,270 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
 
 試合。主キーは公式試合ID（自然キーにしない — 延期で日付が変わると別レコードになる）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `id` 🔑 | TEXT | 不可 | — | 100% | 公式サイトの試合ID |
-| `season_id` | TEXT | 不可 | — | 100% | `seasons.id` への参照 |
-| `league` | TEXT | 不可 | — | 100% | API応答と一致させるため非正規化 |
-| `competition` | TEXT | 不可 | — | 100% | REGULAR = リーグ戦 / PLAYOFF = チャンピオンシップ 許容値: `REGULAR` / `PLAYOFF` |
-| `game_date` | TEXT | 不可 | — | 100% | 変更されうる属性 |
-| `tipoff_at` | TEXT | 不可 | — | 100% | 試合開始時刻（UTC）。特徴量の `as_of` はこの値である |
-| `finished_at` | TEXT | 可 | — | 100% | 試合終了時刻。リーク判定の絞り込みはこの列で行う |
-| `finished_at_is_estimated` | INTEGER | 不可 | `0` | 100% | 1 なら `finished_at` が実測ではなく `tipoff_at + 2時間` の推定値 許容値: `0` / `1` |
-| `home_club_id` | TEXT | 不可 | — | 100% | ホームのクラブ |
-| `away_club_id` | TEXT | 不可 | — | 100% | アウェイのクラブ |
-| `venue_id` | TEXT | 可 | — | 100% | `venues.id` への参照 |
-| `venue_name_at_game` | TEXT | 可 | — | 100% | その試合時点の会場名（StadiumNameJ）。 venue_revisions.name の唯一の入力（1.2） |
-| `is_primary_venue` | INTEGER | 不可 | `1` | 100% | メイン会場か（代替会場ではホームアドバンテージが下がる） 許容値: `0` / `1` |
-| `series_game_no` | INTEGER | 可 | — | 100% | 同一カード連戦の何戦目か。**Bリーグは土日2連戦が基本編成である** |
-| `status` | TEXT | 不可 | — | 100% | 試合の状態 許容値: `SCHEDULED` / `FINISHED` / `POSTPONED` / `CANCELLED` |
-| `rescheduled_to` | TEXT | 可 | — | **0%** | 延期先。旧行は POSTPONED で残す |
-| `home_score` | INTEGER | 可 | — | 100% | ホームの得点（終了後に入る） |
-| `away_score` | INTEGER | 可 | — | 100% | アウェイの得点（終了後に入る） |
-| `attendance` | INTEGER | 可 | — | 100% | 入場者数 |
-| `spectator_restricted` | INTEGER | 可 | — | 19% | NULL = 判定不能（attendance か capacity が欠損） |
-| `result_revision` | INTEGER | 不可 | `0` | 100% | スコア訂正のたびに +1 |
-| `source_url` | TEXT | 可 | — | 100% | 取得元のページ。**公開APIのレスポンスには含めない** |
-| `fetched_at` | TEXT | 可 | — | 100% | 取得した時刻 |
-| `created_at` | TEXT | 不可 | `datetime('now')` | 100% | 行を作った時刻 |
-| `updated_at` | TEXT | 不可 | `datetime('now')` | 100% | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+| `id` 🔑 | TEXT | 不可 | — | — | 公式サイトの試合ID |
+| `season_id` | TEXT | 不可 | — | — | `seasons.id` への参照 |
+| `league` | TEXT | 不可 | — | — | API応答と一致させるため非正規化 |
+| `competition` | TEXT | 不可 | — | — | REGULAR = リーグ戦 / PLAYOFF = チャンピオンシップ 許容値: `REGULAR` / `PLAYOFF` |
+| `game_date` | TEXT | 不可 | — | — | 変更されうる属性 |
+| `tipoff_at` | TEXT | 不可 | — | — | 試合開始時刻（UTC）。特徴量の `as_of` はこの値である |
+| `finished_at` | TEXT | 可 | — | — | 試合終了時刻。リーク判定の絞り込みはこの列で行う |
+| `finished_at_is_estimated` | INTEGER | 不可 | `0` | — | 1 なら `finished_at` が実測ではなく `tipoff_at + 2時間` の推定値 許容値: `0` / `1` |
+| `home_club_id` | TEXT | 不可 | — | — | ホームのクラブ |
+| `away_club_id` | TEXT | 不可 | — | — | アウェイのクラブ |
+| `venue_id` | TEXT | 可 | — | — | `venues.id` への参照 |
+| `venue_name_at_game` | TEXT | 可 | — | — | その試合時点の会場名（StadiumNameJ）。 venue_revisions.name の唯一の入力（1.2） |
+| `is_primary_venue` | INTEGER | 不可 | `1` | — | メイン会場か（代替会場ではホームアドバンテージが下がる） 許容値: `0` / `1` |
+| `series_game_no` | INTEGER | 可 | — | — | 同一カード連戦の何戦目か。**Bリーグは土日2連戦が基本編成である** |
+| `status` | TEXT | 不可 | — | — | 試合の状態 許容値: `SCHEDULED` / `FINISHED` / `POSTPONED` / `CANCELLED` |
+| `rescheduled_to` | TEXT | 可 | — | — | 延期先。旧行は POSTPONED で残す |
+| `home_score` | INTEGER | 可 | — | — | ホームの得点（終了後に入る） |
+| `away_score` | INTEGER | 可 | — | — | アウェイの得点（終了後に入る） |
+| `attendance` | INTEGER | 可 | — | — | 入場者数 |
+| `spectator_restricted` | INTEGER | 可 | — | — | NULL = 判定不能（attendance か capacity が欠損） |
+| `result_revision` | INTEGER | 不可 | `0` | — | スコア訂正のたびに +1 |
+| `source_url` | TEXT | 可 | — | — | 取得元のページ。**公開APIのレスポンスには含めない** |
+| `fetched_at` | TEXT | 可 | — | — | 取得した時刻 |
+| `created_at` | TEXT | 不可 | `datetime('now')` | — | 行を作った時刻 |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 
 ### ingestion_logs
 
-運用 ／ `db/migrations/0007_*.sql` ／ **25 行**
+運用 ／ `db/migrations/0007_*.sql` ／ **0 行**
 
 ジョブの実行履歴。**例外オブジェクトをそのまま入れない**（型名と自前の短いメッセージに限る）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `id` 🔑 | TEXT | 不可 | — | 100% | 実行の識別子 |
-| `job` | TEXT | 不可 | — | 100% | ジョブ名 |
-| `started_at` | TEXT | 不可 | — | 100% | 開始時刻 |
-| `finished_at` | TEXT | 可 | — | 100% | 試合終了時刻。**リーク判定の絞り込みはこの列で行う**（`tipoff_at` ではない） |
-| `status` | TEXT | 不可 | — | 100% | 試合の状態 許容値: `RUNNING` / `SUCCESS` / `PARTIAL` / `FAILED` / `ABORTED` |
-| `rows_affected` | INTEGER | 可 | — | 100% | 書き込んだ行数（無料枠の監視に使う） |
-| `d1_rows_read` | INTEGER | 可 | — | **0%** | 無料枠の監視用 |
-| `error_type` | TEXT | 可 | — | **0%** | 例外の型名のみ |
-| `error_message` | TEXT | 可 | — | **0%** | 自前の短いメッセージのみ |
+| `id` 🔑 | TEXT | 不可 | — | — | 実行の識別子 |
+| `job` | TEXT | 不可 | — | — | ジョブ名 |
+| `started_at` | TEXT | 不可 | — | — | 開始時刻 |
+| `finished_at` | TEXT | 可 | — | — | 試合終了時刻。**リーク判定の絞り込みはこの列で行う**（`tipoff_at` ではない） |
+| `status` | TEXT | 不可 | — | — | 試合の状態 許容値: `RUNNING` / `SUCCESS` / `PARTIAL` / `FAILED` / `ABORTED` |
+| `rows_affected` | INTEGER | 可 | — | — | 書き込んだ行数（無料枠の監視に使う） |
+| `d1_rows_read` | INTEGER | 可 | — | — | 無料枠の監視用 |
+| `error_type` | TEXT | 可 | — | — | 例外の型名のみ |
+| `error_message` | TEXT | 可 | — | — | 自前の短いメッセージのみ |
 
 ### model_versions
 
@@ -314,36 +327,36 @@ erDiagram
 
 ### player_game_stats
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **146,463 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
 
 選手別のボックススコア。`fgm` / `fga` / `reb` は持たず導出する（冗長列は不整合の余地になる）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `game_id` 🔑 | TEXT | 不可 | — | 100% | `games.id` への参照 |
-| `player_id` 🔑 | TEXT | 不可 | — | 100% | `players.id` への参照 |
-| `club_id` | TEXT | 不可 | — | 100% | `clubs.id` への参照 |
-| `game_date` | TEXT | 不可 | — | 100% | その試合の **JST における暦日**（`tipoff_at` を JST へ変換して求める） |
-| `started` | INTEGER | 可 | — | 61% | スターターか 許容値: `0` / `1` 取得元: `StartingFlg` |
-| `minutes` | REAL | 可 | — | 89% | シュート。2P と 3P を別建てで持ち、FG は導出する 取得元: `PlayTime` |
-| `fg2m` | INTEGER | 可 | — | 100% | 2点シュート成功数 取得元: `PT2M` |
-| `fg2a` | INTEGER | 可 | — | 100% | 2点シュート試投数 取得元: `PT2A` |
-| `fg3m` | INTEGER | 可 | — | 100% | 3点シュート成功数 取得元: `PT3M` |
-| `fg3a` | INTEGER | 可 | — | 100% | 3点シュート試投数 取得元: `PT3A` |
-| `ftm` | INTEGER | 可 | — | 100% | リバウンド 取得元: `FTM` |
-| `fta` | INTEGER | 可 | — | 100% | フリースロー試投数 取得元: `FTA` |
-| `oreb` | INTEGER | 可 | — | 100% | プレー 取得元: `RB_OFF` |
-| `dreb` | INTEGER | 可 | — | 100% | ディフェンスリバウンド 取得元: `RB_DEF` |
-| `ast` | INTEGER | 可 | — | 100% | ファウル 取得元: `AS` |
-| `tov` | INTEGER | 可 | — | 100% | ターンオーバー 取得元: `TO` |
-| `stl` | INTEGER | 可 | — | 100% | スティール 取得元: `ST` |
-| `blk` | INTEGER | 可 | — | 100% | ブロック 取得元: `BS` |
-| `pf` | INTEGER | 可 | — | 100% | F  : 自分が犯したファウル 取得元: `FOUL` |
-| `fd` | INTEGER | 可 | — | 100% | FD : 被ファウル数 実績としてのみ保持（予測しない） 取得元: `FOULON` |
-| `plus_minus` | INTEGER | 可 | — | 49% | ＋/−。**実績としてのみ持ち、予測しない**（1試合の分散が大きく、情報も増えない） 取得元: `PLUSMINUS` |
-| `pts` | INTEGER | 可 | — | 100% | 取得値。恒等式の検証に使う 取得元: `Point` |
-| `fetched_at` | TEXT | 不可 | — | 100% | 取得した時刻 |
-| `updated_at` | TEXT | 不可 | `datetime('now')` | 100% | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+| `game_id` 🔑 | TEXT | 不可 | — | — | `games.id` への参照 |
+| `player_id` 🔑 | TEXT | 不可 | — | — | `players.id` への参照 |
+| `club_id` | TEXT | 不可 | — | — | `clubs.id` への参照 |
+| `game_date` | TEXT | 不可 | — | — | その試合の **JST における暦日**（`tipoff_at` を JST へ変換して求める） |
+| `started` | INTEGER | 可 | — | — | スターターか 許容値: `0` / `1` 取得元: `StartingFlg` |
+| `minutes` | REAL | 可 | — | — | シュート。2P と 3P を別建てで持ち、FG は導出する 取得元: `PlayTime` |
+| `fg2m` | INTEGER | 可 | — | — | 2点シュート成功数 取得元: `PT2M` |
+| `fg2a` | INTEGER | 可 | — | — | 2点シュート試投数 取得元: `PT2A` |
+| `fg3m` | INTEGER | 可 | — | — | 3点シュート成功数 取得元: `PT3M` |
+| `fg3a` | INTEGER | 可 | — | — | 3点シュート試投数 取得元: `PT3A` |
+| `ftm` | INTEGER | 可 | — | — | リバウンド 取得元: `FTM` |
+| `fta` | INTEGER | 可 | — | — | フリースロー試投数 取得元: `FTA` |
+| `oreb` | INTEGER | 可 | — | — | プレー 取得元: `RB_OFF` |
+| `dreb` | INTEGER | 可 | — | — | ディフェンスリバウンド 取得元: `RB_DEF` |
+| `ast` | INTEGER | 可 | — | — | ファウル 取得元: `AS` |
+| `tov` | INTEGER | 可 | — | — | ターンオーバー 取得元: `TO` |
+| `stl` | INTEGER | 可 | — | — | スティール 取得元: `ST` |
+| `blk` | INTEGER | 可 | — | — | ブロック 取得元: `BS` |
+| `pf` | INTEGER | 可 | — | — | F  : 自分が犯したファウル 取得元: `FOUL` |
+| `fd` | INTEGER | 可 | — | — | FD : 被ファウル数 実績としてのみ保持（予測しない） 取得元: `FOULON` |
+| `plus_minus` | INTEGER | 可 | — | — | ＋/−。**実績としてのみ持ち、予測しない**（1試合の分散が大きく、情報も増えない） 取得元: `PLUSMINUS` |
+| `pts` | INTEGER | 可 | — | — | 取得値。恒等式の検証に使う 取得元: `Point` |
+| `fetched_at` | TEXT | 不可 | — | — | 取得した時刻 |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 
 ### player_predictions
 
@@ -408,17 +421,17 @@ erDiagram
 
 ### players
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **1,024 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
 
 恒久的な選手の人物マスタ。所属は持たない（`player_seasons` と実績側が持つ）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `id` 🔑 | TEXT | 不可 | — | 100% | 公式サイトの選手ID |
-| `name` | TEXT | 不可 | — | 100% | 氏名 |
-| `height_cm` | INTEGER | 可 | — | **0%** | 身長（cm） |
-| `created_at` | TEXT | 不可 | `datetime('now')` | 100% | 行を作った時刻 |
-| `updated_at` | TEXT | 不可 | `datetime('now')` | 100% | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+| `id` 🔑 | TEXT | 不可 | — | — | 公式サイトの選手ID |
+| `name` | TEXT | 不可 | — | — | 氏名 |
+| `height_cm` | INTEGER | 可 | — | — | 身長（cm） |
+| `created_at` | TEXT | 不可 | `datetime('now')` | — | 行を作った時刻 |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 
 ### prediction_model_bundle
 
@@ -539,67 +552,67 @@ erDiagram
 
 ### seasons
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **11 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
 
 シーズン。`id` にリーグを含める（同一シーズンの PREMIER と ONE を同時に持てるようにする）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `id` 🔑 | TEXT | 不可 | — | 100% | '2026-27-PREMIER' |
-| `label` | TEXT | 不可 | — | 100% | '2026-27' |
-| `league` | TEXT | 不可 | — | 100% | リーグ区分 許容値: `B1` / `B2` / `B3` / `PREMIER` / `ONE` / `NEXT` |
-| `start_date` | TEXT | 不可 | — | 100% | 当季の **9月1日**。取り込む試合日の上位集合であればよく、**狭いと実在する試合日が404になる** |
-| `end_date` | TEXT | 不可 | — | 100% | 翌年の **6月30日**。同上 |
+| `id` 🔑 | TEXT | 不可 | — | — | '2026-27-PREMIER' |
+| `label` | TEXT | 不可 | — | — | '2026-27' |
+| `league` | TEXT | 不可 | — | — | リーグ区分 許容値: `B1` / `B2` / `B3` / `PREMIER` / `ONE` / `NEXT` |
+| `start_date` | TEXT | 不可 | — | — | 当季の **9月1日**。取り込む試合日の上位集合であればよく、**狭いと実在する試合日が404になる** |
+| `end_date` | TEXT | 不可 | — | — | 翌年の **6月30日**。同上 |
 
 ### team_game_stats
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **12,540 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
 
 チームのボックススコア。選手側と同じ粒度で持つ（整合化の基準になる）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `game_id` 🔑 | TEXT | 不可 | — | 100% | `games.id` への参照 |
-| `club_id` 🔑 | TEXT | 不可 | — | 100% | `clubs.id` への参照 |
-| `game_date` | TEXT | 不可 | — | 100% | JOIN とソートを消すための非正規化 |
-| `is_home` | INTEGER | 不可 | — | 100% | ホーム側か 許容値: `0` / `1` |
-| `pts` | INTEGER | 可 | — | 100% | 得点。恒等式 `2FGM×2 + 3FGM×3 + FTM` の検証に使う 取得元: `Point` |
-| `fg2m` | INTEGER | 可 | — | 100% | 選手側と同じ粒度で持つ（整合化の基準になる） 取得元: `PT2M` |
-| `fg2a` | INTEGER | 可 | — | 100% | 2点シュート試投数 取得元: `PT2A` |
-| `fg3m` | INTEGER | 可 | — | 100% | 3点シュート成功数 取得元: `PT3M` |
-| `fg3a` | INTEGER | 可 | — | 100% | 3点シュート試投数 取得元: `PT3A` |
-| `ftm` | INTEGER | 可 | — | 100% | フリースロー成功数 取得元: `FTM` |
-| `fta` | INTEGER | 可 | — | 100% | フリースロー試投数 取得元: `FTA` |
-| `oreb` | INTEGER | 可 | — | 100% | オフェンスリバウンド 取得元: `RB_OFF` |
-| `dreb` | INTEGER | 可 | — | 100% | ディフェンスリバウンド 取得元: `RB_DEF` |
-| `ast` | INTEGER | 可 | — | 100% | アシスト 取得元: `AS` |
-| `tov` | INTEGER | 可 | — | 100% | ターンオーバー 取得元: `TO` |
-| `stl` | INTEGER | 可 | — | 100% | スティール 取得元: `ST` |
-| `blk` | INTEGER | 可 | — | 100% | ブロック 取得元: `BS` |
-| `pf` | INTEGER | 可 | — | 100% | 自分が犯したファウル数 取得元: `FOUL` |
-| `fd` | INTEGER | 可 | — | 100% | 被ファウル数（FIBA 系の `FD`。NBA の「テイクチャージ」に相当する） 取得元: `FOULON` |
-| `possessions` | REAL | 可 | — | 100% | ポゼッション（攻撃回数の推定値）。`fga - oreb + tov + 0.44 × fta` |
-| `fetched_at` | TEXT | 不可 | — | 100% | 取得した時刻 |
-| `updated_at` | TEXT | 不可 | `datetime('now')` | 100% | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+| `game_id` 🔑 | TEXT | 不可 | — | — | `games.id` への参照 |
+| `club_id` 🔑 | TEXT | 不可 | — | — | `clubs.id` への参照 |
+| `game_date` | TEXT | 不可 | — | — | JOIN とソートを消すための非正規化 |
+| `is_home` | INTEGER | 不可 | — | — | ホーム側か 許容値: `0` / `1` |
+| `pts` | INTEGER | 可 | — | — | 得点。恒等式 `2FGM×2 + 3FGM×3 + FTM` の検証に使う 取得元: `Point` |
+| `fg2m` | INTEGER | 可 | — | — | 選手側と同じ粒度で持つ（整合化の基準になる） 取得元: `PT2M` |
+| `fg2a` | INTEGER | 可 | — | — | 2点シュート試投数 取得元: `PT2A` |
+| `fg3m` | INTEGER | 可 | — | — | 3点シュート成功数 取得元: `PT3M` |
+| `fg3a` | INTEGER | 可 | — | — | 3点シュート試投数 取得元: `PT3A` |
+| `ftm` | INTEGER | 可 | — | — | フリースロー成功数 取得元: `FTM` |
+| `fta` | INTEGER | 可 | — | — | フリースロー試投数 取得元: `FTA` |
+| `oreb` | INTEGER | 可 | — | — | オフェンスリバウンド 取得元: `RB_OFF` |
+| `dreb` | INTEGER | 可 | — | — | ディフェンスリバウンド 取得元: `RB_DEF` |
+| `ast` | INTEGER | 可 | — | — | アシスト 取得元: `AS` |
+| `tov` | INTEGER | 可 | — | — | ターンオーバー 取得元: `TO` |
+| `stl` | INTEGER | 可 | — | — | スティール 取得元: `ST` |
+| `blk` | INTEGER | 可 | — | — | ブロック 取得元: `BS` |
+| `pf` | INTEGER | 可 | — | — | 自分が犯したファウル数 取得元: `FOUL` |
+| `fd` | INTEGER | 可 | — | — | 被ファウル数（FIBA 系の `FD`。NBA の「テイクチャージ」に相当する） 取得元: `FOULON` |
+| `possessions` | REAL | 可 | — | — | ポゼッション（攻撃回数の推定値）。`fga - oreb + tov + 0.44 × fta` |
+| `fetched_at` | TEXT | 不可 | — | — | 取得した時刻 |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 
 ### team_games
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **12,540 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
 
 チーム視点の試合行。`games` への OR 条件つき JOIN を消すためにある。日程系の特徴量はここだけを読む
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `game_id` 🔑 | TEXT | 不可 | — | 100% | `games.id` への参照 |
-| `club_id` 🔑 | TEXT | 不可 | — | 100% | `clubs.id` への参照 |
-| `opponent_id` | TEXT | 不可 | — | 100% | 対戦相手のクラブ |
-| `season_id` | TEXT | 不可 | — | 100% | `seasons.id` への参照 |
-| `game_date` 🔑 | TEXT | 不可 | — | 100% | その試合の **JST における暦日**（`tipoff_at` を JST へ変換して求める） |
-| `finished_at` | TEXT | 可 | — | 100% | 試合終了時刻。**リーク判定の絞り込みはこの列で行う**（`tipoff_at` ではない） |
-| `is_home` | INTEGER | 不可 | — | 100% | ホーム側か 許容値: `0` / `1` |
-| `competition` | TEXT | 不可 | — | 100% | 大会区分。取り込むのはこの2区分だけ（オールスター・入替戦・プレシーズンは入れない） 許容値: `REGULAR` / `PLAYOFF` |
-| `result` | INTEGER | 可 | — | 100% | NULL = 未実施 許容値: `0` / `1` |
-| `margin` | INTEGER | 可 | — | 100% | 得失点差（自チーム − 相手） |
+| `game_id` 🔑 | TEXT | 不可 | — | — | `games.id` への参照 |
+| `club_id` 🔑 | TEXT | 不可 | — | — | `clubs.id` への参照 |
+| `opponent_id` | TEXT | 不可 | — | — | 対戦相手のクラブ |
+| `season_id` | TEXT | 不可 | — | — | `seasons.id` への参照 |
+| `game_date` 🔑 | TEXT | 不可 | — | — | その試合の **JST における暦日**（`tipoff_at` を JST へ変換して求める） |
+| `finished_at` | TEXT | 可 | — | — | 試合終了時刻。**リーク判定の絞り込みはこの列で行う**（`tipoff_at` ではない） |
+| `is_home` | INTEGER | 不可 | — | — | ホーム側か 許容値: `0` / `1` |
+| `competition` | TEXT | 不可 | — | — | 大会区分。取り込むのはこの2区分だけ（オールスター・入替戦・プレシーズンは入れない） 許容値: `REGULAR` / `PLAYOFF` |
+| `result` | INTEGER | 可 | — | — | NULL = 未実施 許容値: `0` / `1` |
+| `margin` | INTEGER | 可 | — | — | 得失点差（自チーム − 相手） |
 
 ### team_ratings
 
@@ -638,30 +651,30 @@ erDiagram
 
 ### venue_source_keys
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **149 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
 
 公式の会場ID（`StadiumCD`）を `venue_id` に解決する対応表
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `source_code` 🔑 | TEXT | 不可 | — | 100% | 公式の会場ID |
-| `venue_id` | TEXT | 不可 | — | 100% | `venues.id` への参照 |
+| `source_code` 🔑 | TEXT | 不可 | — | — | 公式の会場ID |
+| `venue_id` | TEXT | 不可 | — | — | `venues.id` への参照 |
 
 ### venues
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **149 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
 
 恒久的な会場。`id` は公式サイトの `StadiumCD`。`name` は初出の名称で固定する
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
-| `id` 🔑 | TEXT | 不可 | — | 100% | 公式サイトの会場ID（`StadiumCD`）。**文字列に正規化して持つ** |
-| `name` | TEXT | 不可 | — | 100% | 現在の表示名 |
-| `prefecture` | TEXT | 可 | — | **0%** | 都道府県。住所から導く（国土地理院の候補で解決する） |
-| `lat` | REAL | 可 | — | **0%** | 緯度。**1回だけ解決して CSV に固定**し、実行時に外部サービスへ依存しない |
-| `lng` | REAL | 可 | — | **0%** | 経度。同上 |
-| `created_at` | TEXT | 不可 | `datetime('now')` | 100% | 行を作った時刻 |
-| `updated_at` | TEXT | 不可 | `datetime('now')` | 100% | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+| `id` 🔑 | TEXT | 不可 | — | — | 公式サイトの会場ID（`StadiumCD`）。**文字列に正規化して持つ** |
+| `name` | TEXT | 不可 | — | — | 現在の表示名 |
+| `prefecture` | TEXT | 可 | — | — | 都道府県。住所から導く（国土地理院の候補で解決する） |
+| `lat` | REAL | 可 | — | — | 緯度。**1回だけ解決して CSV に固定**し、実行時に外部サービスへ依存しない |
+| `lng` | REAL | 可 | — | — | 経度。同上 |
+| `created_at` | TEXT | 不可 | `datetime('now')` | — | 行を作った時刻 |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 
 ## トリガ
 

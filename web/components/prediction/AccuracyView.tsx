@@ -78,7 +78,20 @@ export function AccuracyView() {
           : `「ホームが必ず勝つ」と予想した場合は ${pct(overall.baselineAccuracy)} でした。`}
       </p>
 
-      {/* 2. シーズン別の推移 */}
+      {/* 2. 予想スコアの誤差（基本設計 5.2。v1.53 で足した）。
+          **1チームあたりの誤差であり、得点差の MAE とは別物である**（要件 6.4）。
+          母数は勝敗と同じ `n` — 集計側が食い違いを見つけたときだけ null になる
+          （詳細設計 4.12）。**null のときは行を出さない**（0 と書くと「誤差なし」
+          の意味になる） */}
+      {overall.scoreMae !== null && (
+        <p className="mt-2 text-[14px] leading-relaxed">
+          予想スコアは1チームあたり平均{' '}
+          <span className="font-mono tabular-nums">{overall.scoreMae.toFixed(1)}</span>
+          点ずれています。
+        </p>
+      )}
+
+      {/* 3. シーズン別の推移 */}
       {summary.bySeason.length > 0 && (
         <section className="mt-6">
           <h3 className="font-serif text-[16px] font-semibold">シーズン別</h3>
@@ -100,7 +113,7 @@ export function AccuracyView() {
         </section>
       )}
 
-      {/* 3. モデルバージョン別（受け入れ基準 A-05 / 要件 F-07）。
+      {/* 4. モデルバージョン別（受け入れ基準 A-05 / 要件 F-07）。
           **基本設計 5.2 の旧版の並びに入っていなかったが、A-05 が要求している** */}
       {summary.byModel.length > 0 && (
         <section className="mt-6">
@@ -122,7 +135,7 @@ export function AccuracyView() {
         </section>
       )}
 
-      {/* 4. 較正の言い換え（表）→ 5. 較正曲線（グラフ）。
+      {/* 5. 較正の言い換え（表）→ 5. 較正曲線（グラフ）。
           **言い換えを先に置く**（基本設計 5.2）。専門指標をそのまま出さない */}
       {summary.calibration.length > 0 && (
         <section className="mt-6">

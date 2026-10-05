@@ -59,7 +59,7 @@ ops.post('/evaluate', async (c) => {
 
 const SUMMARY_COLS = [
   'scope', 'scope_key', 'model_version', 'n', 'accuracy', 'brier', 'actual_rate',
-  'baseline_accuracy',
+  'baseline_accuracy', 'score_mae',
 ] as const;
 
 ops.post('/summary', async (c) => {
@@ -75,7 +75,7 @@ ops.post('/summary', async (c) => {
 
   const rows: Row[] = input.map((s) => [
     s.scope, s.scopeKey, s.modelVersion ?? '', s.n, s.accuracy, s.brier,
-    s.actualRate ?? null, s.baselineAccuracy ?? null,
+    s.actualRate ?? null, s.baselineAccuracy ?? null, s.scoreMae ?? null,
   ]);
 
   // **洗い替え。** DELETE と INSERT を単一 batch() に入れる（詳細設計 1.6）

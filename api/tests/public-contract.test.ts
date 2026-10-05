@@ -290,6 +290,7 @@ describe('内部APIの要求ボディ（契約）', () => {
     const res = await post('/internal/summary', bodyFrom('internalSummary', {
       scope: 'BUCKET', scopeKey: '60-70%', modelVersion: '', n: 42,
       accuracy: 0.65, brier: 0.21, actualRate: 0.69, baselineAccuracy: null,
+      scoreMae: 8.8,
     }));
     expect(res.status).toBe(200);
   });

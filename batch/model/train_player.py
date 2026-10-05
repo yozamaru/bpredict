@@ -1,12 +1,12 @@
 """選手モデル（基本設計 2.3 / 詳細設計 2.3.1 / 4.5）。
 
-**いま実装してあるのは第2段（PlayerMinutes）だけである。**
+**いま実装してあるのは第1段と第2段である。**
 
 | 段 | 状態 |
 |---|---|
-| 第1段 PlayerAvail | **未実装。** 「出場しうる選手」を列挙できない（2.3.1） |
+| 第1段 PlayerAvail | **本モジュール。** `P(出場)`。候補は過去の出場実績から作る（2.3.1） |
 | 第2段 PlayerMinutes | **本モジュール。** `E[出場時間 | 出場]` |
-| 第3段 PlayerRates | **未実装。** `k` / `prior` / `usage_l10` / `position` が未定義（2.3.1） |
+| 第3段 PlayerRates | **未実装。** `k` / `prior` / `usage_l10` が未定義（2.3.1） |
 | 第4段 Reconciliation | `batch/model/reconcile.py`（実装済み） |
 
 **出場時間は非負に収める。** 回帰は負を出しうるが、`player_predictions.pred_minutes`
@@ -26,10 +26,11 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
-from batch.model.dataset import PlayerMinutesData
+from batch.model.dataset import PlayerAvailData, PlayerMinutesData
 from batch.model.evaluate import MAX_FOLDS, Evaluation, walk_forward
 from batch.model.params import NUM_BOOST_ROUND_MAX
 from batch.model.train_score import learn_score
+from batch.model.train_winner import learn_winner
 
 type Floats = NDArray[np.float64]
 
@@ -147,5 +148,134 @@ def evaluate_baseline(
         data.as_training_data(),
         mean_learner() if learner is None else learner,
         target=data.minutes,
+        max_folds=max_folds,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 第1段（PlayerAvail）
+# ---------------------------------------------------------------------------
+
+#: 表示する／しないの境目（要件 6.8.4）。**学習には使わない** — 学習は 0/1 を
+#: そのまま当て、閾値は推論と表示の側の規則である
+AVAIL_DISPLAY_THRESHOLD = 0.5
+
+#: 出場確率の値域。**勝率の `[0.05, 0.95]` を使わない**（下記）。要件 6.8.4 が
+#: 第3段の成功率に定めている値をそのまま使う（**新しい定数を増やさない**）
+AVAIL_PROB_BOUNDS = (0.01, 0.99)
+
+
+def clamp_avail_prob(prob: Floats) -> Floats:
+    """出場確率を `[0.01, 0.99]` に収める。
+
+    **勝率の `clamp_win_prob`（`[0.05, 0.95]`）を使わない。** あの幅は
+    「どのチームも 95% を超えて勝つことはない」という勝敗の性質に合わせた値で、
+    出場確率には合わない — **「この選手は出ない」は本当に 0.01 側の状態である**。
+
+    実測（2026-10-05。245,392行 / テスト n=124,927）。
+
+    | クランプ | Brier | ECE |
+    |---|---:|---:|
+    | `[0.05, 0.95]`（勝率の幅） | 0.042965 | 0.027177 |
+    | **`[0.01, 0.99]`（採用）** | **0.042352** | **0.010875** |
+    | なし | 0.042354 | 0.011187 |
+
+    **クランプなしより良い。** 予測の分布が両端に寄るため、僅かな外挿を
+    切り落とす効果がある。Accuracy は3つとも 0.9466 で変わらない
+    （0.5 のどちら側かは動かない）。
+    """
+    lo, hi = AVAIL_PROB_BOUNDS
+    return np.clip(np.asarray(prob, dtype=np.float64), lo, hi)
+
+
+def learn_avail(
+    *, num_boost_round: int = NUM_BOOST_ROUND_MAX,
+) -> Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]]:
+    """第1段の学習関数。**二値分類は `learn_winner` を使い回す**。
+
+    基本設計 2.3 が `PlayerAvail` を「LightGBM 二値分類」と定めており、4.7 は
+    分類用の木の形を1つしか定めていない（`WINNER_PARAMS`）。**ここで別の
+    グリッドを作らない** — 木を深くする前に特徴量を見直す（同 4.7）。
+
+    出力は `clamp_avail_prob` で `[0.01, 0.99]` に収める。**勝率の幅を使わない** —
+    理由と実測は同関数にある。
+    """
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        predict, best = learn_winner(
+            train_x, train_y, train_w, valid_x, valid_y,
+            num_boost_round=num_boost_round)
+
+        def bounded(features: pd.DataFrame) -> Floats:
+            return clamp_avail_prob(predict(features))
+
+        return bounded, best
+
+    return learn
+
+
+def prevalence_learner() -> Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]]:
+    """**ベースライン。学習データの出場率をそのまま返す。**
+
+    要件 6.4 はベースラインとの比較を求めている。これは「候補の何割が出場するか」
+    だけを知っているモデルで、要件 6.8.4 の「登録選手の3〜4割が0分」に対応する。
+    """
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        value = float(np.asarray(train_y, dtype=np.float64).mean())
+
+        def predict(features: pd.DataFrame) -> Floats:
+            return clamp_avail_prob(
+                np.full(len(features), value, dtype=np.float64))
+
+        return predict, 0
+
+    return learn
+
+
+def ratio_learner(column: str = "games_played_ratio_l10") -> Callable[
+        ..., tuple[Callable[[pd.DataFrame], Floats], int]]:
+    """**もう1つのベースライン。直近10試合の出場率をそのまま確率として返す。**
+
+    学習しない（列をそのまま出す）。**出場率ベースラインだけでは足りない** —
+    候補の出場率はリーグ全体でほぼ一定で、その比較は「選手ごとの水準を知って
+    いるか」をほとんど測っていない。**モデルが「直近の出場率を出すだけ」を
+    超えているかは、こちらで測る**（第2段の `recent_learner` と同じ役割）。
+    """
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        if column not in train_x.columns:
+            raise PlayerModelError(f"ベースラインの列がない: {column}")
+
+        def predict(features: pd.DataFrame) -> Floats:
+            return clamp_avail_prob(features[column].to_numpy(dtype=np.float64))
+
+        return predict, 0
+
+    return learn
+
+
+def evaluate_avail(
+    data: PlayerAvailData, *, max_folds: int = MAX_FOLDS,
+    num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
+) -> Evaluation:
+    """第1段の walk-forward 評価。**分割器を2つ作らない**（`evaluate.py`）。
+
+    目的変数は 0/1 なので `brier` と `ece` が使える。`learner` を渡すと
+    ベースラインを同じ fold で測れる（4.6 は同一ウィンドウでの比較を求める）。
+    """
+    if len(data) == 0:
+        raise PlayerModelError("学習行が1件もない")
+    return walk_forward(
+        data.as_training_data(),
+        learn_avail(num_boost_round=num_boost_round) if learner is None else learner,
+        target=data.played,
         max_folds=max_folds,
     )

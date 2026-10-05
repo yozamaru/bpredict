@@ -23,7 +23,7 @@ import pandas as pd
 
 from batch.features.dataset import Dataset
 from batch.features.errors import FeatureError
-from batch.features.prepared import Prepared, prepare
+from batch.features.prepared import Positions, Prepared, prepare
 
 __all__ = ["Context", "FeatureError", "build_context"]
 
@@ -123,6 +123,25 @@ class Context:
             index.player_club_season_positions.get((club_id, self.season_id))
             if season_only else index.player_club_positions.get(club_id)
         )
+        return self._take_player_rows(positions)
+
+    def player_history_in_season(self, club_id: str, season_id: str) -> pd.DataFrame:
+        """あるクラブの、**指定した季**の選手行。第1段の候補集合が前季を引く。
+
+        **`as_of` の絞り込みは `_take_player_rows` の1か所を通る**（このクラスの
+        冒頭の約束）。前季の試合はすべて `as_of` より前に終わっているはずだが、
+        **比較を省かない** — 省くと「この入口だけ絞り込みを持たない」状態になり、
+        リーク検証が入口ごとに当たらなくなる（詳細設計 6.1）。
+        """
+        return self.cached(
+            ("player_history_in_season", club_id, season_id),
+            lambda: self._take_player_rows(
+                self.index.player_club_season_positions.get((club_id, season_id))),
+        )
+
+    def _take_player_rows(self, positions: Positions | None) -> pd.DataFrame:
+        """`as_of` と対象試合の除外を当てて選手行を取り出す。**絞り込みはここだけ。**"""
+        index = self.index
         if positions is None or positions.size == 0:
             return index.player_stats.iloc[:0]
         cutoff = index.as_of_ns(self.as_of)
@@ -131,6 +150,18 @@ class Context:
             & (index.player_game_ids[positions] != self.game_id)
         ]
         return index.player_stats.take(picked)
+
+    @cached_property
+    def previous_season_id(self) -> str | None:
+        """対象試合の季の**直前の1季**。データ上の最初の季なら None。
+
+        **季の一覧にこの試合の季が無ければ落とす。** `seasons` を持たない
+        `Dataset` でも `prepare` は通るため（部分的な `Dataset` を許すため）、
+        ここで気づかないと候補集合が静かに「当季だけ」に縮む。
+        """
+        if self.season_id not in self.index.previous_season:
+            raise FeatureError(f"季の一覧にこの試合の季がない: {self.season_id}")
+        return self.index.previous_season[self.season_id]
 
     def stats_of(self, games: pd.DataFrame, club_id: str) -> pd.DataFrame:
         """与えた試合における、あるクラブの `team_game_stats` の行。

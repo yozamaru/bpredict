@@ -12,6 +12,8 @@ import assert from 'node:assert/strict';
 
 import {
   STALE_HOURS,
+  calibrationNote,
+  correctCount,
   dateLabel,
   generatedAtLabel,
   isStale,
@@ -187,4 +189,52 @@ test('知らない favors はホーム側として扱う', () => {
     toReason({ group: 'a', label: 'b', value: 'c', favors: '', strength: 2 }).favors,
     'HOME',
   );
+});
+
+
+// --- 的中率ページ（工程14。基本設計 5.2） ---
+
+test('的中した試合数は率と母数から戻す', () => {
+  // API は件数を返さない（`accuracy_summary` は率と母数だけ）
+  assert.equal(correctCount(223 / 312, 312), 223);
+  assert.equal(correctCount(0.5, 2), 1);
+  assert.equal(correctCount(0, 312), 0);
+  assert.equal(correctCount(1, 312), 312);
+});
+
+test('較正の言い換えは開きをポイントで出す', () => {
+  // **`%` は勝率専用である**（要件 8.3）。2つの率の差は「ポイント」
+  assert.equal(calibrationNote(0.65, 0.636), '予想を 1.4ポイント下回っています。');
+  assert.equal(calibrationNote(0.75, 0.77), '予想を 2.0ポイント上回っています。');
+});
+
+test('較正の言い換えに大きさの形容を入れない', () => {
+  // 「やや」は閾値を要し、それは設計文書にない定数になる
+  const cases: [number, number][] = [
+    [0.7, 0.4],
+    [0.7, 0.69],
+    [0.5, 0.9],
+  ];
+  for (const [predicted, actual] of cases) {
+    const note = calibrationNote(predicted, actual);
+    assert.ok(!note.includes('やや'), note);
+    assert.ok(!note.includes('大きく'), note);
+  }
+});
+
+test('表示する桁で 0.0 になる開きは「予想どおり」とする', () => {
+  // `0.0ポイント下回っています` は、開きが無いと言いながら向きを主張する
+  assert.equal(calibrationNote(0.65, 0.65), '予想どおりです。');
+  assert.equal(calibrationNote(0.65, 0.6502), '予想どおりです。');
+  // 丸めて 0.1 になる開きは向きを出す
+  assert.equal(calibrationNote(0.65, 0.6506), '予想を 0.1ポイント上回っています。');
+});
+
+test('ローカル D1 の実応答で的中数と言い換えが出る', () => {
+  // **本番の形で確かめた値を固定する**（2026-10-05。ローカル D1 の照合2件。
+  // `/api/v1/accuracy` の実応答から取った）。画面の描画は E2E（工程15）まで
+  // 検査できないため、**値を作る側をここで止める**
+  assert.equal(correctCount(0.5, 2), 1);
+  assert.equal(calibrationNote(0.24, 1), '予想を 76.0ポイント上回っています。');
+  assert.equal(calibrationNote(0.82, 1), '予想を 18.0ポイント上回っています。');
 });

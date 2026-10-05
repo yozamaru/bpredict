@@ -26,10 +26,15 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
+from batch.features import player_rate, team_rate
 from batch.model.calibrate import Platt, fit_platt
-from batch.model.dataset import PlayerAvailData, PlayerMinutesData
-from batch.model.evaluate import MAX_FOLDS, Evaluation, walk_forward
-from batch.model.params import NUM_BOOST_ROUND_MAX
+from batch.model.dataset import (
+    PlayerAvailData,
+    PlayerMinutesData,
+    PlayerRateData,
+)
+from batch.model.evaluate import Evaluation, walk_forward
+from batch.model.params import NUM_BOOST_ROUND_MAX, PLAYER_MAX_FOLDS
 from batch.model.train_score import learn_score
 from batch.model.train_winner import learn_winner
 
@@ -115,7 +120,7 @@ def recent_learner(column: str = "minutes_l5_player") -> Callable[
 
 
 def evaluate_minutes(
-    data: PlayerMinutesData, *, max_folds: int = MAX_FOLDS,
+    data: PlayerMinutesData, *, max_folds: int = PLAYER_MAX_FOLDS,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
 ) -> Evaluation:
     """第2段の walk-forward 評価。**分割器を2つ作らない**（`evaluate.py`）。
@@ -134,7 +139,7 @@ def evaluate_minutes(
 
 
 def evaluate_baseline(
-    data: PlayerMinutesData, *, max_folds: int = MAX_FOLDS,
+    data: PlayerMinutesData, *, max_folds: int = PLAYER_MAX_FOLDS,
     learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
 ) -> Evaluation:
     """同じ fold でベースラインを測る。**同一の分割で比べる**（4.6）。
@@ -284,7 +289,7 @@ def ratio_learner(column: str = "games_played_ratio_l10") -> Callable[
 
 
 def evaluate_avail(
-    data: PlayerAvailData, *, max_folds: int = MAX_FOLDS,
+    data: PlayerAvailData, *, max_folds: int = PLAYER_MAX_FOLDS,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
     calibrated: bool = False,
     on_calibrator: Callable[[Platt], None] | None = None,
@@ -305,5 +310,287 @@ def evaluate_avail(
             on_calibrator=on_calibrator,
         ) if learner is None else learner,
         target=data.played,
+        max_folds=max_folds,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 第3段（PlayerRates）
+# ---------------------------------------------------------------------------
+
+#: シュリンクの `k` のグリッドと初期値（詳細設計 2.3.1。運営者の判断で探索する）。
+#: **項目ごとに決める** — 1試合の試投数が FT と 3P で桁が違う
+SHRINK_K_GRID: tuple[float, ...] = (10.0, 20.0, 40.0, 80.0)
+SHRINK_K_INITIAL = 20.0
+
+#: 実データで探索して選んだ `k`（2026-10-05。詳細設計 2.3.1）。
+#: **実現値（`made / att`）に対する MAE が最小のもの**を項目ごとに採った —
+#: シュリンク済みの目的変数に対する MAE は `k` を上げるだけで下がるため使えない。
+#: **3項目すべてグリッドの端が選ばれた**（最適は外側にある可能性がある）。
+#: 差は MAE の 0.3〜1.4% であり、グリッドは広げない（運営者が決めた探索範囲）
+SHRINK_K: dict[str, float] = {"fg2_pct": 10.0, "fg3_pct": 80.0, "ft_pct": 10.0}
+
+
+def shrink_k_for(target: str) -> float:
+    """その項目の `k`。**カウント11項目は `k` を使わない**（目的変数に入らない）。"""
+    if target not in SHRINK_K:
+        raise PlayerModelError(f"成功率3項目にない: {target}")
+    return SHRINK_K[target]
+
+
+def shrink_column(
+    made: Floats, attempts: Floats, prior: Floats, k: float,
+) -> Floats:
+    """`(made + k × prior) / (attempts + k)` を列に当てる（要件 6.8.4）。
+
+    **出力は `clip(0.01, 0.99)` に収める**（ロジット変換の定義域。2.4）。
+    `made` / `attempts` / `prior` のいずれかが NaN の行は NaN のまま残す
+    （既定値で埋めない。規約5）。
+    """
+    if k <= 0:
+        raise PlayerModelError("シュリンクの k が正でない")
+    value = (made + k * prior) / (attempts + k)
+    return np.clip(value, 0.01, 0.99)
+
+
+def rate_model_features(
+    data: PlayerRateData, target: str, k: float,
+) -> pd.DataFrame:
+    """その項目のモデルに渡す列を作る（2.3.1）。
+
+    **成功率はここで初めて `k` を当てる。** 行列は生の合計で持っており、
+    `k` は探索の対象だからである。**`pred_minutes` は NaN のまま**で、
+    fold ごとに第2段が埋める。
+    """
+    columns = player_rate.rate_model_keys(target)
+    frame = data.features
+    if target not in {name for name, _, _ in team_rate.PCT_TARGETS}:
+        return frame[list(columns)]
+
+    prior = frame[f"{target}_prior"].to_numpy(dtype=np.float64)
+    built = frame[[c for c in columns if not c.endswith(("_shrunk_l10", "_shrunk_season"))]].copy()
+    built[f"{target}_shrunk_l10"] = shrink_column(
+        frame[f"{target}_made_l10"].to_numpy(dtype=np.float64),
+        frame[f"{target}_att_l10"].to_numpy(dtype=np.float64), prior, k)
+    built[f"{target}_shrunk_season"] = shrink_column(
+        frame[f"{target}_made_season"].to_numpy(dtype=np.float64),
+        frame[f"{target}_att_season"].to_numpy(dtype=np.float64), prior, k)
+    return built[list(columns)]
+
+
+def rate_target(data: PlayerRateData, target: str, k: float) -> Floats:
+    """目的変数。**カウントは per-minute、成功率はシュリンク済みの率**（2.3.1）。"""
+    if target in team_rate.COUNT_TARGETS:
+        # カウントのまま学習すると出場時間の分散に支配される（要件 6.8.4）
+        return np.asarray(
+            data.counts[target].to_numpy(dtype=np.float64) / data.minutes,
+            dtype=np.float64)
+    if target not in {name for name, _, _ in team_rate.PCT_TARGETS}:
+        raise PlayerModelError(f"目的変数が14項目にない: {target}")
+    return shrink_column(
+        data.shots[f"{target}_made"].to_numpy(dtype=np.float64),
+        data.shots[f"{target}_att"].to_numpy(dtype=np.float64),
+        data.features[f"{target}_prior"].to_numpy(dtype=np.float64), k)
+
+
+def realized_pct(data: PlayerRateData, target: str) -> Floats:
+    """実現した成功率（`made / att`）。**`k` に依らない固定の物差し**（2.3.1）。
+
+    シュリンク済みの目的変数は `k` を上げると分散が潰れ、**MAE が必ず下がる**。
+    `k` の選定はこちらに対して測る — **整合化が最終的に食わせる量そのもの**で
+    あり（`made = pct × att`）、要件 6.8.6 が誤差を実績に対して定義しているのと
+    同じ向きである。
+    """
+    if target not in {name for name, _, _ in team_rate.PCT_TARGETS}:
+        raise PlayerModelError(f"成功率3項目にない: {target}")
+    made = data.shots[f"{target}_made"].to_numpy(dtype=np.float64)
+    attempts = data.shots[f"{target}_att"].to_numpy(dtype=np.float64)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.asarray(made / attempts, dtype=np.float64)
+
+
+def rate_weights(data: PlayerRateData, target: str) -> Floats | None:
+    """成功率3項目の学習重みは**その試合の試投数**（要件 6.8.4）。"""
+    if target in team_rate.COUNT_TARGETS:
+        return None
+    return np.asarray(
+        data.shots[f"{target}_att"].to_numpy(dtype=np.float64), dtype=np.float64)
+
+
+def usable_rate_rows(data: PlayerRateData, target: str, k: float) -> Floats:
+    """学習に使える行（目的変数と重みが有限で、成功率は `試投数 > 0`）。
+
+    **4.5 の擬似コードが `X[df[att] > 0]` で絞っている**のに従う。成功率の
+    `prior` が NaN（データ上の最初の季。2.3.1）の行もここで落ちる。
+    """
+    y = rate_target(data, target, k)
+    keep = np.isfinite(y)
+    weights = rate_weights(data, target)
+    if weights is not None:
+        keep &= np.isfinite(weights) & (weights > 0)
+    return keep
+
+
+class MinutesProvider:
+    """**fold ごとに1本の第2段を当てはめ、14本すべてで共有する**（2.3.1）。
+
+    本番では登録済みの第2段が1本だけあり（4.5.1）、14本の第3段はその同じ出力を
+    受け取る。**項目ごとに別の第2段を当てはめると、学習時だけ14本の第2段が
+    存在することになり、本番と入力の作り方が食い違う。**
+
+    当てはめには**目的変数ごとの絞り込みを掛ける前の行**を使う。絞り込みは
+    第3段の目的変数の都合（`試投数 > 0` など）であって、出場時間の予測には
+    関係がない。
+
+    `data` は**絞り込み前の行列**（`build_player_rate_matrix` の戻り値）であること。
+    """
+
+    def __init__(
+        self, data: PlayerRateData, *,
+        num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    ) -> None:
+        self._features = data.minutes_features
+        self._minutes = pd.Series(data.minutes, index=data.minutes_features.index)
+        self._season = pd.Series(data.season_ids, index=data.minutes_features.index)
+        self._rounds = num_boost_round
+        self._cache: dict[
+            tuple[tuple[str, ...], str], Callable[[pd.DataFrame], Floats]] = {}
+
+    def for_fold(
+        self, train_index: pd.Index, valid_index: pd.Index,
+    ) -> Callable[[pd.Index], Floats]:
+        """その fold の第2段を返す。**季の組で記憶する**（14本で1本に揃う）。"""
+        train_seasons = tuple(sorted(set(self._season.loc[train_index])))
+        valid_seasons = sorted(set(self._season.loc[valid_index]))
+        if len(valid_seasons) != 1:
+            raise PlayerModelError(
+                f"検証の季が1つでない: {valid_seasons}")
+        key = (train_seasons, valid_seasons[0])
+        if key not in self._cache:
+            train = self._season.isin(train_seasons).to_numpy()
+            valid = (self._season == valid_seasons[0]).to_numpy()
+            predict, _ = learn_minutes(num_boost_round=self._rounds)(
+                self._features[train],
+                self._minutes[train].to_numpy(dtype=np.float64),
+                np.ones(int(train.sum())),
+                self._features[valid],
+                self._minutes[valid].to_numpy(dtype=np.float64),
+            )
+            self._cache[key] = predict
+
+        predict = self._cache[key]
+
+        def minutes_for(index: pd.Index) -> Floats:
+            return predict(self._features.loc[index])
+
+        return minutes_for
+
+
+def learn_rate(
+    provider: MinutesProvider, target: str, *,
+    num_boost_round: int = NUM_BOOST_ROUND_MAX,
+) -> Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]]:
+    """第3段の学習関数。**fold ごとに第2段を当てはめて `pred_minutes` を埋める。**
+
+    当該試合の実際の出場時間を入れることは規約4（対象試合自身を参照しない）に
+    直接違反し、全データで当てはめた第2段を使うと fold を跨いで情報が入る
+    （2.3.1）。**学習季の行だけで第2段を当てはめる。**
+
+    索引の値が元の行の位置を指していること（`PlayerRateData.subset` が
+    振り直さない）。
+    """
+    if target not in team_rate.TARGETS:
+        raise PlayerModelError(f"目的変数が14項目にない: {target}")
+    bounds = (0.01, 0.99) if target not in team_rate.COUNT_TARGETS else None
+
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        minutes_for = provider.for_fold(train_x.index, valid_x.index)
+
+        def filled(features: pd.DataFrame) -> pd.DataFrame:
+            out = features.copy()
+            out["pred_minutes"] = minutes_for(features.index)
+            return out
+
+        predict, best = learn_score(
+            filled(train_x), train_y, train_w, filled(valid_x), valid_y,
+            num_boost_round=num_boost_round)
+
+        def bounded(features: pd.DataFrame) -> Floats:
+            values = predict(filled(features))
+            if bounds is not None:
+                # 成功率は `[0.01, 0.99]`（要件 6.8.4。整合化が logit を通る）
+                return np.clip(values, *bounds)
+            # **カウントのレートは負を出さない**（回帰は負を出しうる）
+            return np.maximum(values, 0.0)
+
+        return bounded, best
+
+    return learn
+
+
+def rate_recent_learner(target: str) -> Callable[
+        ..., tuple[Callable[[pd.DataFrame], Floats], int]]:
+    """**「直近10試合の水準をそのまま出す」ベースライン。**
+
+    第2段の実測で「モデルの上積みは 0.60% しかない」と分かったのは、平均では
+    なくこのベースラインと比べたからである（2.3.1）。**学習しない。**
+    """
+    column = (
+        f"{target}_per_min_l10" if target in team_rate.COUNT_TARGETS
+        else f"{target}_shrunk_l10"
+    )
+
+    def learn(
+        train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
+        valid_x: pd.DataFrame, valid_y: Floats,
+    ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
+        fallback = float(np.average(train_y, weights=train_w))
+
+        def predict(features: pd.DataFrame) -> Floats:
+            values = features[column].to_numpy(dtype=np.float64).copy()
+            # **欠損は学習季の平均で埋める**（ベースラインを落とさないため）
+            values[~np.isfinite(values)] = fallback
+            return values
+
+        return predict, 0
+
+    return learn
+
+
+def evaluate_rate(
+    data: PlayerRateData, target: str, *, k: float = SHRINK_K_INITIAL,
+    max_folds: int = PLAYER_MAX_FOLDS, num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
+    provider: MinutesProvider | None = None,
+    realized: bool = False,
+) -> Evaluation:
+    """第3段の1項目を walk-forward で評価する。**分割器を2つ作らない。**
+
+    `provider` を渡すと第2段の当てはめを使い回す（14本 × `k` のグリッドで
+    同じ fold を何度も当てはめ直さないため）。省略すると `data` から作る。
+
+    `realized=True` のとき、成功率3項目を**実現値（`made / att`）に対して**
+    評価する。**`k` を比べるときは必ずこれを使う** — シュリンク済みの目的変数に
+    対する MAE は `k` を上げるだけで下がり、比較にならない（2.3.1）。
+    """
+    frame = data.subset(usable_rate_rows(data, target, k))
+    features = rate_model_features(frame, target, k)
+    if learner is None:
+        learner = learn_rate(
+            provider or MinutesProvider(data, num_boost_round=num_boost_round),
+            target, num_boost_round=num_boost_round)
+    # **`k` の比較は実現値に対して行う**（2.3.1）。学習の目的変数は変えない
+    against_realized = (
+        realized_pct(frame, target)
+        if realized and target not in team_rate.COUNT_TARGETS else None
+    )
+    return walk_forward(
+        frame.as_training_data(features), learner,
+        target=rate_target(frame, target, k),
+        eval_target=against_realized,
+        weights=rate_weights(frame, target),
         max_folds=max_folds,
     )

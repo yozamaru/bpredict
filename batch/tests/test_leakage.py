@@ -22,8 +22,10 @@ from batch.features.dataset import Dataset, export_sqlite
 from batch.features.player_rate import (
     AVAIL_KEYS,
     MINUTES_KEYS,
+    all_rate_matrix_keys,
     build_avail_features,
     build_minutes_features,
+    build_rate_features,
     candidates,
 )
 from batch.features.team_rate import all_feature_keys, build_team_rate_features
@@ -900,3 +902,172 @@ def test_player_avail_mutation_trial_detects_an_intentional_leak(
 
     with pytest.raises(AssertionError):
         _assert_same(before, leaky(seeded_db))
+
+
+# ---------------------------------------------------------------------------
+# 第3段（PlayerRates）の特徴量（詳細設計 2.3.1）
+# ---------------------------------------------------------------------------
+# **列が別ならリークの経路も別である。** 第3段は 57列あり、第1段・第2段が
+# 読んでいない表（`team_game_stats`。`usage_l10` と `opponent_*`）とリーグ全体の
+# 集計（`{pct}_prior`）を読む。**入口が増えたぶん、同じ検証を当て直す。**
+
+
+def _rate_features(
+    con: sqlite3.Connection, game_id: str, as_of: datetime,
+    club_id: str, player_id: str,
+) -> dict[str, float]:
+    row = build_rate_features(game_id, as_of, export_sqlite(con), club_id, player_id)
+    assert row is not None, "過去が無く行が落ちた。過去データのある試合を選ぶ"
+    return row
+
+
+def test_player_rate_target_game_mutation_does_not_change_features(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**本命。** 対象試合を撹乱しても 57列が不変であること。
+
+    撹乱するのは `player_game_stats`（本人の実績 = 目的変数そのもの）と
+    `team_game_stats`（`usage_l10` の分母と `opponent_*` の入力）の両方である。
+    """
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    before = _rate_features(seeded_db, game_id, as_of, club_id, player_id)
+
+    seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 40, started = 1, pts = 40,"
+        " fg2a = 30, fg2m = 20, fg3a = 20, fg3m = 10, fta = 20, ftm = 18,"
+        " tov = 15, oreb = 10, dreb = 10, ast = 15, stl = 9, blk = 9, pf = 5, fd = 9"
+        " WHERE game_id = ?", (game_id,))
+    seeded_db.execute(
+        "UPDATE team_game_stats SET pts = 200, fg2a = 90, fg2m = 80, fg3a = 60,"
+        " fg3m = 40, fta = 50, ftm = 45, tov = 40, possessions = 119"
+        " WHERE game_id = ?", (game_id,))
+    seeded_db.execute(
+        "UPDATE games SET home_score = 200, away_score = 0 WHERE id = ?", (game_id,))
+    seeded_db.commit()
+
+    _assert_same_allowing_nan(before, _rate_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+
+
+def test_player_rate_future_game_mutation_does_not_change_features(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """`as_of` 以降に終了した試合を撹乱しても不変であること。
+
+    **`{pct}_prior` はリーグ全体の集計である**（`LeagueRateIndex`）。索引が
+    `finished_at <= as_of` の地点で切っていなければ、ここで落ちる。
+    """
+    game_id, as_of, club_id, player_id = _player_target(seeded_db, offset_from_end=200)
+    before = _rate_features(seeded_db, game_id, as_of, club_id, player_id)
+
+    boundary = as_of.isoformat(timespec="seconds").replace("+00:00", "Z")
+    future = ("SELECT id FROM games WHERE finished_at > ?", (boundary,))
+    changed = seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 1, started = 0, fg3a = 20, fg3m = 20,"
+        " fta = 20, ftm = 20, tov = 20 WHERE game_id IN"
+        f" ({future[0]})", future[1]).rowcount
+    seeded_db.execute(
+        "UPDATE team_game_stats SET fg3a = 90, fg3m = 90, fta = 90, ftm = 90,"
+        f" tov = 90, possessions = 119 WHERE game_id IN ({future[0]})", future[1])
+    seeded_db.commit()
+    assert changed > 0, "撹乱対象がない。テストが空振りしている"
+
+    _assert_same_allowing_nan(before, _rate_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+
+
+def test_player_rate_as_of_is_actually_applied(seeded_db: sqlite3.Connection) -> None:
+    """**陽性確認。** `as_of` を前にずらすと値が変化すること。
+
+    第2段と同じく、**古い試合だけ値を変えて**差を作る（合成シードは選手ごとに
+    値が一定で、そのままでは窓の中身が変わっても動かない）。
+    """
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    old = seeded_db.execute(
+        "SELECT p.game_id FROM player_game_stats p JOIN games g ON g.id = p.game_id"
+        " WHERE p.player_id = ?"
+        "   AND g.game_date < (SELECT game_date FROM games WHERE id = ?)"
+        " ORDER BY g.game_date DESC LIMIT 10 OFFSET 3",
+        (player_id, game_id)).fetchall()
+    assert old, "古い試合が無い。テストが空振りしている"
+    seeded_db.executemany(
+        "UPDATE player_game_stats SET minutes = 3.0, fg3a = 9, fg3m = 1"
+        " WHERE game_id = ? AND player_id = ?",
+        [(str(g[0]), player_id) for g in old])
+    seeded_db.commit()
+
+    now = _rate_features(seeded_db, game_id, as_of, club_id, player_id)
+    past = _rate_features(
+        seeded_db, game_id, as_of - timedelta(days=30), club_id, player_id)
+    changed = [
+        k for k in now
+        if not (math.isnan(now[k]) and math.isnan(past[k]))
+        and abs(now[k] - past[k]) > TOLERANCE
+    ]
+    assert any(k.startswith(("fg3a_per_min", "fg3_pct_")) for k in changed), (
+        f"as_of を30日戻しても 3P の列が変わらない: {changed}")
+
+
+def test_player_rate_excludes_unfinished_games(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """`SCHEDULED` の試合が集計に入らないこと（規約4）。"""
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    before = _rate_features(seeded_db, game_id, as_of, club_id, player_id)
+
+    boundary = as_of.isoformat(timespec="seconds").replace("+00:00", "Z")
+    changed = seeded_db.execute(
+        "UPDATE games SET status = 'SCHEDULED', finished_at = NULL,"
+        " home_score = NULL, away_score = NULL WHERE finished_at > ?", (boundary,),
+    ).rowcount
+    seeded_db.commit()
+    assert changed > 0, "撹乱対象がない。テストが空振りしている"
+
+    _assert_same_allowing_nan(before, _rate_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+
+
+def test_player_rate_keys_are_fixed(seeded_db: sqlite3.Connection) -> None:
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    row = _rate_features(seeded_db, game_id, as_of, club_id, player_id)
+    assert tuple(row) == all_rate_matrix_keys()
+
+
+def test_player_rate_does_not_carry_the_target_games_minutes(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**`pred_minutes` に当該試合の出場時間が入っていないこと**（2.3.1）。
+
+    実際の出場時間を入れると規約4に直接違反する。行列の段では **NaN** であり、
+    fold ごとに第2段が埋める。
+    """
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+    row = _rate_features(seeded_db, game_id, as_of, club_id, player_id)
+    assert math.isnan(row["pred_minutes"])
+
+
+def test_player_rate_mutation_trial_detects_an_intentional_leak(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**テストのテスト。** 意図的にリークさせた実装で撹乱テストが落ちること。
+
+    リークさせる先は `usage_l10` にする — **第1段・第2段が読まない表
+    （`team_game_stats`）を読む列**であり、入口が増えたことを検証している。
+    """
+    game_id, as_of, club_id, player_id = _player_target(seeded_db)
+
+    def leaky(connection: sqlite3.Connection) -> dict[str, float]:
+        base = _rate_features(connection, game_id, as_of, club_id, player_id)
+        row = connection.execute(
+            "SELECT tov FROM team_game_stats WHERE game_id = ? AND club_id = ?",
+            (game_id, club_id)).fetchone()
+        return {**base, "usage_l10": base["usage_l10"] + float(row[0])}
+
+    before = leaky(seeded_db)
+    seeded_db.execute(
+        "UPDATE team_game_stats SET tov = 40 WHERE game_id = ? AND club_id = ?",
+        (game_id, club_id))
+    seeded_db.commit()
+
+    with pytest.raises(AssertionError):
+        _assert_same_allowing_nan(before, leaky(seeded_db))

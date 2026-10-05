@@ -606,3 +606,198 @@ def build_player_minutes_matrix(ds: Dataset) -> PlayerMinutesData:
         season_ids=season_ids,
         game_dates=game_dates,
     )
+
+
+@dataclass(frozen=True)
+class PlayerRateData:
+    """**1行は「1試合 × 出場した選手」**（2.3.1）。第2段と同じ行の集合である。
+
+    14項目（カウント11 + 成功率3）を**1枚の行列で持つ**。モデルごとに渡す列は
+    `player_rate.rate_model_keys(target)` が選ぶ（2.3.1）。
+
+    **目的変数は生の実績で持ち、変換は学習時に行う。**
+
+    | 区分 | 行列が持つもの | 学習時の目的変数 |
+    |---|---|---|
+    | カウント11項目 | その試合のカウント | **`カウント ÷ 出場時間`**（per-minute） |
+    | 成功率3項目 | その試合の成功数・試投数 | `(made + k × prior) / (att + k)`、重みは `att` |
+
+    `k` は探索の対象であり（2.3.1）、**行列の段では当てない**。
+
+    **`features["pred_minutes"]` は NaN である。** 第2段の出力であり、fold ごとに
+    学習季だけで当てはめて埋める（2.3.1）。そのために第2段の列
+    （`minutes_features`）を同じ行の順序で併せ持つ。
+    """
+
+    features: pd.DataFrame
+    #: 第2段の列（`player_rate.MINUTES_KEYS`）。`pred_minutes` を埋めるために持つ
+    minutes_features: pd.DataFrame
+    #: その試合の実際の出場時間（分）。**per-minute の分母**
+    minutes: Floats
+    #: カウント11項目の実績（列名は `player_rate.COUNT_TARGETS`）
+    counts: pd.DataFrame
+    #: 成功率3項目の実績。列は `{pct}_made` / `{pct}_att`
+    shots: pd.DataFrame
+    game_ids: list[str]
+    player_ids: list[str]
+    club_ids: list[str]
+    season_ids: list[str]
+    game_dates: list[str]
+
+    def __len__(self) -> int:
+        return len(self.game_ids)
+
+    @property
+    def seasons(self) -> list[str]:
+        seen: list[str] = []
+        for season in self.season_ids:
+            if season not in seen:
+                seen.append(season)
+        return seen
+
+    def subset(self, keep: Floats) -> PlayerRateData:
+        """行を絞る。**索引の値を振り直さない。**
+
+        `walk_forward` は `features[mask]` でブール選択するため、学習関数には
+        **元の索引の値を持った DataFrame** が渡る。第2段を fold ごとに当てはめる
+        には、そこから `minutes_features` と `minutes` を引き当てる必要がある
+        （2.3.1）。索引を振り直すと、この対応が静かに崩れる。
+        """
+        mask = np.asarray(keep, dtype=bool)
+        if mask.size != len(self):
+            raise MatrixError("絞り込みの件数が学習行列と合わない")
+        if not mask.any():
+            raise MatrixError("絞り込みで行が1件も残らなかった")
+        picked = [i for i, taken in enumerate(mask) if taken]
+        return PlayerRateData(
+            features=self.features[mask],
+            minutes_features=self.minutes_features[mask],
+            minutes=self.minutes[mask],
+            counts=self.counts[mask],
+            shots=self.shots[mask],
+            game_ids=[self.game_ids[i] for i in picked],
+            player_ids=[self.player_ids[i] for i in picked],
+            club_ids=[self.club_ids[i] for i in picked],
+            season_ids=[self.season_ids[i] for i in picked],
+            game_dates=[self.game_dates[i] for i in picked],
+        )
+
+    def as_training_data(self, features: pd.DataFrame) -> TrainingData:
+        """`walk_forward` に渡す形。**分割器を2つ作らない**（`evaluate.py`）。
+
+        目的変数は `walk_forward(target=...)` で渡すため、ここでは NaN を置く。
+        **`features` を引数に取る** — モデルごとに列が違い、`pred_minutes` も
+        fold ごとに埋まるため、`self.features` をそのまま渡せない。
+        """
+        if len(features) != len(self):
+            raise MatrixError("特徴量の行数が一致しない")
+        blank = np.full(len(self), np.nan, dtype=np.float64)
+        return TrainingData(
+            features=features,
+            home_win=blank,
+            margin=blank,
+            total=blank,
+            game_ids=self.game_ids,
+            season_ids=self.season_ids,
+            game_dates=self.game_dates,
+            spectator_restricted=[None] * len(self),
+        )
+
+
+def build_player_rate_matrix(ds: Dataset) -> PlayerRateData:
+    """出場した選手の行を、終了した試合すべてについて組む。
+
+    **出場時間が欠けている行、0分の行は落とす。** per-minute の分母になるため、
+    0 を入れるとゼロ除算になり、既定値で埋めると目的変数が壊れる。
+
+    **`Context` は試合ごとに1回だけ作る**（`player_rate.minutes_row` と同じ）。
+    """
+    games = ds.table("games")
+    finished = games[games["status"] == "FINISHED"].copy()
+    if finished.empty:
+        raise MatrixError("終了した試合が1件もない")
+    finished = finished.sort_values(["tipoff_at", "id"], kind="stable")
+
+    stats = ds.table("player_game_stats")
+    by_game: dict[str, list[dict[str, object]]] = {}
+    for record in stats.to_dict("records"):
+        by_game.setdefault(str(record["game_id"]), []).append(
+            {str(k): v for k, v in record.items()})
+
+    prepared = prepare(ds)
+    rows: list[dict[str, float]] = []
+    minutes_rows: list[dict[str, float]] = []
+    minutes: list[float] = []
+    counts: list[dict[str, float]] = []
+    shots: list[dict[str, float]] = []
+    game_ids: list[str] = []
+    player_ids: list[str] = []
+    club_ids: list[str] = []
+    season_ids: list[str] = []
+    game_dates: list[str] = []
+
+    for game in finished.itertuples():
+        appearances = by_game.get(str(game.id))
+        if not appearances:
+            continue
+        context = build_context(
+            str(game.id), as_of(game.tipoff_at), ds, prepared)
+        for stat in appearances:
+            played = _number(stat.get("minutes"))
+            if played is None or played <= 0:
+                continue
+            club_id = str(stat["club_id"])
+            player_id = str(stat["player_id"])
+            if club_id not in (context.home_club_id, context.away_club_id):
+                continue
+            stage_two = player_rate.minutes_row(context, club_id, player_id)
+            if stage_two is None:
+                continue
+            row = player_rate.rate_row(context, club_id, player_id)
+            if row is None:
+                continue
+
+            count_values = {
+                target: _number(stat.get(target))
+                for target in team_rate.COUNT_TARGETS
+            }
+            shot_values: dict[str, float] = {}
+            for name, made, attempt in team_rate.PCT_TARGETS:
+                shot_values[f"{name}_made"] = _or_nan(_number(stat.get(made)))
+                shot_values[f"{name}_att"] = _or_nan(_number(stat.get(attempt)))
+
+            rows.append(row)
+            minutes_rows.append(stage_two)
+            minutes.append(played)
+            counts.append({k: _or_nan(v) for k, v in count_values.items()})
+            shots.append(shot_values)
+            game_ids.append(str(game.id))
+            player_ids.append(player_id)
+            club_ids.append(club_id)
+            season_ids.append(str(game.season_id))
+            game_dates.append(str(game.game_date))
+
+    if not rows:
+        raise MatrixError("PlayerRate の学習行を1件も作れなかった")
+    return PlayerRateData(
+        features=pd.DataFrame(
+            rows, columns=list(player_rate.all_rate_matrix_keys())),
+        minutes_features=pd.DataFrame(
+            minutes_rows, columns=list(player_rate.MINUTES_KEYS)),
+        minutes=np.asarray(minutes, dtype=np.float64),
+        counts=pd.DataFrame(counts, columns=list(team_rate.COUNT_TARGETS)),
+        shots=pd.DataFrame(
+            shots,
+            columns=[f"{name}_{part}" for name, _, _ in team_rate.PCT_TARGETS
+                     for part in ("made", "att")]),
+        game_ids=game_ids,
+        player_ids=player_ids,
+        club_ids=club_ids,
+        season_ids=season_ids,
+        game_dates=game_dates,
+    )
+
+
+def _or_nan(value: float | None) -> float:
+    """**実績の欠損は NaN で持つ。** 0 で埋めると「記録なし」が「0回」になる。"""
+    return float("nan") if value is None else float(value)

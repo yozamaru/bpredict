@@ -139,6 +139,95 @@ class EloIndex:
         return self._elos[club_id][position - 1]
 
 
+class LeagueRateIndex:
+    """`finished_at <= as_of` のリーグ全体の成功率を二分探索で引く（詳細設計 2.3.1）。
+
+    **`EloIndex` と同じ形である。** 行ごとに全クラブを集計すると 2.1.1 の罠に
+    戻る（`finished_team_games` は12,540行あり、146,463行ぶん走査すると18億行）。
+    シーズンごとに `finished_at` の昇順で**累積の Σ成功数 / Σ試投数**を持つ。
+
+    **`as_of` の比較の意味は変えていない。** 時刻は `_utc_ns` と同じ単位（`UNIT`）
+    で持ち、引くときも同じ `<=` を使う。2.1.1 の「`as_of` の比較は1か所」は
+    「同じ比較を前計算してよい」ことを禁じていない（`club_positions` も同じ）。
+
+    **当季が0本なら前季を返す**（詳細設計 2.3.1。運営者の判断）。リーグ平均は
+    1試合日で約1,000本溜まるため、効くのは開幕日だけである。
+    """
+
+    def __init__(
+        self, team_stats: pd.DataFrame, game_seasons: dict[str, str],
+        game_times: dict[str, int], pairs: tuple[tuple[str, str, str], ...],
+    ) -> None:
+        self._pairs = pairs
+        # シーズン → (時刻の昇順配列, {項目: (累積成功数, 累積試投数)})
+        self._by_season: dict[str, tuple[Times, dict[str, tuple[Times, Times]]]] = {}
+        #: シーズン → 全期間の合計（前季へのフォールバック用）
+        self._totals: dict[str, dict[str, tuple[float, float]]] = {}
+        if team_stats.empty:
+            return
+
+        game_ids = team_stats["game_id"].astype(str).to_numpy()
+        seasons = np.array([game_seasons.get(str(g), _NO_SEASON) for g in game_ids])
+        times = np.fromiter(
+            (game_times.get(str(g), NEVER) for g in game_ids),
+            dtype=np.int64, count=len(game_ids))
+
+        for season in np.unique(seasons):
+            if str(season) == _NO_SEASON:
+                continue
+            picked = np.flatnonzero(seasons == season)
+            # **終了していない試合を入れない**（`NEVER` はどの `as_of` より後）
+            picked = picked[times[picked] != NEVER]
+            if picked.size == 0:
+                continue
+            order = picked[np.argsort(times[picked], kind="stable")]
+            sorted_times = times[order].astype(np.int64, copy=True)
+            cumulative: dict[str, tuple[Times, Times]] = {}
+            totals: dict[str, tuple[float, float]] = {}
+            for name, made_column, attempt_column in pairs:
+                made = pd.to_numeric(
+                    team_stats[made_column].iloc[order], errors="coerce").fillna(0.0)
+                attempts = pd.to_numeric(
+                    team_stats[attempt_column].iloc[order], errors="coerce").fillna(0.0)
+                made_sum = np.cumsum(made.to_numpy(dtype=np.float64))
+                attempt_sum = np.cumsum(attempts.to_numpy(dtype=np.float64))
+                cumulative[name] = (made_sum, attempt_sum)
+                totals[name] = (float(made_sum[-1]), float(attempt_sum[-1]))
+            self._by_season[str(season)] = (sorted_times, cumulative)
+            self._totals[str(season)] = totals
+
+    def at(
+        self, season_id: str, cutoff: int, name: str,
+        previous_season: str | None = None,
+    ) -> float | None:
+        """`finished_at <= cutoff` までのリーグ平均。無ければ前季、それも無ければ None。"""
+        found = self._season_rate(season_id, cutoff, name)
+        if found is not None:
+            return found
+        if previous_season is None:
+            return None
+        totals = self._totals.get(previous_season)
+        if totals is None or name not in totals:
+            return None
+        made, attempts = totals[name]
+        return None if attempts <= 0 else made / attempts
+
+    def _season_rate(self, season_id: str, cutoff: int, name: str) -> float | None:
+        entry = self._by_season.get(season_id)
+        if entry is None:
+            return None
+        times, cumulative = entry
+        if name not in cumulative:
+            return None
+        # **`<=` で数える。** `searchsorted(side="right")` が「cutoff 以下の件数」
+        position = int(np.searchsorted(times, cutoff, side="right"))
+        if position == 0:
+            return None
+        made_sum, attempt_sum = cumulative[name]
+        attempts = float(attempt_sum[position - 1])
+        return None if attempts <= 0 else float(made_sum[position - 1]) / attempts
+
+
 def _is_missing(value: object) -> bool:
     """単値の欠損判定。**空文字と欠損を混ぜない。**"""
     if value is None:
@@ -186,6 +275,8 @@ class Prepared:
     #: **「過去のいずれかの季」にしない** — 最初の季にはコールドスタートが残り、
     #: 昇格クラブと同じ扱いにする（2.5）
     previous_season: dict[str, str | None] = field(default_factory=dict)
+    #: リーグ全体の成功率の二分探索。第3段のシュリンクの `prior` が引く（2.3.1）
+    league_rates: LeagueRateIndex | None = None
 
     def as_of_ns(self, as_of: datetime) -> int:
         """`as_of` を `_utc_ns` と同じ単位の整数にする。**単位は `UNIT` 1か所。**"""
@@ -275,6 +366,16 @@ def prepare(dataset: Dataset) -> Prepared:
         player_club_positions=player_club_positions,
         player_club_season_positions=player_club_season_positions,
         previous_season=_previous_seasons(dataset.tables.get("seasons")),
+        # **成功率3項目の分子・分母。** `team_rate.PCT_TARGETS` と同じ対応だが、
+        # `prepared` は `features` の他モジュールに依存しないため値を直書きする
+        # （循環 import を作らない）。一致は `test_features_prepared.py` が固定する
+        league_rates=LeagueRateIndex(
+            team_stats, game_seasons,
+            {k: int(v) for k, v in game_times.items()},
+            (("fg2_pct", "fg2m", "fg2a"),
+             ("fg3_pct", "fg3m", "fg3a"),
+             ("ft_pct", "ftm", "fta")),
+        ) if len(team_stats) else None,
     )
 
 

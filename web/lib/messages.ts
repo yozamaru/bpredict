@@ -32,8 +32,24 @@ export const LOAD_ERROR = '予測を読み込めませんでした。時間を�
  */
 export const LOADING = '予測を読み込んでいます。';
 
+/**
+ * 照合した試合がまだないとき（要件 8.5。v1.31 で表に加えた）。
+ *
+ * **的中率ページは `accuracy_summary` が空の状態で必ず一度は踏まれる** —
+ * 結果照合が初めて走るのは本番の最初の試合の後であり、それまで `/accuracy` の
+ * `overall` は null である（詳細設計 3.3）。
+ *
+ * **`LOADING` でも `LOAD_ERROR` でもない。** 取得は成功しており、集計する対象が
+ * まだ無いだけである。3つを同じ文言にすると区別できない。
+ *
+ * **`OFF_SEASON` を使い回さない。** あちらは時期を主張する文言で、ここで言いたいのは
+ * 「まだ1試合も照合していない」である。
+ */
+export const NO_ACCURACY_YET = '的中率の記録はまだありません。試合が終わったあとに集計されます。';
+
 /** 空状態に添える導線のラベル。文言と同じ理由でここに置く */
 export const ACTIONS = {
+  today: { href: '/', label: '今日の予測を見る' },
   accuracy: { href: '/accuracy/', label: '的中率を見る' },
   about: { href: '/about/', label: 'このサイトについて' },
 } as const;

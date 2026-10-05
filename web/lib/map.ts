@@ -154,3 +154,38 @@ export function generatedAtLabel(generatedAt: string): string {
     `${jst.getUTCHours()}:${String(jst.getUTCMinutes()).padStart(2, '0')}`
   );
 }
+
+// --- 的中率ページ（工程14。基本設計 5.2 / 詳細設計 3.3 の `/accuracy`） ---
+
+/**
+ * 的中した試合数。**API は返さないので導く**（`accuracy_summary` は率と母数だけ）。
+ *
+ * 基本設計 5.2 の文言「312試合中 223試合を的中（71.4%）」が件数を要求している。
+ * `accuracy = 的中数 ÷ n` を倍し直すだけで、REAL（倍精度）に収まる範囲では
+ * 元の整数に戻る。
+ */
+export function correctCount(accuracy: number, n: number): number {
+  return Math.round(accuracy * n);
+}
+
+/**
+ * 較正の言い換え（基本設計 5.2 の3番目）。**専門指標の前に置く一文。**
+ *
+ * **「やや」のような大きさの形容を入れない。** 大きさを言うには閾値が要り、
+ * それは設計文書にない定数になる（CLAUDE.md「勝手な仕様補完をしない」）。
+ * 代わりに**開きをポイントで出す** — 読者が自分で大きさを判断できる。
+ *
+ * **開きは「ポイント」で書く。** `%` は勝率専用に予約されており（要件 8.3）、
+ * 2つの率の差に付けると「勝率が1.4%」と誤読される（詳細設計 2.7.1 と同じ規則）。
+ */
+export function calibrationNote(predicted: number, actual: number): string {
+  const gap = (actual - predicted) * 100;
+  // **表示する桁（小数第1位）で 0.0 になる開きは「予想どおり」とする。**
+  // これは精度の閾値ではなく丸めの帰結である — `0.0ポイント下回っています` と
+  // 出すのは、開きが無いと言いながら向きを主張することになる
+  if (Math.abs(gap) < 0.05) return '予想どおりです。';
+  const amount = Math.abs(gap).toFixed(1);
+  return gap < 0
+    ? `予想を ${amount}ポイント下回っています。`
+    : `予想を ${amount}ポイント上回っています。`;
+}

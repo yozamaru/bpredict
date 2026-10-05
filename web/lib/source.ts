@@ -173,9 +173,20 @@ export type Meta = {
 };
 
 export type AccuracySummary = {
-  overall: { accuracy: number; brier: number; n: number; baselineAccuracy: number | null } | null;
-  bySeason: { seasonId: string; accuracy: number; brier: number; n: number }[];
-  byModel: { modelVersion: string; accuracy: number; brier: number; n: number }[];
+  // `scoreMae` は**1チームあたりの平均絶対誤差**（基本設計 5.2）。母数は `n` と同じで、
+  // 集計側が母数の食い違いを見つけたときだけ null になる（詳細設計 4.12）
+  overall: {
+    accuracy: number; brier: number; n: number;
+    baselineAccuracy: number | null; scoreMae: number | null;
+  } | null;
+  bySeason: {
+    seasonId: string; accuracy: number; brier: number; n: number;
+    scoreMae: number | null;
+  }[];
+  byModel: {
+    modelVersion: string; accuracy: number; brier: number; n: number;
+    scoreMae: number | null;
+  }[];
   calibration: { bucket: string; predicted: number; actual: number | null; n: number }[];
   byProvisional: {
     provisional: { accuracy: number; n: number } | null;

@@ -274,21 +274,34 @@ describe('GET /accuracy', () => {
     await env.DB.batch([
       env.DB.prepare(
         'INSERT INTO accuracy_summary (scope, scope_key, model_version, n, accuracy, brier,'
-        + ' actual_rate, baseline_accuracy) VALUES (?,?,?,?,?,?,?,?)',
-      ).bind('OVERALL', 'all', '', 312, 0.682, 0.204, null, 0.601),
+        + ' actual_rate, baseline_accuracy, score_mae) VALUES (?,?,?,?,?,?,?,?,?)',
+      ).bind('OVERALL', 'all', '', 312, 0.682, 0.204, null, 0.601, 8.8),
       env.DB.prepare(
         'INSERT INTO accuracy_summary (scope, scope_key, model_version, n, accuracy, brier,'
         + ' actual_rate) VALUES (?,?,?,?,?,?,?)',
       ).bind('BUCKET', '60-70%', '', 88, 0.65, 0.21, 0.636),
     ]);
     const data = await body(await get('/accuracy'));
+    // **予想スコアの誤差も返す**（基本設計 5.2。母数は `n` と同じ）
     expect(data.overall).toEqual({
-      accuracy: 0.682, brier: 0.204, n: 312, baselineAccuracy: 0.601,
+      accuracy: 0.682, brier: 0.204, n: 312, baselineAccuracy: 0.601, scoreMae: 8.8,
     });
     // **母数を必ず添える**（要件 8.3）
     expect(data.calibration).toEqual([
       { bucket: '60-70%', predicted: 0.65, actual: 0.636, n: 88 },
     ]);
+  });
+
+  it('予想スコアの誤差は欠けていれば null で返す（0 にしない）', async () => {
+    // 集計側が「母数が `n` と食い違う」と判断したときに NULL になる（詳細設計 4.12）。
+    // **0 を返すと「誤差なし」の意味になる**
+    await env.DB.prepare('DELETE FROM accuracy_summary').run();
+    await env.DB.prepare(
+      'INSERT INTO accuracy_summary (scope, scope_key, model_version, n, accuracy, brier)'
+      + ' VALUES (?,?,?,?,?,?)',
+    ).bind('OVERALL', 'all', '', 10, 0.6, 0.22).run();
+    const data = await body(await get('/accuracy'));
+    expect(data.overall.scoreMae).toBeNull();
   });
 
   it('キャッシュを効かせる（指定漏れで D1 に直撃させない）', async () => {

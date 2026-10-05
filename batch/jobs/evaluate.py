@@ -205,10 +205,26 @@ class Summary:
     brier: float
     actual_rate: float | None = None
     baseline_accuracy: float | None = None
+    #: 予想スコアの誤差（**1チームあたり**の平均絶対誤差）。母数は `n` と同じ。
+    #: **食い違う場合は None**（4.12。母数の列を2つ持たない）
+    score_mae: float | None = None
 
 
 def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values)
+
+
+def _score_mae_of(rows: Sequence[Result]) -> float | None:
+    """**全行に予想スコアがあるときだけ**平均を返す（4.12）。
+
+    欠けた行を除いて平均すると、画面の「312試合中…」の隣に**母数の違う数字が
+    並ぶ**。`VOID` は呼び出し側で既に除かれているため、ここで欠けるのは
+    **予想スコア未保存**の行だけである（上流の欠陥であり、黙って平均しない）。
+    """
+    values = [r.score_mae for r in rows if r.score_mae is not None]
+    if len(values) != len(rows):
+        return None
+    return None if not values else _mean(values)
 
 
 def _group(rows: Sequence[Result], scope: str, scope_key: str,
@@ -225,6 +241,7 @@ def _group(rows: Sequence[Result], scope: str, scope_key: str,
         n=len(counted),
         accuracy=_mean([float(r.is_correct or 0) for r in counted]),
         brier=_mean([float(r.brier or 0.0) for r in counted]),
+        score_mae=_score_mae_of(counted),
     )
 
 
@@ -243,6 +260,7 @@ def summarize(results: Sequence[Result]) -> list[Summary]:
             scope=overall.scope, scope_key=overall.scope_key,
             model_version=overall.model_version, n=overall.n,
             accuracy=overall.accuracy, brier=overall.brier,
+            score_mae=overall.score_mae,
             baseline_accuracy=_mean(
                 [float(r.actual_home_win or 0) for r in counted]),
         ))
@@ -270,6 +288,7 @@ def summarize(results: Sequence[Result]) -> list[Summary]:
             accuracy=_mean([r.home_win_prob for r in inside]),
             brier=_mean([float(r.brier or 0.0) for r in inside]),
             actual_rate=_mean([float(r.actual_home_win or 0) for r in inside]),
+            score_mae=_score_mae_of(inside),
         ))
 
     for key, flag in (("provisional", 1), ("confirmed", 0)):
@@ -308,6 +327,7 @@ def _summary_payload(rows: Sequence[Summary]) -> dict[str, object]:
             "accuracy": s.accuracy, "brier": s.brier,
             "actualRate": s.actual_rate,
             "baselineAccuracy": s.baseline_accuracy,
+            "scoreMae": s.score_mae,
         }
         for s in rows
     ]}
@@ -370,6 +390,16 @@ def _report(outcome: Outcome) -> None:
     if counted:
         print(f"  的中率 {_mean([float(r.is_correct or 0) for r in counted]):.3f}"
               f" / Brier {_mean([float(r.brier or 0.0) for r in counted]):.4f}")
+        # **予想スコアの誤差は「全行にあるときだけ」出す**（4.12）。
+        # 欠けていたら平均せず件数を出す — 黙って除いて平均すると、画面の
+        # 「N試合中…」の隣に母数の違う数字が並ぶ
+        mae = _score_mae_of(counted)
+        if mae is None:
+            missing = sum(1 for r in counted if r.score_mae is None)
+            print(f"  予想スコアの誤差は出さない — {missing}件で予想スコアが"
+                  f"保存されていない（母数が食い違う）")
+        else:
+            print(f"  予想スコアの誤差 {mae:.1f}点（1チームあたり）")
     for game_id, reason in outcome.skipped:
         print(f"  skip {game_id} {reason}")
     if outcome.skipped:

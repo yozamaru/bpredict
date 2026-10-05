@@ -41,6 +41,14 @@ export const summarySchema = z
     brier: z.number().min(0).max(1),
     actualRate: z.number().min(0).max(1).nullable().optional(),
     baselineAccuracy: z.number().min(0).max(1).nullable().optional(),
+    /**
+     * 予想スコアの誤差（**1チームあたり**の平均絶対誤差。詳細設計 1.6）。
+     *
+     * **上限を 1 にしない** — 的中率や Brier と違い点数であり、値域は得点の
+     * 大きさで決まる。負にはならない。母数が `n` と食い違う場合は集計側が
+     * null にする（4.12。母数の列を2つ持たない）。
+     */
+    scoreMae: z.number().min(0).nullable().optional(),
   })
   .strict();
 

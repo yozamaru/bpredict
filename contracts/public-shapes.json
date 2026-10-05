@@ -161,7 +161,8 @@
       "rows[].modelVersion",
       "rows[].n",
       "rows[].scope",
-      "rows[].scopeKey"
+      "rows[].scopeKey",
+      "rows[].scoreMae"
     ]
   },
   "internalModels": {

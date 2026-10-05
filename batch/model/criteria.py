@@ -86,6 +86,14 @@ class Inputs:
     #: 「現行モデルはあるが比較できなかった」。**後者を前者として扱うと、条件1〜2 を
     #: 課さずに採用してしまう**（列を変えて `--initial` を忘れたときに起きる）
     comparison_blocked: str | None = None
+    #: **条件4（ECE）を課さない**（要件 6.5 の例外 / 詳細設計 4.6）。
+    #: 対象は「確率を画面に出さず、用途が相対比だけ」のモデルで、現在は
+    #: **第1段（PlayerAvail）だけ**である。
+    #:
+    #: **`model_type` から自動で判定しない。** 呼び出し側が明示的に立てたときだけ
+    #: 外れる — 種別で分岐させると、**新しいモデルを足したときに意図せず門が外れる**。
+    #: 立てても**実測の ECE と閾値は注記に残す**（後から再評価できるようにする）
+    skip_ece: bool = False
 
 
 @dataclass(frozen=True)
@@ -165,7 +173,16 @@ def passes_criteria(inputs: Inputs) -> Decision:
         # **下限を取る。** ノイズフロアは n が大きいほど小さくなり、大標本では
         # 到達不能になる（`ECE_THRESHOLD_FLOOR` に実測）
         limit = max(inputs.ece_floor * ECE_FLOOR_K, ECE_THRESHOLD_FLOOR)
-        if not inputs.ece < limit:
+        verdict = "通る" if inputs.ece < limit else "落ちる"
+        if inputs.skip_ece:
+            # **課さないが、黙らない。** 実測と閾値を残さないと、後から
+            # 「この確率は信用できるのか」を再評価できない（詳細設計 4.6）
+            notes.append(
+                f"条件4（ECE）を課していない — 確率を画面に出さず用途が相対比"
+                f"だけのモデルである（要件 6.5）。実測 ECE {inputs.ece:.4f} /"
+                f" 閾値 {limit:.4f}（単独では{verdict}）"
+            )
+        elif not inputs.ece < limit:
             failures.append(
                 f"ECE {inputs.ece:.4f} が閾値 {limit:.4f} を下回らない"
                 f"（ノイズフロア由来 {inputs.ece_floor * ECE_FLOOR_K:.4f} /"

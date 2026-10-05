@@ -401,10 +401,64 @@ def usable_rate_rows(data: PlayerRateData, target: str, k: float) -> Floats:
     return keep
 
 
+class MinutesProvider:
+    """**fold ごとに1本の第2段を当てはめ、14本すべてで共有する**（2.3.1）。
+
+    本番では登録済みの第2段が1本だけあり（4.5.1）、14本の第3段はその同じ出力を
+    受け取る。**項目ごとに別の第2段を当てはめると、学習時だけ14本の第2段が
+    存在することになり、本番と入力の作り方が食い違う。**
+
+    当てはめには**目的変数ごとの絞り込みを掛ける前の行**を使う。絞り込みは
+    第3段の目的変数の都合（`試投数 > 0` など）であって、出場時間の予測には
+    関係がない。
+
+    `data` は**絞り込み前の行列**（`build_player_rate_matrix` の戻り値）であること。
+    """
+
+    def __init__(
+        self, data: PlayerRateData, *,
+        num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    ) -> None:
+        self._features = data.minutes_features
+        self._minutes = pd.Series(data.minutes, index=data.minutes_features.index)
+        self._season = pd.Series(data.season_ids, index=data.minutes_features.index)
+        self._rounds = num_boost_round
+        self._cache: dict[
+            tuple[tuple[str, ...], str], Callable[[pd.DataFrame], Floats]] = {}
+
+    def for_fold(
+        self, train_index: pd.Index, valid_index: pd.Index,
+    ) -> Callable[[pd.Index], Floats]:
+        """その fold の第2段を返す。**季の組で記憶する**（14本で1本に揃う）。"""
+        train_seasons = tuple(sorted(set(self._season.loc[train_index])))
+        valid_seasons = sorted(set(self._season.loc[valid_index]))
+        if len(valid_seasons) != 1:
+            raise PlayerModelError(
+                f"検証の季が1つでない: {valid_seasons}")
+        key = (train_seasons, valid_seasons[0])
+        if key not in self._cache:
+            train = self._season.isin(train_seasons).to_numpy()
+            valid = (self._season == valid_seasons[0]).to_numpy()
+            predict, _ = learn_minutes(num_boost_round=self._rounds)(
+                self._features[train],
+                self._minutes[train].to_numpy(dtype=np.float64),
+                np.ones(int(train.sum())),
+                self._features[valid],
+                self._minutes[valid].to_numpy(dtype=np.float64),
+            )
+            self._cache[key] = predict
+
+        predict = self._cache[key]
+
+        def minutes_for(index: pd.Index) -> Floats:
+            return predict(self._features.loc[index])
+
+        return minutes_for
+
+
 def learn_rate(
-    data: PlayerRateData, target: str, k: float, *,
+    provider: MinutesProvider, target: str, *,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
-    on_minutes_model: Callable[[int], None] | None = None,
 ) -> Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]]:
     """第3段の学習関数。**fold ごとに第2段を当てはめて `pred_minutes` を埋める。**
 
@@ -412,34 +466,22 @@ def learn_rate(
     直接違反し、全データで当てはめた第2段を使うと fold を跨いで情報が入る
     （2.3.1）。**学習季の行だけで第2段を当てはめる。**
 
-    `data` は**絞り込み済みの行列**で、索引の値が元の位置を指していること
-    （`PlayerRateData.subset` が振り直さない）。
+    索引の値が元の行の位置を指していること（`PlayerRateData.subset` が
+    振り直さない）。
     """
     if target not in team_rate.TARGETS:
         raise PlayerModelError(f"目的変数が14項目にない: {target}")
-    minutes_features = data.minutes_features
-    minutes = pd.Series(data.minutes, index=minutes_features.index)
     bounds = (0.01, 0.99) if target not in team_rate.COUNT_TARGETS else None
 
     def learn(
         train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
         valid_x: pd.DataFrame, valid_y: Floats,
     ) -> tuple[Callable[[pd.DataFrame], Floats], int]:
-        # 第2段を学習季だけで当てはめる
-        stage_two_rows = minutes_features.loc[train_x.index]
-        stage_two, _ = learn_minutes(num_boost_round=num_boost_round)(
-            stage_two_rows,
-            minutes.loc[train_x.index].to_numpy(dtype=np.float64),
-            np.ones(len(stage_two_rows)),
-            minutes_features.loc[valid_x.index],
-            minutes.loc[valid_x.index].to_numpy(dtype=np.float64),
-        )
-        if on_minutes_model is not None:
-            on_minutes_model(len(stage_two_rows))
+        minutes_for = provider.for_fold(train_x.index, valid_x.index)
 
         def filled(features: pd.DataFrame) -> pd.DataFrame:
             out = features.copy()
-            out["pred_minutes"] = stage_two(minutes_features.loc[features.index])
+            out["pred_minutes"] = minutes_for(features.index)
             return out
 
         predict, best = learn_score(
@@ -492,13 +534,21 @@ def evaluate_rate(
     data: PlayerRateData, target: str, *, k: float = SHRINK_K_INITIAL,
     max_folds: int = MAX_FOLDS, num_boost_round: int = NUM_BOOST_ROUND_MAX,
     learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
+    provider: MinutesProvider | None = None,
 ) -> Evaluation:
-    """第3段の1項目を walk-forward で評価する。**分割器を2つ作らない。**"""
+    """第3段の1項目を walk-forward で評価する。**分割器を2つ作らない。**
+
+    `provider` を渡すと第2段の当てはめを使い回す（14本 × `k` のグリッドで
+    同じ fold を何度も当てはめ直さないため）。省略すると `data` から作る。
+    """
     frame = data.subset(usable_rate_rows(data, target, k))
     features = rate_model_features(frame, target, k)
+    if learner is None:
+        learner = learn_rate(
+            provider or MinutesProvider(data, num_boost_round=num_boost_round),
+            target, num_boost_round=num_boost_round)
     return walk_forward(
-        frame.as_training_data(features),
-        learner or learn_rate(frame, target, k, num_boost_round=num_boost_round),
+        frame.as_training_data(features), learner,
         target=rate_target(frame, target, k),
         weights=rate_weights(frame, target),
         max_folds=max_folds,

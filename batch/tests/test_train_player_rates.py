@@ -28,6 +28,7 @@ from batch.features import player_rate, team_rate
 from batch.model.dataset import MatrixError, PlayerRateData
 from batch.model.train_player import (
     SHRINK_K_INITIAL,
+    MinutesProvider,
     PlayerModelError,
     evaluate_rate,
     learn_rate,
@@ -261,7 +262,9 @@ def test_the_learner_fills_pred_minutes() -> None:
     train = np.asarray([s in ("s1", "s2") for s in picked.season_ids])
     valid = np.asarray([s == "s3" for s in picked.season_ids])
     test = np.asarray([s == "s4" for s in picked.season_ids])
-    learn = learn_rate(picked, "ast", SHRINK_K_INITIAL, num_boost_round=ROUNDS)
+    learn = learn_rate(
+        MinutesProvider(data, num_boost_round=ROUNDS), "ast",
+        num_boost_round=ROUNDS)
     predict, _ = learn(
         features[train], y[train], np.ones(int(train.sum())),
         features[valid], y[valid])
@@ -294,7 +297,9 @@ def test_pred_minutes_is_not_the_actual_minutes(
         return original(train_x, *args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(module, "learn_score", spy)
-    learn = learn_rate(picked, "ast", SHRINK_K_INITIAL, num_boost_round=ROUNDS)
+    learn = learn_rate(
+        MinutesProvider(data, num_boost_round=ROUNDS), "ast",
+        num_boost_round=ROUNDS)
     learn(features[train], y[train], np.ones(int(train.sum())),
           features[valid], y[valid])
 
@@ -341,3 +346,31 @@ def test_the_recent_baseline_does_not_learn() -> None:
     test = np.asarray([s == "s4" for s in picked.season_ids])
     assert np.allclose(
         found.folds[-1].probs, features["ast_per_min_l10"].to_numpy()[test])
+
+
+def test_the_stage_two_model_is_shared_across_targets() -> None:
+    """**fold ごとに1本の第2段を14本で共有する**（2.3.1）。
+
+    本番では登録済みの第2段が1本だけある。項目ごとに当てはめ直すと、
+    **学習時だけ14本の第2段が存在することになり、本番と入力の作り方が
+    食い違う。**
+    """
+    data = fake_data(per_season=60)
+    provider = MinutesProvider(data, num_boost_round=ROUNDS)
+    train = data.minutes_features.index[
+        np.asarray([s in ("s1", "s2") for s in data.season_ids], dtype=bool)]
+    valid = data.minutes_features.index[
+        np.asarray([s == "s3" for s in data.season_ids], dtype=bool)]
+    first = provider.for_fold(train, valid)
+    second = provider.for_fold(train[::2], valid)
+    # 季の組が同じなら同じモデルを返す（行の部分集合でも当てはめ直さない）
+    assert np.allclose(first(valid), second(valid))
+
+
+def test_the_provider_requires_a_single_validation_season() -> None:
+    """検証の季が1つでなければ落とす（walk-forward の契約）。"""
+    data = fake_data(per_season=40)
+    provider = MinutesProvider(data, num_boost_round=ROUNDS)
+    index = data.minutes_features.index
+    with pytest.raises(PlayerModelError, match="検証の季"):
+        provider.for_fold(index[:10], index)

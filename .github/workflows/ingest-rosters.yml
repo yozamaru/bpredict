@@ -1,0 +1,96 @@
+# 登録選手一覧を取り込む（詳細設計 1.2 / 4.13）。
+#
+# **1回だけ行う。** 登録選手は季ごとに確定するため日次ジョブには入れない。
+# `season` で1季ずつ流せる（1季あたり18〜26リクエスト、全季で238）。
+#
+# **公式サイトへ取得する。** したがって `resolve-venue-geo` と同じく、
+# robots と利用規約のハッシュを要求する（絶対ルール6）。
+#
+# **スナップショットをコミットしない。** `contents: read` のままにするため
+# （基本設計 7.3 の「`contents: write` は `daily-ingest` と `gameday-update` の
+# 2つだけ」を崩さない）。正本の更新は手元で流してコミットする — ジョブは D1 へ
+# 送り、手元の実行がスナップショットを書く。**反映漏れは CI が落とす。**
+#
+# **`seed_master` を流さない。** このジョブはクラブ解決をしない（`rebuild-derived`
+# と同じ理由。4.1）。
+name: ingest-rosters
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: 'シーズンID（例 2026-27-PREMIER）。空にすると全季（238リクエスト）'
+        required: false
+        type: string
+      dry_run:
+        description: '取得はするが D1 には書かない'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-write
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    # 手動実行も既定ブランチだけに限る。別ブランチのコードで本番 D1 へ書かない。
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+      SCRAPER_USER_AGENT: ${{ vars.SCRAPER_USER_AGENT }}
+      SCRAPER_ROBOTS_SHA256: ${{ vars.SCRAPER_ROBOTS_SHA256 }}
+      SCRAPER_TERMS_SHA256: ${{ vars.SCRAPER_TERMS_SHA256 }}
+      SCRAPER_STATE_PATH: batch/.scraper-state/state.json
+    steps:
+      - uses: actions/checkout@v7
+
+      # 未設定のまま走らせない。**skip ではなく fail にする**（手動実行なので、
+      # 黙って通り過ぎるよりその場で気づける方がよい）。
+      # 空の User-Agent や規約ハッシュ未確認で取得すると絶対ルール6を破る。
+      - name: 設定の確認
+        shell: bash
+        run: |
+          missing=()
+          for name in API_BASE_URL INGEST_TOKEN SCRAPER_USER_AGENT \
+                      SCRAPER_ROBOTS_SHA256 SCRAPER_TERMS_SHA256; do
+            [[ -z "${!name}" ]] && missing+=("$name")
+          done
+          if (( ${#missing[@]} )); then
+            printf '::error::未設定: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      # スクレイパの状態（日次3,000件のカウンタと 429/503 後の停止）を実行間で
+      # 引き継ぐ。`parser-canary` / `backfill` / `daily-ingest` と同じキー空間を
+      # 共有し、**合計で上限を守る**（詳細設計 4.8）。
+      - name: スクレイパの状態を復元
+        uses: actions/cache@v4
+        with:
+          path: batch/.scraper-state
+          key: scraper-state-${{ github.run_id }}
+          restore-keys: |
+            scraper-state-
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r batch/requirements.txt
+
+      # inputs を `run:` に直接展開しない。シェルに解釈される前に env へ渡す。
+      - name: 取り込み
+        env:
+          SEASON: ${{ inputs.season }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          args=()
+          [[ -n "$SEASON" ]] && args+=(--season "$SEASON")
+          [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
+          python -m batch.jobs.ingest_rosters "${args[@]}"

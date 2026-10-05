@@ -20,6 +20,7 @@ import pytest
 
 from batch.features.dataset import export_sqlite
 from batch.features.player_rate import AVAIL_KEYS
+from batch.model.calibrate import IDENTITY, Platt
 from batch.model.dataset import (
     MatrixError,
     PlayerAvailData,
@@ -261,3 +262,35 @@ def test_no_finished_games_is_rejected(seeded_db: sqlite3.Connection) -> None:
     seeded_db.commit()
     with pytest.raises(MatrixError, match="終了した試合が1件もない"):
         build_player_avail_matrix(export_sqlite(seeded_db))
+
+
+# --- 較正器（要件 6.7 / 詳細設計 2.3.1） ---
+
+def test_the_calibrator_is_fit_on_the_validation_fold() -> None:
+    """**学習データで当てはめない**（要件 6.7）。
+
+    fold ごとに1つ当てはまり、恒等ではない（= 実際に動いている）こと。
+    """
+    pytest.importorskip("lightgbm")
+    found: list[Platt] = []
+    result = evaluate_avail(
+        fake_data(), num_boost_round=ROUNDS, calibrated=True,
+        on_calibrator=found.append)
+    assert len(found) == len(result.folds)
+    assert any(model != IDENTITY for model in found)
+
+
+def test_calibration_keeps_the_clamp() -> None:
+    """**クランプは較正の後に当てる。** 先に当てると端の値を較正器が引き伸ばす。"""
+    pytest.importorskip("lightgbm")
+    result = evaluate_avail(fake_data(), num_boost_round=ROUNDS, calibrated=True)
+    assert result.probs.min() >= 0.01
+    assert result.probs.max() <= 0.99
+
+
+def test_calibration_is_off_by_default() -> None:
+    """**既定では入れない。** 要件 6.7 の「そもそも必要かを先に測る」に従う。"""
+    pytest.importorskip("lightgbm")
+    found: list[Platt] = []
+    evaluate_avail(fake_data(), num_boost_round=ROUNDS, on_calibrator=found.append)
+    assert found == []

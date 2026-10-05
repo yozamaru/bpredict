@@ -5,6 +5,7 @@ import pytest
 
 from batch.model.criteria import (
     ECE_FLOOR_K,
+    ECE_THRESHOLD_FLOOR,
     KNOWN_CONSTANT,
     MAX_FEATURE_NULL_RATE,
     MIN_EFFECT,
@@ -155,6 +156,42 @@ def test_ece_scales_with_the_floor_not_a_fixed_value() -> None:
     assert not passes_criteria(inputs(ece=0.0500, ece_floor=0.0300)).adopt
 
 
+def test_the_threshold_has_a_floor_of_one_point() -> None:
+    """**ノイズフロアが1ポイントを下回ったら下限が効く**（要件 6.4。v1.32）。
+
+    フロアは n が大きいほど小さくなり、大標本では到達不能になる。第1段
+    （n=124,927）の実測では、同じモデル・同じ予測なのに n だけで判定が反転した。
+    """
+    # フロア由来の閾値は 0.003 だが、下限 0.01 が効く
+    tiny = 0.002
+    assert tiny * ECE_FLOOR_K < ECE_THRESHOLD_FLOOR
+    assert passes_criteria(inputs(ece=0.0089, ece_floor=tiny)).adopt
+    # 下限そのものは超えられない
+    assert not passes_criteria(inputs(ece=ECE_THRESHOLD_FLOOR, ece_floor=tiny)).adopt
+
+
+def test_the_floor_does_not_loosen_small_samples() -> None:
+    """**小標本ではフロアが閾値を決める。** 固定閾値に戻したのではない。
+
+    勝敗モデル（n=3,031）のフロア由来の閾値は約 0.042 で、下限 0.01 より大きい。
+    下限を置いたことで判定が緩むことはない。
+    """
+    floor = 0.0280  # × 1.5 = 0.042
+    assert floor * ECE_FLOOR_K > ECE_THRESHOLD_FLOOR
+    assert passes_criteria(inputs(ece=0.0221, ece_floor=floor)).adopt
+    # フロア由来の閾値を超えたら、下限が大きくても落ちる
+    assert not passes_criteria(inputs(ece=0.0500, ece_floor=floor)).adopt
+
+
+def test_the_failure_message_shows_both_thresholds() -> None:
+    """**どちらが効いたか分かるようにする。** 直す側は両方知りたい。"""
+    decision = passes_criteria(inputs(ece=0.0200, ece_floor=0.002))
+    assert not decision.adopt
+    message = next(f for f in decision.failures if "ECE" in f)
+    assert "ノイズフロア由来" in message
+    assert "下限" in message
+
+
 def test_unavailable_ece_is_noted_not_failed() -> None:
     decision = passes_criteria(inputs(ece=None, ece_floor=None))
     assert decision.adopt
@@ -201,20 +238,25 @@ def test_known_and_unexpected_constants_are_reported_separately() -> None:
 
 
 def test_the_entry_keys_are_the_known_constants() -> None:
-    """**`game_entries` が空であることに由来する4キーだけ**（実測で確認済み）。
+    """**`game_entries` が空であることに由来する5キーだけ**（実測で確認済み）。
 
-    勝敗モデルの3列（2026-09-25）と、第2段 PlayerMinutes の `team_minutes_lost`
-    （2026-10-03。126,931行で1種類、抜いても MAE が完全に同一）。
+    勝敗モデルの3列（2026-09-25）、第2段 PlayerMinutes の `team_minutes_lost`
+    （2026-10-03。126,931行で1種類、抜いても MAE が完全に同一）、
+    第1段 PlayerAvail の `entry_status`（2026-10-05。245,392行で全件0）。
+
+    **`entry_is_official` と `entry_status` は同じ値を見るが列名が違う。**
+    片方しか登録していないと、もう片方のモデルで採用が止まる（実際に止まった）。
 
     **集合を固定するのは「知らないまま通ること」を防ぐためである**（4.6）。
     ここへ足すときは、定数になる理由が**設計上の既知の未実装**に由来することを
-    確かめる。`gameday_update` を実装したら4つとも外す。
+    確かめる。`gameday_update` を実装したら5つとも外す。
     """
     assert set(KNOWN_CONSTANT) == {
         "minutes_lost_diff",
         "top_players_out_diff",
         "entry_is_official",
         "team_minutes_lost",
+        "entry_status",
     }
     for reason in KNOWN_CONSTANT.values():
         assert "game_entries" in reason

@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
+from batch.model.calibrate import Platt, fit_platt
 from batch.model.dataset import PlayerAvailData, PlayerMinutesData
 from batch.model.evaluate import MAX_FOLDS, Evaluation, walk_forward
 from batch.model.params import NUM_BOOST_ROUND_MAX
@@ -190,6 +191,8 @@ def clamp_avail_prob(prob: Floats) -> Floats:
 
 def learn_avail(
     *, num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    calibrated: bool = False,
+    on_calibrator: Callable[[Platt], None] | None = None,
 ) -> Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]]:
     """第1段の学習関数。**二値分類は `learn_winner` を使い回す**。
 
@@ -199,6 +202,13 @@ def learn_avail(
 
     出力は `clamp_avail_prob` で `[0.01, 0.99]` に収める。**勝率の幅を使わない** —
     理由と実測は同関数にある。
+
+    `calibrated=True` で **Platt scaling を fold の検証セットに当てはめる**
+    （要件 6.7 / 詳細設計 2.3.1）。**学習データでは当てはめない** — 学習データ上の
+    過剰な分離を「正しい」と学習し、本番では過信が増幅される。
+
+    **クランプは較正の後に当てる。** 先にクランプすると `[0.01, 0.99]` の端に
+    固まった値を較正器が引き伸ばし、端のぶんだけ目盛りが狂う。
     """
     def learn(
         train_x: pd.DataFrame, train_y: Floats, train_w: Floats,
@@ -208,10 +218,22 @@ def learn_avail(
             train_x, train_y, train_w, valid_x, valid_y,
             num_boost_round=num_boost_round)
 
-        def bounded(features: pd.DataFrame) -> Floats:
-            return clamp_avail_prob(predict(features))
+        if not calibrated:
+            def bounded(features: pd.DataFrame) -> Floats:
+                return clamp_avail_prob(predict(features))
 
-        return bounded, best
+            return bounded, best
+
+        # **検証セットの out-of-fold 予測で当てはめる。** `valid` は early stopping と
+        # 共用するが、どちらも `test` に触れないため評価は out-of-sample のまま
+        platt = fit_platt(predict(valid_x), valid_y)
+        if on_calibrator is not None:
+            on_calibrator(platt)
+
+        def calibrated_predict(features: pd.DataFrame) -> Floats:
+            return clamp_avail_prob(platt.apply(predict(features)))
+
+        return calibrated_predict, best
 
     return learn
 
@@ -264,6 +286,8 @@ def ratio_learner(column: str = "games_played_ratio_l10") -> Callable[
 def evaluate_avail(
     data: PlayerAvailData, *, max_folds: int = MAX_FOLDS,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    calibrated: bool = False,
+    on_calibrator: Callable[[Platt], None] | None = None,
     learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
 ) -> Evaluation:
     """第1段の walk-forward 評価。**分割器を2つ作らない**（`evaluate.py`）。
@@ -275,7 +299,11 @@ def evaluate_avail(
         raise PlayerModelError("学習行が1件もない")
     return walk_forward(
         data.as_training_data(),
-        learn_avail(num_boost_round=num_boost_round) if learner is None else learner,
+        learn_avail(
+            num_boost_round=num_boost_round,
+            calibrated=calibrated,
+            on_calibrator=on_calibrator,
+        ) if learner is None else learner,
         target=data.played,
         max_folds=max_folds,
     )

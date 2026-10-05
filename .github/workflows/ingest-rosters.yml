@@ -6,10 +6,15 @@
 # **公式サイトへ取得する。** したがって `resolve-venue-geo` と同じく、
 # robots と利用規約のハッシュを要求する（絶対ルール6）。
 #
-# **スナップショットをコミットしない。** `contents: read` のままにするため
+# **スナップショットは artifact で持ち帰る。** `contents: read` のままにするため
 # （基本設計 7.3 の「`contents: write` は `daily-ingest` と `gameday-update` の
-# 2つだけ」を崩さない）。正本の更新は手元で流してコミットする — ジョブは D1 へ
-# 送り、手元の実行がスナップショットを書く。**反映漏れは CI が落とす。**
+# 2つだけ」を崩さない）。
+#
+# **「手元で流し直してコミットする」ではない。** 出典は公式サイトであり、
+# `resolve_venue_geo` の `--sync-snapshot`（コミット済みの CSV から反映する）に
+# 相当する経路が無い。手元で流し直すと**同じ238ページを2回取る**ことになり、
+# 要件 5.2 の「取得は必要最小限のページに限る」に反する。**1回の取得で D1 と
+# スナップショットの両方を書き、parquet を artifact で取り出す。**
 #
 # **`seed_master` を流さない。** このジョブはクラブ解決をしない（`rebuild-derived`
 # と同じ理由。4.1）。
@@ -94,3 +99,20 @@ jobs:
           [[ -n "$SEASON" ]] && args+=(--season "$SEASON")
           [[ "$DRY_RUN" == 'true' ]] && args+=(--dry-run)
           python -m batch.jobs.ingest_rosters "${args[@]}"
+
+      # **スナップショットを artifact で受け渡す。** コミットしない（基本設計 7.3）。
+      # MANIFEST も入れる — `write_snapshot` は書き直さなかったテーブルも
+      # ディスクの現物から digest を取り直すため、3ファイルで整合する。
+      #
+      # `if: always()` にするのは、`PARTIAL`（exit 1）で終わった回の分も
+      # 取り出せるようにするためである（`backfill` の除外一覧と同じ理由。4.4）。
+      - name: スナップショットを取り出す
+        if: always() && inputs.dry_run != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: roster-snapshot
+          path: |
+            batch/snapshot/players.parquet
+            batch/snapshot/player_seasons.parquet
+            batch/snapshot/MANIFEST.json
+          if-no-files-found: error

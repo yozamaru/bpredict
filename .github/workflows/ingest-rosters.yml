@@ -108,7 +108,7 @@ jobs:
       # 取り出せるようにするためである（`backfill` の除外一覧と同じ理由。4.4）。
       - name: スナップショットを取り出す
         if: always() && inputs.dry_run != true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: roster-snapshot
           path: |

@@ -118,7 +118,7 @@ jobs:
       # `verification/RESULTS.md` への記録は人（または AI）が行う。
       - name: 評価の数値を上げる
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: train-report
           path: train-report.json

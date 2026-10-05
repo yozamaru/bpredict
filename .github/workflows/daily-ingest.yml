@@ -177,7 +177,7 @@ jobs:
       # 途中終了した回のぶんも拾えるようにしておく（詳細設計 4.4）。
       - name: 取り込まない試合の一覧
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: excluded-games
           path: batch/exclusions/excluded_games.json

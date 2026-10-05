@@ -1,13 +1,13 @@
 """選手モデル（基本設計 2.3 / 詳細設計 2.3.1 / 4.5）。
 
-**いま実装してあるのは第1段と第2段である。**
+**4段すべてが揃っている。** 本モジュールは第1〜3段を持つ。
 
 | 段 | 状態 |
 |---|---|
 | 第1段 PlayerAvail | **本モジュール。** `P(出場)`。候補は過去の出場実績から作る（2.3.1） |
 | 第2段 PlayerMinutes | **本モジュール。** `E[出場時間 | 出場]` |
-| 第3段 PlayerRates | **未実装。** `k` / `prior` / `usage_l10` が未定義（2.3.1） |
-| 第4段 Reconciliation | `batch/model/reconcile.py`（実装済み） |
+| 第3段 PlayerRates | **本モジュール。** カウント11項目は per-minute、成功率3項目は率（2.3.1） |
+| 第4段 Reconciliation | `batch/model/reconcile.py` |
 
 **出場時間は非負に収める。** 回帰は負を出しうるが、`player_predictions.pred_minutes`
 には `CHECK (pred_minutes >= 0)` があり（詳細設計 1.5）、整合化は出場時間を
@@ -436,6 +436,29 @@ def usable_rate_rows(data: PlayerRateData, target: str, k: float) -> Floats:
     return keep
 
 
+def rate_training_features(
+    data: PlayerRateData, target: str, *, k: float,
+    minutes_for: Callable[[pd.DataFrame], Floats],
+) -> pd.DataFrame:
+    """第3段の1項目が**実際に学習する**列（2.3.1）。
+
+    **`pred_minutes` を埋めるところまで含める。** 行列はこの列を NaN で持つため
+    （`rate_model_features` の注記）、埋める前の表を採用判定に渡すと
+    **欠損率100%・定数列**として必ず落ちる — 本番では第2段の出力が必ず入る。
+
+    **最終当てはめと採用判定が同じ表を見るように、1か所に置く。** 別に組むと、
+    判定した表と学習した表が食い違う（`fit_final_rate` が通る道である）。
+
+    `data` は**絞り込み済み**の行列であること（`usable_rate_rows` を通した後）。
+    """
+    if target not in team_rate.TARGETS:
+        raise PlayerModelError(f"目的変数が14項目にない: {target}")
+    features = rate_model_features(data, target, k).copy()
+    features["pred_minutes"] = minutes_for(data.minutes_features)
+    # 列順は `rate_model_keys` が正（`pred_minutes` を末尾に足したままにしない）
+    return features[list(player_rate.rate_model_keys(target))]
+
+
 class MinutesProvider:
     """**fold ごとに1本の第2段を当てはめ、14本すべてで共有する**（2.3.1）。
 
@@ -657,15 +680,10 @@ def fit_final_rate(
     `minutes_for` は第2段の最終モデルの予測関数で、`MINUTES_KEYS` の列を持つ
     表を受け取る。
     """
-    if target not in team_rate.TARGETS:
-        raise PlayerModelError(f"目的変数が14項目にない: {target}")
     frame = data.subset(usable_rate_rows(data, target, k))
     if len(frame) == 0:
         raise PlayerModelError(f"{target} に使える行が1件もない")
-    features = rate_model_features(frame, target, k).copy()
-    features["pred_minutes"] = minutes_for(frame.minutes_features)
-    # 列順は `rate_model_keys` が正（`pred_minutes` を末尾に足したままにしない）
-    features = features[list(player_rate.rate_model_keys(target))]
+    features = rate_training_features(frame, target, k=k, minutes_for=minutes_for)
     weights = rate_weights(frame, target)
     if weights is None:
         weights = np.ones(len(frame), dtype=np.float64)

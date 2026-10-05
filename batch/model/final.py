@@ -18,7 +18,7 @@ PLAYER_MIN / PLAYER_RATE 14）。`prediction_model_bundle` が設計上の最大
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -86,7 +86,7 @@ def _window(values: Sequence[str]) -> str:
     return f"{values[0]}..{values[-1]}"
 
 
-def _rounds(evaluation: Evaluation) -> int:
+def rounds_of(evaluation: Evaluation) -> int:
     """各 fold の `best_iteration` の中央値（基本設計 2.3）。
 
     **0 を黙って 1 に繰り上げない。** 木が1本も育たなかったモデルを登録すると、
@@ -164,7 +164,7 @@ def build_records(
         ("MARGIN", data.margin, evaluations.margin),
         ("TOTAL", data.total, evaluations.total),
     ):
-        rounds = _rounds(evaluation)
+        rounds = rounds_of(evaluation)
         _, artifact = train_final(
             data.features, target, weights,
             num_boost_round=rounds, params=SCORE_PARAMS,
@@ -304,7 +304,7 @@ def build_rate_records(
     # --- TEAM_RATE 14本 ---
     for target in team_rate_targets():
         evaluation = evaluations.team_rate[target]
-        rounds = _rounds(evaluation)
+        rounds = rounds_of(evaluation)
         artifact, rows, features = train_team_rates.fit_final(
             team_data, target, rounds=rounds)
         records.append(regression(
@@ -313,7 +313,7 @@ def build_rate_records(
         ))
 
     # --- PLAYER_AVAIL（二値分類。**ECE の条件は課さない**。4.5.1） ---
-    avail_rounds = _rounds(evaluations.avail)
+    avail_rounds = rounds_of(evaluations.avail)
     avail_artifact, avail_rows, avail_features = train_player.fit_final_avail(
         avail_data, rounds=avail_rounds)
     avail = evaluations.avail
@@ -344,7 +344,7 @@ def build_rate_records(
     ))
 
     # --- PLAYER_MIN（第3段の `pred_minutes` の出どころでもある） ---
-    minutes_rounds = _rounds(evaluations.minutes)
+    minutes_rounds = rounds_of(evaluations.minutes)
     minutes_artifact, minutes_rows, minutes_features = train_player.fit_final_minutes(
         minutes_data, rounds=minutes_rounds)
     records.append(regression(
@@ -355,15 +355,11 @@ def build_rate_records(
 
     # --- PLAYER_RATE 14本 ---
     # **本番と同じ1本の第2段で `pred_minutes` を埋める**（4.5.1）
-    minutes_booster = _load_booster(minutes_artifact)
-
-    def minutes_for(frame: Any) -> Any:
-        return np.asarray(
-            minutes_booster.predict(frame[minutes_features]), dtype=np.float64)
+    minutes_for = minutes_predictor(minutes_artifact, minutes_features)
 
     for target in team_rate_targets():
         evaluation = evaluations.player_rate[target]
-        rounds = _rounds(evaluation)
+        rounds = rounds_of(evaluation)
         k = shrink_k.get(target)
         artifact, rows, features = train_player.fit_final_rate(
             rate_data, target, k=k or 1.0, rounds=rounds, minutes_for=minutes_for)
@@ -374,6 +370,25 @@ def build_rate_records(
             extra={} if k is None else {"shrink_k": k},
         ))
     return records
+
+
+def minutes_predictor(
+    artifact_text: str, columns: Sequence[str],
+) -> Callable[[Any], Any]:
+    """第2段の予測関数（4.5.1）。**採用判定と最終当てはめの両方がこれを通る。**
+
+    `pred_minutes` は第3段の列であり、行列では NaN である（2.3.1）。採用判定は
+    **本番が埋めるのと同じ値**を見なければならないため、評価の側もこの関数で埋める。
+
+    **同じ入力・同じ params なら同じモデルになる**（`deterministic: True` と
+    seed 固定。4.7）。したがって評価と登録が別々に当てはめても、埋まる値は一致する。
+    """
+    booster = _load_booster(artifact_text)
+
+    def minutes_for(frame: Any) -> Any:
+        return np.asarray(booster.predict(frame[list(columns)]), dtype=np.float64)
+
+    return minutes_for
 
 
 def _load_booster(artifact_text: str) -> Any:

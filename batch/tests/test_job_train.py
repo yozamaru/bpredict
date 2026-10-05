@@ -13,14 +13,35 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import pytest
+from numpy.typing import NDArray
 
 from batch.features.team_rate import TARGETS
 from batch.jobs import train
 from batch.model.criteria import Decision
-from batch.model.dataset import TrainingData, time_decay_weights
+from batch.model.dataset import (
+    PlayerAvailData,
+    PlayerMinutesData,
+    PlayerRateData,
+    TeamRateData,
+    TrainingData,
+    time_decay_weights,
+)
 from batch.model.evaluate import Fold
 from batch.model.params import TIME_DECAY_LAMBDA_INITIAL
 from batch.model.registry import ModelRecord
+from batch.model.train_player import (
+    SHRINK_K,
+    SHRINK_K_INITIAL,
+    rate_model_features,
+    rate_target,
+    usable_rate_rows,
+)
+from batch.tests.test_train_player import fake_data as fake_minutes_data
+from batch.tests.test_train_player_avail import fake_data as fake_avail_data
+from batch.tests.test_train_player_rates import fake_data as fake_rate_data
+from batch.tests.test_train_team_rates import fake_data as fake_team_rate_data
+
+type Floats = NDArray[np.float64]
 
 SEASONS = ("s1", "s2", "s3", "s4")
 
@@ -676,3 +697,109 @@ def test_register_needs_the_score_evaluations() -> None:
     without = train.replace(report, margin=None, total=None)
     with pytest.raises(train.TrainError):
         train.evaluations_of(without)
+
+# --- 30本の判定（詳細設計 4.5.1） ---
+#
+# **`evaluate_rates` は monkeypatch する。** 46本の当てはめを CI で回す必要はない
+# （評価そのものは各 train モジュールのテストが見る）。ここで見たいのは
+# **判定に渡す表**であり、そこが実データで14本すべてを落としていた。
+
+
+def flat(data: TrainingData, target: Floats, *, folds: int = 3) -> train.Evaluation:
+    """**学習しない** `Evaluation`（判定の経路だけを通す）。"""
+    return train.walk_forward(
+        data,
+        lambda tx, ty, tw, vx, vy: ((lambda f: np.full(len(f), float(ty.mean()))), 20),
+        target=target, max_folds=folds,
+    )
+
+
+def spread(
+    data: TrainingData, target: Floats, column: str | None = None, *, folds: int = 3,
+) -> train.Evaluation:
+    """二値分類の `Evaluation`。**確率に幅を持たせる** — 定数だと ECE が
+    等頻度10ビンに分かれず、ノイズフロアの推定も意味を失う。
+
+    `column` を渡すとその列をそのまま確率として出す（**ベースラインより良い
+    予測**になる。条件1 は「学習しない予測」を上回ることを求める）。
+    """
+    def predictor(features: pd.DataFrame) -> Floats:
+        if column is None:
+            return np.full(len(features), float(target.mean()))
+        values: Floats = features[column].to_numpy(dtype=np.float64)
+        return np.clip(values, 0.05, 0.95)
+
+    return train.walk_forward(
+        data,
+        lambda tx, ty, tw, vx, vy: (predictor, 20),
+        target=target, max_folds=folds,
+    )
+
+
+def fake_rate_evaluations(
+    team: TeamRateData, avail: PlayerAvailData,
+    minutes: PlayerMinutesData, rate: PlayerRateData,
+) -> train.RateEvaluations:
+    """30本ぶんの `Evaluation`。中身は判定の経路を通すためだけに使う。"""
+    team_ev = {
+        target: flat(team.as_training_data(target), team.target(target))
+        for target in TARGETS
+    }
+    rate_ev: dict[str, train.Evaluation] = {}
+    for target in TARGETS:
+        k = SHRINK_K.get(target, SHRINK_K_INITIAL)
+        subset = rate.subset(usable_rate_rows(rate, target, k))
+        rate_ev[target] = flat(
+            subset.as_training_data(rate_model_features(subset, target, k)),
+            rate_target(subset, target, k))
+    avail_ev = spread(
+        avail.as_training_data(), avail.played, "games_played_ratio_l10")
+    avail_base = spread(avail.as_training_data(), avail.played)
+    minutes_ev = flat(minutes.as_training_data(), minutes.minutes)
+    return train.RateEvaluations(
+        team_rate=team_ev, team_rate_baseline=dict(team_ev),
+        avail=avail_ev, avail_baseline=avail_base,
+        minutes=minutes_ev, minutes_baseline=minutes_ev,
+        player_rate=rate_ev, player_rate_baseline=dict(rate_ev),
+    )
+
+
+def test_the_rate_gate_sees_pred_minutes_filled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**第3段の判定は `pred_minutes` を埋めた表に対して行う**（4.5.1）。
+
+    行列はこの列を NaN で持つため（2.3.1）、埋める前の表を渡すと14本すべてが
+    「欠損率100% / 定数列」で落ちる。**実データで実際にそうなった**（2026-10-05）。
+    """
+    # **n >= 500 を満たす大きさにする**（要件 6.5 の条件1）。満たさないと
+    # `passes_criteria` が他の条件を見ずに返し、**この検査が素通りする**
+    team = fake_team_rate_data(per_season=300)
+    avail = fake_avail_data(per_season=300)
+    minutes = fake_minutes_data(per_season=300)
+    rate = fake_rate_data(per_season=400)
+    monkeypatch.setattr(
+        train, "evaluate_rates",
+        lambda **_: fake_rate_evaluations(team, avail, minutes, rate))
+
+    report = train.evaluate_rate_models(
+        team_data=team, avail_data=avail, minutes_data=minutes, rate_data=rate,
+        log=lambda _: None)
+
+    assert len(report.decisions) == 30
+    failed = {
+        name: d.failures for name, d in report.decisions.items() if not d.adopt
+    }
+    assert failed == {}, failed
+
+
+def test_the_unfilled_matrix_would_fail_the_gate() -> None:
+    """**変異試験。** `pred_minutes` を埋めない表を渡すと必ず落ちること。
+
+    これが落ちなくなったら、上のテストは何も守っていない。
+    """
+    rate = fake_rate_data(per_season=400)
+    features = rate_model_features(rate, "ast", SHRINK_K_INITIAL)
+    decision = train._rate_decision("PLAYER_RATE/ast", features, 1200)
+    assert not decision.adopt
+    assert any("pred_minutes" in f for f in decision.failures)

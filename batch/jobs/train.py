@@ -65,6 +65,8 @@ from batch.model.final import (
     RateEvaluations,
     build_rate_records,
     build_records,
+    minutes_predictor,
+    rounds_of,
 )
 from batch.model.metrics import Difference, brier_difference, ece_noise_floor
 from batch.model.params import (
@@ -83,7 +85,9 @@ from batch.model.registry import (
 from batch.model.train_player import (
     SHRINK_K,
     SHRINK_K_INITIAL,
-    rate_model_features,
+    fit_final_minutes,
+    rate_training_features,
+    usable_rate_rows,
 )
 from batch.model.train_score import (
     learn_score,
@@ -995,10 +999,6 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 # ---------------------------------------------------------------------------
 # 30本（TEAM_RATE 14 / PLAYER_AVAIL / PLAYER_MIN / PLAYER_RATE 14）
 # ---------------------------------------------------------------------------
@@ -1086,12 +1086,24 @@ def evaluate_rate_models(
         "PLAYER_MIN", minutes_data.features, evaluations.minutes.n)
     rows["PLAYER_MIN"] = evaluations.minutes.n
 
+    # **第3段の判定は `pred_minutes` を埋めた表に対して行う**（4.5.1）。
+    # 行列はこの列を NaN で持つため（2.3.1）、埋める前の表を渡すと14本すべてが
+    # 「欠損率100% / 定数列」で必ず落ちる — **本番では第2段の出力が必ず入る**。
+    # 当てはめるのは**本番と同じ1本**で、登録側（`build_rate_records`）と
+    # 同じ入力・同じ params のため埋まる値も一致する（`minutes_predictor`）。
+    minutes_artifact, _, minutes_columns = fit_final_minutes(
+        minutes_data, rounds=rounds_of(evaluations.minutes))
+    minutes_for = minutes_predictor(minutes_artifact, minutes_columns)
+
     for target in TARGETS:
         evaluation = evaluations.player_rate[target]
         k = SHRINK_K.get(target, SHRINK_K_INITIAL)
+        # **評価と同じ絞り込みを通す**（`fit_final_rate` と同じ道）
+        subset = rate_data.subset(usable_rate_rows(rate_data, target, k))
         decisions[f"PLAYER_RATE/{target}"] = _rate_decision(
             f"PLAYER_RATE/{target}",
-            rate_model_features(rate_data, target, k), evaluation.n)
+            rate_training_features(subset, target, k=k, minutes_for=minutes_for),
+            evaluation.n)
         rows[f"PLAYER_RATE/{target}"] = evaluation.n
 
     return RateReport(evaluations=evaluations, decisions=decisions, rows=rows)
@@ -1110,3 +1122,7 @@ def render_rates(report: RateReport) -> str:
         else f"30本のうち {len(report.failures)}本が未達"
     )
     return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

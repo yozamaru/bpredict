@@ -86,11 +86,17 @@ def evaluate_rates(
     for target in TARGETS:
         started = time.monotonic()
         k = train_player.SHRINK_K.get(target, train_player.SHRINK_K_INITIAL)
+        # **成功率は実現値（`made / att`）に対して測る**（2.3.1）。シュリンク済みの
+        # 目的変数に対する MAE は `k` を上げるだけで下がり、**学習しない
+        # ベースラインとの比較が人工物になる** — 実測で `fg3_pct` が +42% 良いと
+        # 出たが、実現値に対して測ると −0.15% で負けていた。カウント11項目は
+        # `realized` の影響を受けない（`evaluate_rate` が成功率だけに当てる）
         player[target] = train_player.evaluate_rate(
-            rate_data, target, k=k, max_folds=player_max_folds, provider=provider)
+            rate_data, target, k=k, max_folds=player_max_folds, provider=provider,
+            realized=True)
         player_baseline[target] = train_player.evaluate_rate(
             rate_data, target, k=k, max_folds=player_max_folds, provider=provider,
-            learner=train_player.rate_recent_learner(target))
+            learner=train_player.rate_recent_learner(target), realized=True)
         log(
             f"rates: PLAYER_RATE/{target} MAE {player[target].mae:.6f}"
             f" / 直近10試合の水準 {player_baseline[target].mae:.6f}"

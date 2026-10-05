@@ -11,6 +11,7 @@
 | `test_shrink_column_keeps_nan` | 欠損を既定値で埋めない（規約5） |
 | `test_shrink_column_is_clipped` | `[0.01, 0.99]`（2.4） |
 | `test_model_features_build_the_shrunk_columns` | 行列は生、モデルはシュリンク済み |
+| `test_training_features_fill_pred_minutes` | **判定と最終当てはめが同じ表を見る**（4.5.1） |
 | `test_the_learner_fills_pred_minutes` | **第2段を fold ごとに当てはめる**（2.3.1） |
 | `test_pred_minutes_is_not_the_actual_minutes` | **規約4に違反させない** |
 | `test_counts_are_not_negative` | 回帰は負を出しうる |
@@ -37,6 +38,7 @@ from batch.model.train_player import (
     rate_model_features,
     rate_recent_learner,
     rate_target,
+    rate_training_features,
     rate_weights,
     realized_pct,
     shrink_column,
@@ -458,3 +460,31 @@ def test_counts_have_no_k() -> None:
     """カウント11項目は `k` を使わない（目的変数に入らない）。"""
     with pytest.raises(PlayerModelError, match="成功率3項目"):
         shrink_k_for("ast")
+
+# --- 判定と最終当てはめが見る表（詳細設計 4.5.1） ---
+
+def test_training_features_fill_pred_minutes() -> None:
+    """**`pred_minutes` を埋めた表を返す。**
+
+    行列はこの列を NaN で持つ（`rate_model_features`）。埋める前の表を採用判定に
+    渡すと「欠損率100% / 定数列」で必ず落ちるため、**最終当てはめと判定が同じ
+    この関数を通る**（4.5.1）。
+    """
+    data = fake_data(per_season=40)
+    picked = data.subset(usable_rate_rows(data, "ast", SHRINK_K_INITIAL))
+    features = rate_training_features(
+        picked, "ast", k=SHRINK_K_INITIAL,
+        minutes_for=lambda frame: np.linspace(5.0, 35.0, len(frame)))
+
+    assert list(features.columns) == list(player_rate.rate_model_keys("ast"))
+    assert not features["pred_minutes"].isna().any()
+    assert features["pred_minutes"].nunique() > 1
+
+
+def test_training_features_reject_an_unknown_target() -> None:
+    """14項目にない名前を黙って受けない。"""
+    data = fake_data(per_season=20)
+    with pytest.raises(PlayerModelError):
+        rate_training_features(
+            data, "pts", k=SHRINK_K_INITIAL,
+            minutes_for=lambda frame: np.zeros(len(frame)))

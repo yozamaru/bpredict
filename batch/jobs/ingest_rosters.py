@@ -81,6 +81,7 @@ class Result:
     players: int = 0
     seasons: int = 0
     dropped: int = 0
+    unregistered: int = 0
     empty: int = 0
     failed: int = 0
     skipped: list[str] = field(default_factory=list)
@@ -90,7 +91,8 @@ class Result:
         return (
             f"ingest_rosters: {self.status} 組={self.pairs} 取得={self.fetched} "
             f"選手={self.players} 断面={self.seasons} "
-            f"落とした選手={self.dropped} 0件={self.empty} 失敗={self.failed}"
+            f"落とした選手={self.dropped} ポジション未登録={self.unregistered} "
+            f"0件={self.empty} 失敗={self.failed}"
         )
 
 
@@ -197,6 +199,14 @@ def run(
             tracker.success()
             result.fetched += 1
             result.dropped += roster.dropped
+            result.unregistered += roster.unregistered
+            if roster.unregistered:
+                # **未登録は落としていない。** 残したうえで件数を出す — 全員が
+                # 未登録になったら（表記が変わった兆候）ここで分かる
+                emit(
+                    f"  note {pair.season_id} club={pair.club_id} "
+                    f"ポジションが未登録の選手 {roster.unregistered}名を None で残した"
+                )
             if roster.dropped:
                 emit(
                     f"  note {pair.season_id} club={pair.club_id} "

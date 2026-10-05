@@ -16,6 +16,7 @@
     "test:nav": "node scripts/check-nav.mjs",
     "test:bar": "node scripts/check-bar.mjs",
     "test:notes": "node scripts/check-notes.mjs",
+    "test:disclaimer": "node scripts/check-disclaimer.mjs",
     "test:unit": "node --test \"lib/__tests__/*.test.ts\""
   },
   "dependencies": {

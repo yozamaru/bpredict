@@ -32,6 +32,7 @@ from batch.static_json.writer import (
     MAX_DATA_FILES,
     SCHEDULE_WINDOW_DAYS,
     carry_forward_last_success,
+    carry_forward_latest_result,
     count_data_files,
     write_static_json,
 )
@@ -391,6 +392,33 @@ class TestWriter:
         self._write(tmp_path, last_run_status="FAILED")
         meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))["data"]
         assert meta["lastSuccessAt"] is None
+
+    def test_latest_result_date_is_written(self, tmp_path: Path) -> None:
+        """**`/results`（引数なし）が既定で見る日**（詳細設計 3.7）。
+
+        時計を使わない — バッチが「照合した最も新しい試合日」を書く。
+        """
+        self._write(tmp_path, latest_result_date="2026-10-07")
+        meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))["data"]
+        assert meta["latestResultDate"] == "2026-10-07"
+
+    def test_latest_result_date_is_carried_forward(self, tmp_path: Path) -> None:
+        """**照合が無い回は前回の値を引き継ぐ**（`lastSuccessAt` と同じ型）。
+
+        None を書くと `/results` が「まだ記録がありません」に戻る — 実際には
+        記録があるのに空状態を出すことになる。
+        """
+        self._write(tmp_path, latest_result_date="2026-10-07")
+        self._write(tmp_path, latest_result_date=None)
+        meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))["data"]
+        assert meta["latestResultDate"] == "2026-10-07"
+
+    def test_latest_result_date_is_null_on_the_first_run(self, tmp_path: Path) -> None:
+        """1試合も照合していない間は null。画面は空状態を出す（要件 8.5）。"""
+        self._write(tmp_path)
+        meta = json.loads((tmp_path / "meta.json").read_text(encoding="utf-8"))["data"]
+        assert meta["latestResultDate"] is None
+        assert carry_forward_latest_result(tmp_path / "none", None) is None
 
     def test_broken_previous_meta_is_treated_as_missing(self, tmp_path: Path) -> None:
         """壊れた `meta.json` で落ちない。例外の本文もログに出さない（絶対ルール4）。"""

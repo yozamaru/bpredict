@@ -645,8 +645,13 @@ def apply_to_snapshot(
 def run_settle(
     api: InternalApi, *, snapshot: Path = DEFAULT_SNAPSHOT,
     log: Callable[[str], None] = print,
-) -> str:
-    """照合（A-04）と Elo の再計算を回す。`"SUCCESS"` か `"PARTIAL"` を返す。
+) -> tuple[str, str | None]:
+    """照合（A-04）と Elo の再計算を回す。
+
+    `("SUCCESS" | "PARTIAL", 照合した最も新しい試合日)` を返す。
+    後者は `meta.json` の `latestResultDate` になる（詳細設計 3.7）— これが
+    `/results`（引数なし）が既定で見る日である。**照合が無ければ None** で、
+    書き出し側が前回の値を引き継ぐ。
 
     **cron を置いたことで、ここを結線しないと Elo が毎日1日ずつ古くなる。**
     ステップ1 が結果を取り込んでも `team_ratings` は書き変わらず、推論が読む Elo は
@@ -660,9 +665,11 @@ def run_settle(
     失敗しても翌日やり直せる。
     """
     status = "SUCCESS"
+    latest_result_date: str | None = None
     try:
         outcome = evaluate_job.run(api=api, snapshot_dir=snapshot)
         counted = [r for r in outcome.results if r.counted]
+        latest_result_date = outcome.latest_result_date
         log(
             f"daily_ingest: 照合={len(outcome.results)}件"
             f"（母数に入る {len(counted)}件 / 飛ばした {len(outcome.skipped)}件）"
@@ -688,7 +695,7 @@ def run_settle(
     except (LoaderError, SnapshotError, ValueError) as error:
         log(f"  - Elo の再計算に失敗（{type(error).__name__}: {error}）")
         status = "PARTIAL"
-    return status
+    return status, latest_result_date
 
 
 # --- ステップ4: 推論（詳細設計 4.2 の「推論（ステップ4）」） ---
@@ -952,6 +959,7 @@ def run_inference(
 
 def write_json(
     ds: Dataset, result: InferenceResult, *, today: str, status: str,
+    latest_result_date: str | None = None,
     root: Path = DATA_DIR, log: Callable[[str], None] = print,
 ) -> int:
     """窓の全ファイルを書き直す。書いたファイル数を返す。
@@ -971,6 +979,7 @@ def write_json(
         data_as_of=result.data_as_of,
         last_run_status=status,
         model_versions=sorted(result.model_versions.values()),
+        latest_result_date=latest_result_date,
         root=root,
     )
     log(
@@ -1154,8 +1163,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # **推論より前に置く。** 推論はスナップショットの `team_ratings` を読むため、
     # 後に回すとその日の推論が古い Elo を使う（詳細設計 4.2 のステップ3）
-    if args.only_settle and run_settle(api, snapshot=args.snapshot) != "SUCCESS":
-        status = "PARTIAL"
+    latest_result_date: str | None = None
+    if args.only_settle:
+        settled, latest_result_date = run_settle(api, snapshot=args.snapshot)
+        if settled != "SUCCESS":
+            status = "PARTIAL"
 
     if args.only_inference:
         try:
@@ -1191,7 +1203,8 @@ def main(argv: list[str] | None = None) -> int:
         rows += inferred.predicted
         # --- ステップ5。**推論が通ったときだけ書く**（基本設計 4.3） ---
         inferred.written = write_json(
-            ds, inferred, today=jst_today(), status=status, root=args.data)
+            ds, inferred, today=jst_today(), status=status,
+            latest_result_date=latest_result_date, root=args.data)
 
     if not args.dry_run:
         _log(api, status, rows, run_id)

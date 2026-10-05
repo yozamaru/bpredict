@@ -168,6 +168,14 @@ export type Meta = {
   dataAsOf: string | null;
   /** **`status = 'SUCCESS'` の最新。** これから24時間で遅延と判定する（詳細設計 3.7） */
   lastSuccessAt: string | null;
+  /**
+   * **`/results`（引数なし）が既定で見る日**（詳細設計 3.7）。
+   *
+   * バッチが「照合した最も新しい試合日」を書く。**画面は時計を見ない** —
+   * 静的配信は「いま」を知らず、時刻で変わる表示はキャッシュと噛み合わない。
+   * 1試合も照合していない間は null（画面は空状態を出す。要件 8.5）。
+   */
+  latestResultDate: string | null;
   lastRunStatus: string;
   modelVersions: string[];
 };

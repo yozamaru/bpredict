@@ -93,6 +93,24 @@ def carry_forward_last_success(
     return value if isinstance(value, str) else None
 
 
+def carry_forward_latest_result(root: Path, latest_result_date: str | None) -> str | None:
+    """`latestResultDate` を決める（詳細設計 3.7）。
+
+    **この回に照合した試合があればその日、無ければ前回の値を引き継ぐ。**
+    `lastSuccessAt` と同じ型である — 照合が無い日に None を書くと、
+    `/results` が「まだ記録がありません」に戻ってしまう（実際には記録がある）。
+
+    `meta.json` が無ければ None（`/results` は空状態を出す。要件 8.5）。
+    """
+    if latest_result_date:
+        return latest_result_date
+    previous = _read_previous_meta(root)
+    if previous is None:
+        return None
+    value = previous.get("latestResultDate")
+    return value if isinstance(value, str) else None
+
+
 def write_static_json(
     *,
     today: GameListInput,
@@ -102,6 +120,7 @@ def write_static_json(
     data_as_of: str | None,
     last_run_status: str,
     model_versions: list[str],
+    latest_result_date: str | None = None,
     root: Path = DATA_DIR,
 ) -> WriteResult:
     """窓の全ファイルを書き直し、窓から出たファイルを削除する。
@@ -145,6 +164,9 @@ def write_static_json(
                     root, generated_at, last_run_status
                 ),
                 model_versions=model_versions,
+                latest_result_date=carry_forward_latest_result(
+                    root, latest_result_date
+                ),
             )
         ),
     )

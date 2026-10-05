@@ -129,6 +129,7 @@
       "data.generatedAt",
       "data.lastRunStatus",
       "data.lastSuccessAt",
+      "data.latestResultDate",
       "data.modelVersions[]",
       "meta.generatedAt"
     ]

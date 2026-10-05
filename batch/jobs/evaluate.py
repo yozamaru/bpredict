@@ -77,6 +77,10 @@ class Outcome:
     results: list[Result] = field(default_factory=list)
     #: スナップショットに実績が無く飛ばした予測（試合IDと理由）
     skipped: list[tuple[str, str]] = field(default_factory=list)
+    #: **この回で照合した、母数に入る試合の最も新しい `game_date`**（詳細設計 3.7）。
+    #: `/results`（引数なし）が既定で見る日になる。**`VOID` は数えない** —
+    #: 中止・延期の試合は「実績と予測の対比」として出す対象がない（3.3）
+    latest_result_date: str | None = None
 
 
 def bucket_of(prob: float) -> int:
@@ -167,7 +171,7 @@ def evaluate(
     **スナップショットに無い試合、状態が食い違う試合は飛ばして報告する**（4.12）。
     状態を推測しない。
     """
-    needed = ("id", "status", "home_score", "away_score")
+    needed = ("id", "status", "home_score", "away_score", "game_date")
     missing = [c for c in needed if c not in games.columns]
     if missing:
         raise EvaluateError(f"games に必要な列がない: {missing}")
@@ -188,7 +192,14 @@ def evaluate(
             # D1 では終了しているがスナップショットが古い。**推測しない**
             out.skipped.append((game_id, "スナップショットが SCHEDULED のまま"))
             continue
-        out.results.append(evaluate_one(prediction, game))
+        result = evaluate_one(prediction, game)
+        out.results.append(result)
+        # **母数に入る試合だけを数える**（`VOID` は `/results` に出ない。3.3）
+        if result.counted:
+            date = str(game.get("game_date") or "")
+            if date and (out.latest_result_date is None
+                         or date > out.latest_result_date):
+                out.latest_result_date = date
     return out
 
 

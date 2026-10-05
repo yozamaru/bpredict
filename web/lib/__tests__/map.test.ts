@@ -25,6 +25,7 @@ import {
   toGame,
   toGames,
   toReason,
+  toResults,
   tipoffLabel,
 } from '../map.ts';
 import type { GameShape, Meta } from '../source.ts';
@@ -69,6 +70,7 @@ function meta(over: Partial<Meta> = {}): Meta {
     generatedAt: '2026-10-05T06:00:00Z',
     dataAsOf: '2026-10-04T08:05:00Z',
     lastSuccessAt: '2026-10-05T06:00:00Z',
+    latestResultDate: null,
     lastRunStatus: 'SUCCESS',
     modelVersions: ['winner-v1.1.0'],
     ...over,
@@ -317,4 +319,54 @@ test('形が合わない行は落とす', () => {
 
 test('空の一覧は空を返す（例外にしない）', () => {
   assert.deepEqual(toPlayers([]), []);
+});
+
+// --- /results（詳細設計 3.3 / 5.6） ---
+
+function resultRow(over: Record<string, unknown> = {}) {
+  return {
+    gameId: 'g1',
+    tipoffAt: '2026-10-07T10:05:00Z',
+    home: { clubId: '703', slug: 'a', name: '架空タイガース', shortName: '架空T' },
+    away: { clubId: '704', slug: 'b', name: '架空ベアーズ', shortName: '架空B' },
+    homeScore: 88,
+    awayScore: 81,
+    prediction: {
+      homeWinProb: 0.68,
+      predHomeScore: 84,
+      predAwayScore: 78,
+      isProvisional: false,
+      isFinal: true,
+      isEarlySeason: null,
+      modelVersion: 'winner-v1.1.0',
+    },
+    evaluation: {
+      isCorrect: true,
+      scoreError: 3,
+      bucketContext: { bucket: '60-70%', n: 42, correct: 29, rate: 0.69 },
+    },
+    ...over,
+  };
+}
+
+test('結果はサーバが出した判定・誤差・帯の通算をそのまま使う', () => {
+  const results = toResults({ gameDate: '2026-10-07', results: [resultRow()] });
+  assert.equal(results.length, 1);
+  const result = results[0]!;
+  assert.equal(result.home.name, '架空タイガース');
+  assert.equal(result.isCorrect, true);
+  assert.equal(result.scoreError, 3);
+  assert.deepEqual(result.bucket, { label: '60-70%', n: 42, correct: 29, rate: 0.69 });
+});
+
+test('帯の通算が無い行は落とす（要件 8.3 の併記が成立しない）', () => {
+  const row = resultRow({
+    evaluation: { isCorrect: true, scoreError: 3, bucketContext: null },
+  });
+  assert.equal(toResults({ gameDate: '2026-10-07', results: [row] }).length, 0);
+});
+
+test('照合していない行は落とす', () => {
+  const row = resultRow({ evaluation: null });
+  assert.equal(toResults({ gameDate: '2026-10-07', results: [row] }).length, 0);
 });

@@ -19,7 +19,7 @@
      "slug": "sendai-89ers"
     },
     "prediction": {
-     "homeWinProb": 0.24768754283319802,
+     "homeWinProb": 0.2476875428331981,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -100,7 +100,7 @@
      "slug": "tokyo-sunrockers"
     },
     "prediction": {
-     "homeWinProb": 0.7537596731329138,
+     "homeWinProb": 0.7537596731329139,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-04T23:21:01Z"
+  "generatedAt": "2026-10-05T07:59:42Z"
  }
 }

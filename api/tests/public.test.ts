@@ -301,7 +301,11 @@ describe('GET /accuracy', () => {
       + ' VALUES (?,?,?,?,?,?)',
     ).bind('OVERALL', 'all', '', 10, 0.6, 0.22).run();
     const data = await body(await get('/accuracy'));
-    expect(data.overall.scoreMae).toBeNull();
+    // `body` は `Record<string, unknown>` を返すため、読む側が形を名乗る
+    // （198行目の `playerPredictions` と同じ書き方）
+    const overall = data.overall as { n: number; scoreMae: number | null };
+    expect(overall.n).toBe(10);
+    expect(overall.scoreMae).toBeNull();
   });
 
   it('キャッシュを効かせる（指定漏れで D1 に直撃させない）', async () => {

@@ -22,7 +22,9 @@ import pytest
 from batch.loader.payload import (
     PayloadError,
     SeasonRef,
+    player_prediction_payload,
     prediction_payload,
+    team_target_payload,
     upcoming_games_payload,
 )
 from batch.model.predict import Prediction
@@ -199,7 +201,37 @@ def key_paths(value: object, prefix: str = "") -> set[str]:
     return {prefix}
 
 
-def a_prediction() -> dict[str, object]:
+#: 整合化を通したチーム目標（14項目）。**得点は持たない**（恒等式で導出する）
+A_TARGET: dict[str, float] = {
+    "fg2a": 43.0, "fg3a": 25.0, "fta": 18.0,
+    "fg2_pct": 0.52, "fg3_pct": 0.34, "ft_pct": 0.78,
+    "oreb": 9.0, "dreb": 26.0, "ast": 19.0, "tov": 12.0,
+    "stl": 6.0, "blk": 2.0, "pf": 17.0, "fd": 17.0,
+}
+
+
+def a_team_target(*, is_home: bool) -> dict[str, object]:
+    return team_target_payload(
+        club_id="703" if is_home else "704", is_home=is_home, targets=A_TARGET)
+
+
+def a_player() -> dict[str, object]:
+    return player_prediction_payload(
+        player_id="8582", club_id="703", avail_prob=0.95, minutes=31.2,
+        counts={k: v for k, v in A_TARGET.items() if not k.endswith("_pct")},
+        pcts={k: v for k, v in A_TARGET.items() if k.endswith("_pct")},
+    )
+
+
+def a_reason() -> dict[str, object]:
+    return {
+        "rank": 1, "groupKey": "TEAM_STRENGTH", "labelJa": "チーム力の差",
+        "valueText": "82ポイント", "favors": "HOME",
+        "contribution": 0.41, "baseValue": 0.12,
+    }
+
+
+def a_prediction(*, children: bool = True) -> dict[str, object]:
     return prediction_payload(
         game_id="g1", season_id="2026-27-PREMIER", run_id="daily-abc",
         predicted_at="2026-10-05T21:00:00Z", as_of="2026-10-06T10:05:00Z",
@@ -209,6 +241,17 @@ def a_prediction() -> dict[str, object]:
         features={"elo_diff": 80.0, "rest_days_diff": 1.0},
         model_versions={"WINNER": "winner-v1.0.0", "MARGIN": "margin-v1.0.0",
                         "TOTAL": "total-v1.0.0"},
+        reasons=[a_reason()] if children else (),
+        team_targets=(
+            [a_team_target(is_home=True), a_team_target(is_home=False)]
+            if children else ()
+        ),
+        player_predictions=[a_player()] if children else (),
+        rate_versions=(
+            {("PLAYER_AVAIL", ""): "player_avail-v1.0.0",
+             ("TEAM_RATE", "fg2a"): "team_rate-fg2a-v1.0.0"}
+            if children else None
+        ),
     )
 
 
@@ -223,15 +266,66 @@ def test_prediction_payload_matches_the_contract() -> None:
     assert key_paths(a_prediction()) == contract
 
 
-def test_team_targets_and_players_are_absent_for_now() -> None:
+def test_children_are_absent_when_they_cannot_be_made() -> None:
     """**出せないものはキーを送らない**（詳細設計 4.2 の推論）。
 
-    `teamTargets` が1件だと Zod の `refine` が拒否する（片側だけ整合化した状態は
-    原理的に誤りである）。0件は許される。**この帰結として A-01 は未達である。**
+    30本が揃っていない回と、個人スタッツを破棄した試合がこれである。
     """
-    body = a_prediction()
+    body = a_prediction(children=False)
     for key in ("teamTargets", "playerPredictions", "reasons"):
         assert key not in body
+
+
+def test_one_sided_team_targets_are_rejected() -> None:
+    """**`teamTargets` は2件か0件**（Zod の `refine` と同じ条件。3.4）。
+
+    1件は片側だけ整合化した状態であり、**原理的に誤りである** — 送る前に落とす。
+    """
+    with pytest.raises(PayloadError, match="2件か0件"):
+        prediction_payload(
+            game_id="g1", season_id="s1", run_id="r", predicted_at="t",
+            as_of="t", data_as_of="t",
+            prediction=Prediction(0.5, 0.0, 160.0, 80.0, 80.0),
+            features={}, model_versions={"WINNER": "w"},
+            team_targets=[a_team_target(is_home=True)])
+
+
+def test_players_without_team_targets_are_rejected() -> None:
+    """**チーム目標なしに個人スタッツを送れない。**
+
+    整合化はチーム目標に合わせる計算であり（2.4）、目標が無い個人スタッツは
+    「何に整合しているのか」が無い。
+    """
+    with pytest.raises(PayloadError, match="チーム目標"):
+        prediction_payload(
+            game_id="g1", season_id="s1", run_id="r", predicted_at="t",
+            as_of="t", data_as_of="t",
+            prediction=Prediction(0.5, 0.0, 160.0, 80.0, 80.0),
+            features={}, model_versions={"WINNER": "w"},
+            player_predictions=[a_player()])
+
+
+def test_the_bundle_carries_the_target_for_the_thirty(self_check: None = None) -> None:
+    """**30本は `target` を持つ**（詳細設計 4.5.1）。
+
+    `prediction_model_bundle` の主キーは `(prediction_id, model_type, target)`
+    であり、14本を `target` なしで入れると1本目以外が主キー違反で落ちる。
+    """
+    bundle = a_prediction()["modelBundle"]
+    assert isinstance(bundle, list)
+    rows = {(str(m["modelType"]), str(m["target"])) for m in bundle}
+    assert ("TEAM_RATE", "fg2a") in rows
+    assert ("PLAYER_AVAIL", "") in rows
+    assert ("WINNER", "") in rows
+
+
+def test_the_error_columns_are_not_sent() -> None:
+    """**`err_*` を送らない**（要件 6.8.6 の `N` が未定義。2.3.1）。
+
+    **0 を入れない** — 0 は「誤差がない」という意味を持ってしまう。
+    """
+    player = a_player()
+    assert not [k for k in player if str(k).startswith("err")]
 
 
 def test_the_representative_version_is_the_winner() -> None:
@@ -240,7 +334,7 @@ def test_the_representative_version_is_the_winner() -> None:
     assert body["modelVersion"] == "winner-v1.0.0"
     bundle = body["modelBundle"]
     assert isinstance(bundle, list)
-    assert {str(m["modelType"]) for m in bundle} == {"WINNER", "MARGIN", "TOTAL"}
+    assert {str(m["modelType"]) for m in bundle} >= {"WINNER", "MARGIN", "TOTAL"}
 
 
 def test_the_prediction_is_always_provisional() -> None:

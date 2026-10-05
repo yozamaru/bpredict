@@ -34,9 +34,14 @@ from batch.model.dataset import (
     PlayerRateData,
 )
 from batch.model.evaluate import Evaluation, walk_forward
-from batch.model.params import NUM_BOOST_ROUND_MAX, PLAYER_MAX_FOLDS
+from batch.model.params import (
+    NUM_BOOST_ROUND_MAX,
+    PLAYER_MAX_FOLDS,
+    SCORE_PARAMS,
+    WINNER_PARAMS,
+)
 from batch.model.train_score import learn_score
-from batch.model.train_winner import learn_winner
+from batch.model.train_winner import learn_winner, train_final
 
 type Floats = NDArray[np.float64]
 
@@ -594,3 +599,78 @@ def evaluate_rate(
         weights=rate_weights(frame, target),
         max_folds=max_folds,
     )
+
+
+# ---------------------------------------------------------------------------
+# 最終当てはめ（詳細設計 4.5.1）
+# ---------------------------------------------------------------------------
+#
+# **評価とまったく同じ絞り込み・重み・列を使う。** 別に組むと、登録したモデルが
+# 評価したモデルと違うものになる。
+#
+# **丸め（`clamp_avail_prob` / `clip_minutes` / 成功率のクリップ）は artifact に
+# 入らない。** LightGBM のテキストにそんな層はなく、推論側が同じ関数を通す
+# （`batch/model/predict.py`）。
+
+
+def fit_final_avail(
+    data: PlayerAvailData, *, rounds: int,
+) -> tuple[str, int, list[str]]:
+    """第1段を全データで当てはめ、`(artifact, 行数, 列)` を返す。
+
+    **二値分類は `WINNER_PARAMS` を使う**（`learn_avail` と同じ。4.7 は分類用の
+    木の形を1つしか定めていない）。
+    """
+    if len(data) == 0:
+        raise PlayerModelError("学習行が1件もない")
+    _, artifact = train_final(
+        data.features, data.played, np.ones(len(data), dtype=np.float64),
+        num_boost_round=rounds, params=WINNER_PARAMS,
+    )
+    return artifact, len(data), list(data.features.columns)
+
+
+def fit_final_minutes(
+    data: PlayerMinutesData, *, rounds: int,
+) -> tuple[str, int, list[str]]:
+    """第2段を全データで当てはめ、`(artifact, 行数, 列)` を返す。"""
+    if len(data) == 0:
+        raise PlayerModelError("学習行が1件もない")
+    _, artifact = train_final(
+        data.features, data.minutes, np.ones(len(data), dtype=np.float64),
+        num_boost_round=rounds, params=SCORE_PARAMS,
+    )
+    return artifact, len(data), list(data.features.columns)
+
+
+def fit_final_rate(
+    data: PlayerRateData, target: str, *, k: float, rounds: int,
+    minutes_for: Callable[[pd.DataFrame], Floats],
+) -> tuple[str, int, list[str]]:
+    """第3段の1項目を全データで当てはめ、`(artifact, 行数, 列)` を返す。
+
+    **`pred_minutes` は「登録する第2段」の出力で埋める。** 学習時の
+    `MinutesProvider` は fold ごとに当てはめ直すが（fold を跨がないため）、
+    最終当てはめでは**本番と同じ1本**を使う — そうでないと、登録した第3段が
+    「本番では存在しない第2段」の出力を前提にしたモデルになる。
+
+    `minutes_for` は第2段の最終モデルの予測関数で、`MINUTES_KEYS` の列を持つ
+    表を受け取る。
+    """
+    if target not in team_rate.TARGETS:
+        raise PlayerModelError(f"目的変数が14項目にない: {target}")
+    frame = data.subset(usable_rate_rows(data, target, k))
+    if len(frame) == 0:
+        raise PlayerModelError(f"{target} に使える行が1件もない")
+    features = rate_model_features(frame, target, k).copy()
+    features["pred_minutes"] = minutes_for(frame.minutes_features)
+    # 列順は `rate_model_keys` が正（`pred_minutes` を末尾に足したままにしない）
+    features = features[list(player_rate.rate_model_keys(target))]
+    weights = rate_weights(frame, target)
+    if weights is None:
+        weights = np.ones(len(frame), dtype=np.float64)
+    _, artifact = train_final(
+        features, rate_target(frame, target, k), weights,
+        num_boost_round=rounds, params=SCORE_PARAMS,
+    )
+    return artifact, len(frame), list(features.columns)

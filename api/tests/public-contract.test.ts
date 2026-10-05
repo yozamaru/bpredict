@@ -223,7 +223,9 @@ describe('内部APIの要求ボディ（契約）', () => {
    * 配列を1件にするのは、キーの対応を見るのに十分だからである（件数の規約は
    * batch 側と `refine` が見る）。
    */
-  function flatBodyFrom(shape: string, values: Record<string, unknown>): unknown {
+  function flatBodyFrom(
+    shape: string, values: Record<string, unknown>, awayClubId?: string,
+  ): unknown {
     const body: Record<string, unknown> = {};
     const arrays: Record<string, Record<string, unknown>> = {};
     for (const path of contract(shape)) {
@@ -237,7 +239,13 @@ describe('内部APIの要求ボディ（契約）', () => {
       }
       body[path] = values[path];
     }
-    for (const [key, row] of Object.entries(arrays)) body[key] = [row];
+    for (const [key, row] of Object.entries(arrays)) {
+      // **`teamTargets` は2件でなければ `refine` が拒否する**（1件は片側だけ
+      // 整合化した状態であり、原理的に誤りである。3.4）
+      body[key] = key === 'teamTargets' && awayClubId !== undefined
+        ? [{ ...row, isHome: 1 }, { ...row, isHome: 0, clubId: awayClubId }]
+        : [row];
+    }
     return body;
   }
 
@@ -252,20 +260,48 @@ describe('内部APIの要求ボディ（契約）', () => {
       homeWinProb: 0.68, predMargin: 7.3, predTotal: 162,
       predHomeScore: 84.65, predAwayScore: 77.35, isProvisional: 1,
       featureSnapshot: '{"elo_diff":80.0}',
-      // **`teamTargets` / `playerPredictions` / `reasons` は送らない。**
-      // いま出せないものをキーごと省く（詳細設計 4.2 の推論）
       'modelBundle[].modelType': 'WINNER',
       'modelBundle[].target': '',
       'modelBundle[].modelVersion': s.modelVersion,
-    }));
+      // **チーム目標（14項目）。** 得点は持たず恒等式で導出する（1.5）
+      'teamTargets[].clubId': s.homeId,
+      'teamTargets[].isHome': 1,
+      'teamTargets[].tgtFg2a': 43, 'teamTargets[].tgtFg3a': 25,
+      'teamTargets[].tgtFta': 18,
+      'teamTargets[].tgtFg2Pct': 0.52, 'teamTargets[].tgtFg3Pct': 0.34,
+      'teamTargets[].tgtFtPct': 0.78,
+      'teamTargets[].tgtOreb': 9, 'teamTargets[].tgtDreb': 26,
+      'teamTargets[].tgtAst': 19, 'teamTargets[].tgtTov': 12,
+      'teamTargets[].tgtStl': 6, 'teamTargets[].tgtBlk': 2,
+      'teamTargets[].tgtPf': 17, 'teamTargets[].tgtFd': 17,
+      // **整合化後の個人スタッツ。** `err_*` は送らない（要件 6.8.6 の N が未定義）
+      'playerPredictions[].playerId': s.playerId,
+      'playerPredictions[].clubId': s.homeId,
+      'playerPredictions[].availProb': 0.95,
+      'playerPredictions[].predMinutes': 31.2,
+      'playerPredictions[].predFg2a': 7.8, 'playerPredictions[].predFg3a': 5.3,
+      'playerPredictions[].predFta': 3.9,
+      'playerPredictions[].predFg2Pct': 0.526,
+      'playerPredictions[].predFg3Pct': 0.434,
+      'playerPredictions[].predFtPct': 0.846,
+      'playerPredictions[].predOreb': 0.6, 'playerPredictions[].predDreb': 2.5,
+      'playerPredictions[].predAst': 6.1, 'playerPredictions[].predTov': 2.2,
+      'playerPredictions[].predStl': 1.1, 'playerPredictions[].predBlk': 0.3,
+      'playerPredictions[].predPf': 2.4, 'playerPredictions[].predFd': 3.1,
+      // 根拠（詳細設計 2.7.1）
+      'reasons[].rank': 1, 'reasons[].groupKey': 'TEAM_STRENGTH',
+      'reasons[].labelJa': 'チーム力の差', 'reasons[].valueText': '82ポイント',
+      'reasons[].favors': 'HOME', 'reasons[].contribution': 0.41,
+      'reasons[].baseValue': 0.12,
+    }, s.awayId));
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { revision: number; applied: {
       teamTargets: number; playerPredictions: number; reasons: number } } }>();
     expect(body.data.revision).toBe(1);
-    // **0件で入ることを確かめる。** `teamTargets` は「2件か0件」が条件である
-    expect(body.data.applied.teamTargets).toBe(0);
-    expect(body.data.applied.playerPredictions).toBe(0);
-    expect(body.data.applied.reasons).toBe(0);
+    // **`teamTargets` は2件。** 1件は `refine` が拒否する（3.4）
+    expect(body.data.applied.teamTargets).toBe(2);
+    expect(body.data.applied.playerPredictions).toBe(1);
+    expect(body.data.applied.reasons).toBe(1);
   });
 
   it('models — 契約どおりの本文が 200 で通る', async () => {

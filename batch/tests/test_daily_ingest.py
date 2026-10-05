@@ -325,6 +325,8 @@ def test_a_rejected_game_does_not_stop_the_rest(
     monkeypatch.setattr(
         daily_ingest, "build_features", lambda *a, **k: dict(DEFAULTS))
     monkeypatch.setattr(daily_ingest, "load_active", lambda *a, **k: FakeModels())
+    # 30本は揃っていない状態（勝敗だけを書く。詳細設計 4.2）
+    monkeypatch.setattr(daily_ingest, "load_active_rates", lambda *a, **k: None)
     result = daily_ingest.run_inference(
         Rejecting(),  # type: ignore[arg-type]
         ds=snapshot_dataset(), run_id="daily-test",
@@ -342,6 +344,8 @@ def test_a_game_without_features_is_skipped(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(daily_ingest, "prepare", lambda _ds: None)
     monkeypatch.setattr(daily_ingest, "build_features", boom)
     monkeypatch.setattr(daily_ingest, "load_active", lambda *a, **k: FakeModels())
+    # 30本は揃っていない状態（勝敗だけを書く。詳細設計 4.2）
+    monkeypatch.setattr(daily_ingest, "load_active_rates", lambda *a, **k: None)
     api = FakeApi(posted=[])
     result = daily_ingest.run_inference(
         api, ds=snapshot_dataset(), run_id="daily-test",  # type: ignore[arg-type]
@@ -362,6 +366,8 @@ def test_the_run_id_is_shared_with_the_log(
     monkeypatch.setattr(
         daily_ingest, "build_features", lambda *a, **k: dict(DEFAULTS))
     monkeypatch.setattr(daily_ingest, "load_active", lambda *a, **k: FakeModels())
+    # 30本は揃っていない状態（勝敗だけを書く。詳細設計 4.2）
+    monkeypatch.setattr(daily_ingest, "load_active_rates", lambda *a, **k: None)
     monkeypatch.setattr(daily_ingest, "new_run_id", lambda: "daily-fixed")
     monkeypatch.setattr(daily_ingest, "jst_today", lambda now=None: "2026-10-05")
     monkeypatch.setattr(

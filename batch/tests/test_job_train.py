@@ -8,15 +8,19 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from batch.features.team_rate import TARGETS
 from batch.jobs import train
+from batch.model.criteria import Decision
 from batch.model.dataset import TrainingData, time_decay_weights
 from batch.model.evaluate import Fold
 from batch.model.params import TIME_DECAY_LAMBDA_INITIAL
+from batch.model.registry import ModelRecord
 
 SEASONS = ("s1", "s2", "s3", "s4")
 
@@ -504,6 +508,38 @@ def fake_report(*, adopt: bool) -> train.Report:
     )
 
 
+def fake_rate_report(*, adopt: bool = True) -> train.RateReport:
+    """30本の判定だけを持つ `RateReport`（評価そのものは別のテストで見る）。"""
+    names = ["PLAYER_AVAIL", "PLAYER_MIN"]
+    for target in TARGETS:
+        names += [f"TEAM_RATE/{target}", f"PLAYER_RATE/{target}"]
+    assert len(names) == 30
+    decisions = {
+        name: Decision(adopt=True, failures=[], notes=[]) for name in names
+    }
+    if not adopt:
+        decisions["TEAM_RATE/fg2a"] = Decision(
+            adopt=False, failures=["想定外の定数列がある（own_fg2a_l10）"], notes=[])
+    return train.RateReport(
+        evaluations=cast("train.RateEvaluations", object()),
+        decisions=decisions,
+        rows={name: 1200 for name in names},
+    )
+
+
+def fake_rate_records(count: int = 30) -> list[ModelRecord]:
+    """30本ぶんの `ModelRecord`（中身は登録の検査に使わない）。"""
+    out: list[ModelRecord] = []
+    for index in range(count):
+        out.append(ModelRecord(
+            version=f"team_rate-x{index}-v1.0.0", model_type="TEAM_RATE",
+            target=f"x{index}", algo="lightgbm", trained_at="2026-10-05T00:00:00Z",
+            train_rows=1200, train_range="s1..s3", eval_window="s3..s3",
+            params={}, feature_list=["pace_own"], artifact_text="tree\n",
+        ))
+    return out
+
+
 def test_register_sends_nothing_when_the_criteria_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -515,24 +551,96 @@ def test_register_sends_nothing_when_the_criteria_fail(
     api = FakeApi()
     data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
     versions = train.register_models(
-        data, fake_report(adopt=False), api=api, log=lambda _m: None)  # type: ignore[arg-type]
+        data, fake_report(adopt=False), api=api,  # type: ignore[arg-type]
+        rates=fake_rate_report(), matrices=cast("Any", (1, 2, 3, 4)),
+        log=lambda _m: None)
     assert versions == []
     assert api.sent == []
 
 
-def test_register_activates_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
-    """判定を通ったら3本とも `activate=True` で送る。"""
+def test_register_sends_nothing_without_the_rate_evaluation() -> None:
+    """**30本の評価が無ければ登録しない**（詳細設計 4.5.1）。
+
+    勝敗の3本だけを入れ替えると、登録済みの30本（前の世代）と組み合わさる。
+    `prediction_model_bundle` が1予測につき33行を記録することに意味があるのは、
+    33本が同じ世代であるときだけである。
+    """
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    lines: list[str] = []
+    versions = train.register_models(
+        data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+        log=lines.append)
+    assert versions == []
+    assert api.sent == []
+    assert any("30本の評価がない" in line for line in lines)
+
+
+def test_register_sends_nothing_when_one_rate_model_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**1本でも落ちたら33本とも登録しない**（詳細設計 4.5.1）。
+
+    個人スタッツはチーム予測に整合化してから保存するため（2.4）、一部だけ
+    世代を入れ替えると整合化の両側が別の世代のモデルから出る。
+    """
     monkeypatch.setattr(
         "batch.model.final.train_final",
         lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
     )
     api = FakeApi()
     data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    lines: list[str] = []
     versions = train.register_models(
-        data, fake_report(adopt=True), api=api, log=lambda _m: None)  # type: ignore[arg-type]
-    assert versions == ["winner-v1.0.0", "margin-v1.0.0", "total-v1.0.0"]
-    assert [p for p, _ in api.sent] == ["models"] * 3
+        data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+        rates=fake_rate_report(adopt=False), matrices=cast("Any", (1, 2, 3, 4)),
+        log=lines.append)
+    assert versions == []
+    assert api.sent == []
+    assert any("33本とも登録しない" in line for line in lines)
+
+
+def test_register_activates_all_thirty_three(monkeypatch: pytest.MonkeyPatch) -> None:
+    """判定を通ったら**33本とも** `activate=True` で送る（詳細設計 4.5.1）。"""
+    monkeypatch.setattr(
+        "batch.model.final.train_final",
+        lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
+    )
+    monkeypatch.setattr(
+        train, "build_rate_records", lambda **_k: fake_rate_records())
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    versions = train.register_models(
+        data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+        rates=fake_rate_report(), matrices=cast("Any", (1, 2, 3, 4)),
+        log=lambda _m: None)
+    assert versions[:3] == ["winner-v1.0.0", "margin-v1.0.0", "total-v1.0.0"]
+    assert len(versions) == 33
+    assert [p for p, _ in api.sent] == ["models"] * 33
     assert all(body["activate"] is True for _p, body in api.sent)
+
+
+def test_register_refuses_a_count_other_than_thirty_three(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**本数を検査する**（詳細設計 4.5.1）。
+
+    14本のどれかが静かに抜けると、推論が「30本が揃っていない」として個人
+    スタッツを出さなくなる（4.2）。**気づけるように落とす。**
+    """
+    monkeypatch.setattr(
+        "batch.model.final.train_final",
+        lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
+    )
+    monkeypatch.setattr(
+        train, "build_rate_records", lambda **_k: fake_rate_records(29))
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    with pytest.raises(train.TrainError, match="33"):
+        train.register_models(
+            data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+            rates=fake_rate_report(), matrices=cast("Any", (1, 2, 3, 4)),
+            log=lambda _m: None)
 
 
 def test_an_unmet_gate_is_not_a_failure() -> None:

@@ -42,10 +42,16 @@ from numpy.typing import NDArray
 
 from batch.features.builder import FEATURE_KEYS
 from batch.features.dataset import Dataset, load_snapshot
+from batch.features.team_rate import TARGETS
+from batch.jobs.rate_cache import load_all as load_rate_matrices
 from batch.loader.api import InternalApi, LoaderError
 from batch.model.baselines import Logistic, fit_logistic, home_always
 from batch.model.criteria import Decision, Inputs, passes_criteria
 from batch.model.dataset import (
+    PlayerAvailData,
+    PlayerMinutesData,
+    PlayerRateData,
+    TeamRateData,
     TrainingData,
     build_matrix,
     constant_columns,
@@ -53,7 +59,13 @@ from batch.model.dataset import (
     time_decay_weights,
 )
 from batch.model.evaluate import Evaluation, Learner, walk_forward
-from batch.model.final import DEFAULT_SEMVER, Evaluations, build_records
+from batch.model.final import (
+    DEFAULT_SEMVER,
+    Evaluations,
+    RateEvaluations,
+    build_rate_records,
+    build_records,
+)
 from batch.model.metrics import Difference, brier_difference, ece_noise_floor
 from batch.model.params import (
     ECE_FLOOR_K,
@@ -61,11 +73,17 @@ from batch.model.params import (
     MIN_EFFECT,
     TIME_DECAY_LAMBDA_INITIAL,
 )
+from batch.model.rates import evaluate_rates
 from batch.model.registry import (
     RegistryError,
     fetch_artifact,
     load_logistic,
     register,
+)
+from batch.model.train_player import (
+    SHRINK_K,
+    SHRINK_K_INITIAL,
+    rate_model_features,
 )
 from batch.model.train_score import (
     learn_score,
@@ -78,6 +96,8 @@ type Floats = NDArray[np.float64]
 
 DEFAULT_SNAPSHOT = Path("batch/snapshot")
 DEFAULT_CACHE = Path("batch/cache/training-matrix.parquet")
+#: 30本の学習行列のキャッシュ（`batch/jobs/rate_cache.py`）
+DEFAULT_RATE_CACHE = Path("batch/cache/rates")
 
 #: ベースライン2「Elo差単体のロジスティック回帰」が使う列（要件 6.4）。
 #: **`elo_home` / `elo_away` を入れない** — 要件は「Elo差単体」と定めている
@@ -799,16 +819,47 @@ def evaluations_of(report: Report) -> Evaluations:
 
 def register_models(
     data: TrainingData, report: Report, *, api: InternalApi,
+    rates: RateReport | None = None,
+    matrices: tuple[TeamRateData, PlayerAvailData, PlayerMinutesData, PlayerRateData]
+    | None = None,
     semver: str = DEFAULT_SEMVER, log: Callable[[str], None] = print,
 ) -> list[str]:
-    """採用判定を通ったときだけ3本を登録して有効化する（詳細設計 4.5.1）。
+    """採用判定を通ったときだけ33本を登録して有効化する（詳細設計 4.5.1）。
 
     **判定を通らなければ空を返す。** 現行モデルを継続する。
+
+    **1本でも落ちたら33本とも登録しない。** 個人スタッツはチーム予測に整合化
+    してから保存するため（2.4）、一部だけ世代を入れ替えると整合化の両側が
+    別の世代のモデルから出る。`prediction_model_bundle` が1予測につき33行を
+    記録することに意味があるのは、33本が同じ世代であるときだけである。
+
+    **30本の評価が無ければ登録しない。** 勝敗の3本だけを入れ替えると、
+    登録済みの30本（前の世代）と組み合わさる。
     """
+    if rates is None or matrices is None:
+        log("train: 30本の評価がないため登録しない（--register は30本の評価を要する）")
+        return []
     if not report.decision.adopt:
         log(f"train: 採用基準を満たさないため登録しない（{report.decision.summary}）")
         return []
+    if not rates.adopt:
+        log("train: 30本のうち未達があるため33本とも登録しない")
+        for failure in rates.failures:
+            log(f"  × {failure}")
+        return []
+
+    team_data, avail_data, minutes_data, rate_data = matrices
     records = build_records(data, evaluations_of(report), semver=semver)
+    records += build_rate_records(
+        team_data=team_data, avail_data=avail_data,
+        minutes_data=minutes_data, rate_data=rate_data,
+        evaluations=rates.evaluations, shrink_k=SHRINK_K, semver=semver,
+    )
+    if len(records) != 33:
+        # **数を検査する。** 14本のどれかが静かに抜けると、推論が
+        # 「30本が揃っていない」として個人スタッツを出さなくなる（4.2）
+        raise TrainError(f"登録する本数が33ではない: {len(records)}")
+
     registered: list[str] = []
     for record in records:
         size = register(api, record, activate=True)
@@ -850,7 +901,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, help="数値を書き出す先")
     parser.add_argument(
         "--register", action="store_true",
-        help="採用判定を通ったら WINNER / MARGIN / TOTAL を登録して有効化する")
+        help="採用判定を通ったら33本を登録して有効化する（30本の評価を含む）")
+    parser.add_argument(
+        "--rates", action="store_true",
+        help="30本（TEAM_RATE 14 / PLAYER_AVAIL / PLAYER_MIN / PLAYER_RATE 14）も"
+             "評価する。--register では自動で有効になる")
+    parser.add_argument(
+        "--rate-cache", type=Path, default=DEFAULT_RATE_CACHE,
+        help="30本の学習行列のキャッシュの置き場")
     parser.add_argument("--model-version", default=DEFAULT_SEMVER,
                         help="版（既定 1.0.0。学習条件を変えたら上げる）")
     parser.add_argument(
@@ -884,6 +942,33 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(render(report))
+
+    # **`--register` は30本の評価を含む**（33本をまとめて入れ替えるため。4.5.1）
+    rates: RateReport | None = None
+    matrices: tuple[
+        TeamRateData, PlayerAvailData, PlayerMinutesData, PlayerRateData] | None = None
+    if args.rates or args.register:
+        try:
+            matrices = load_rate_matrices(
+                snapshot=args.snapshot, cache_dir=args.rate_cache,
+                manifest_sha256=manifest_digest(args.snapshot),
+                refresh=args.refresh,
+            )
+            team_data, avail_data, minutes_data, rate_data = matrices
+            rates = evaluate_rate_models(
+                team_data=team_data, avail_data=avail_data,
+                minutes_data=minutes_data, rate_data=rate_data,
+                max_folds=args.max_folds,
+            )
+        except (TrainError, ValueError) as error:
+            print(f"train: 30本の評価に失敗（{type(error).__name__}: {error}）",
+                  file=sys.stderr)
+            return 1
+        except Exception as error:  # noqa: BLE001 — 本文に何が入るか保証できない
+            print(f"train: 30本の評価に失敗（{type(error).__name__}）", file=sys.stderr)
+            return 1
+        print(render_rates(rates))
+
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(
@@ -894,7 +979,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.register and api is not None:
         try:
             versions = register_models(
-                data, report, api=api, semver=args.model_version)
+                data, report, api=api, rates=rates, matrices=matrices,
+                semver=args.model_version)
         except (TrainError, LoaderError) as error:
             # **自前の文言を出す。** これらの例外は URL も応答本文もトークンも
             # 含まない（基本設計 4.3）。型名だけにすると切り分けに再実行が要る
@@ -911,3 +997,116 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# ---------------------------------------------------------------------------
+# 30本（TEAM_RATE 14 / PLAYER_AVAIL / PLAYER_MIN / PLAYER_RATE 14）
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RateReport:
+    """30本の評価と判定。**1本でも落ちたら33本とも登録しない**（4.5.1）。"""
+
+    evaluations: RateEvaluations
+    decisions: dict[str, Decision]
+    rows: dict[str, int]
+
+    @property
+    def adopt(self) -> bool:
+        return all(d.adopt for d in self.decisions.values())
+
+    @property
+    def failures(self) -> list[str]:
+        return [
+            f"{name}: {' / '.join(d.failures)}"
+            for name, d in sorted(self.decisions.items()) if not d.adopt
+        ]
+
+
+def _rate_decision(
+    name: str, features: pd.DataFrame, n: int, *,
+    brier: float | None = None, baseline: float | None = None,
+    baseline_label: str = "Elo単体",
+    ece: float | None = None, ece_floor: float | None = None,
+    skip_ece: bool = False,
+) -> Decision:
+    """1本ぶんの判定。**課せる条件だけを課す**（要件 6.5 の射程 / 4.5.1）。
+
+    回帰は `brier=None` で渡す — `passes_criteria` が条件1〜3 を外し、
+    **課していないことを注記に残す**。
+    """
+    return passes_criteria(Inputs(
+        n=n,
+        null_rates=null_rates(features),
+        constant_columns=constant_columns(features),
+        brier=brier, baseline_elo_brier=baseline, baseline_label=baseline_label,
+        ece=ece, ece_floor=ece_floor, skip_ece=skip_ece,
+    ))
+
+
+def evaluate_rate_models(
+    *, team_data: TeamRateData, avail_data: PlayerAvailData,
+    minutes_data: PlayerMinutesData, rate_data: PlayerRateData,
+    max_folds: int = MAX_FOLDS, log: Callable[[str], None] = print,
+) -> RateReport:
+    """30本を評価して1本ずつ判定する。
+
+    **第1段には条件4（ECE）を課さない**（要件 6.5 の例外。運営者の判断）。
+    `skip_ece` は**ここで明示的に立てる** — `model_type` から自動で判定すると、
+    新しいモデルを足したときに意図せず門が外れる（4.5.1）。
+    """
+    evaluations = evaluate_rates(
+        team_data=team_data, avail_data=avail_data,
+        minutes_data=minutes_data, rate_data=rate_data,
+        team_max_folds=max_folds, log=log,
+    )
+    decisions: dict[str, Decision] = {}
+    rows: dict[str, int] = {}
+
+    for target in TARGETS:
+        evaluation = evaluations.team_rate[target]
+        decisions[f"TEAM_RATE/{target}"] = _rate_decision(
+            f"TEAM_RATE/{target}", team_data.features(target), evaluation.n)
+        rows[f"TEAM_RATE/{target}"] = evaluation.n
+
+    avail = evaluations.avail
+    floor = ece_noise_floor(avail.probs)
+    decisions["PLAYER_AVAIL"] = _rate_decision(
+        "PLAYER_AVAIL", avail_data.features, avail.n,
+        brier=avail.brier, baseline=evaluations.avail_baseline.brier,
+        baseline_label="直近10試合の出場率",
+        ece=avail.ece, ece_floor=floor,
+        # **運営者の判断（2026-10-05）。** 確率を画面に出さず、用途が相対比だけ
+        skip_ece=True,
+    )
+    rows["PLAYER_AVAIL"] = avail.n
+
+    decisions["PLAYER_MIN"] = _rate_decision(
+        "PLAYER_MIN", minutes_data.features, evaluations.minutes.n)
+    rows["PLAYER_MIN"] = evaluations.minutes.n
+
+    for target in TARGETS:
+        evaluation = evaluations.player_rate[target]
+        k = SHRINK_K.get(target, SHRINK_K_INITIAL)
+        decisions[f"PLAYER_RATE/{target}"] = _rate_decision(
+            f"PLAYER_RATE/{target}",
+            rate_model_features(rate_data, target, k), evaluation.n)
+        rows[f"PLAYER_RATE/{target}"] = evaluation.n
+
+    return RateReport(evaluations=evaluations, decisions=decisions, rows=rows)
+
+
+def render_rates(report: RateReport) -> str:
+    lines = ["", "30本の判定", "-" * 60]
+    for name, decision in sorted(report.decisions.items()):
+        mark = "採用" if decision.adopt else "未達"
+        lines.append(f"  {name:<26}{mark}  n={report.rows[name]:,}")
+        for failure in decision.failures:
+            lines.append(f"      × {failure}")
+    lines.append("")
+    lines.append(
+        "30本すべて採用基準を満たした" if report.adopt
+        else f"30本のうち {len(report.failures)}本が未達"
+    )
+    return "\n".join(lines)

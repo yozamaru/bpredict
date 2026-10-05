@@ -30,8 +30,9 @@ from numpy.typing import NDArray
 from batch.features.team_rate import COUNT_TARGETS, PCT_TARGETS, TARGETS
 from batch.model.dataset import TeamRateData
 from batch.model.evaluate import MAX_FOLDS, Evaluation, walk_forward
-from batch.model.params import NUM_BOOST_ROUND_MAX
+from batch.model.params import NUM_BOOST_ROUND_MAX, SCORE_PARAMS
 from batch.model.train_score import learn_score
+from batch.model.train_winner import train_final
 
 type Floats = NDArray[np.float64]
 
@@ -209,3 +210,30 @@ def evaluate_all(
             data, target, max_folds=max_folds, num_boost_round=num_boost_round)
         for target in TARGETS
     }
+
+
+def fit_final(
+    data: TeamRateData, target: str, *, rounds: int,
+) -> tuple[str, int, list[str]]:
+    """全データで最終当てはめし、`(artifact, 行数, 列)` を返す（詳細設計 4.5.1）。
+
+    **評価とまったく同じ絞り込み・重み・列を使う。** 別に組むと、登録した
+    モデルが評価したモデルと違うものになる（`_usable` を外すと成功率が NaN の
+    行を学習に入れる）。
+
+    **丸め（`clip_pct` / `clip_count`）は artifact に入らない。** LightGBM の
+    テキストにそんな層はなく、推論側が同じ関数を通す（`batch/model/predict.py`）。
+    """
+    keep = _usable(data, target)
+    if not keep.any():
+        raise TeamRateError(f"{target} に使える行が1件もない")
+    subset = _subset(data, keep)
+    features = subset.features(target)
+    weights = subset.weights(target)
+    if weights is None:
+        weights = np.ones(len(features), dtype=np.float64)
+    _, artifact = train_final(
+        features, subset.target(target), weights,
+        num_boost_round=rounds, params=SCORE_PARAMS,
+    )
+    return artifact, len(features), list(features.columns)

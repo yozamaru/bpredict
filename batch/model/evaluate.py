@@ -145,7 +145,7 @@ def folds_of(seasons: Sequence[str], *, max_folds: int = MAX_FOLDS) -> list[int]
 
 def walk_forward(
     data: TrainingData, learn: Learner, *,
-    target: Floats | None = None,
+    target: Floats | None = None, eval_target: Floats | None = None,
     weights: Floats | None = None, max_folds: int = MAX_FOLDS,
 ) -> Evaluation:
     """`target` を省略すると勝敗（`home_win`）を学習する。
@@ -154,6 +154,12 @@ def walk_forward(
     P0-11（勝率の経路 A / B の比較）は「**同一の walk-forward ウィンドウ**で
     Brier と ECE を測る」ことを要件が定めており（要件 6.1）、分割の実装が2つあると
     **片方だけ直したときに比較が成り立たなくなる。**
+
+    `eval_target` を渡すと、**学習は `target`、評価は `eval_target`** で行う。
+    個人スタッツの成功率3項目で要る — 目的変数がシュリンク済み（`k` に依存する）
+    であるため、**`k` を変えると目的変数そのものが変わり MAE が比較できない**
+    （2.3.1 の実測）。固定の物差し（実現値）に対して測るために使う。
+    **測定のために別の分割を書かない**ためにここへ置く。
     """
     seasons = data.seasons
     positions = folds_of(seasons, max_folds=max_folds)
@@ -168,6 +174,10 @@ def walk_forward(
     w = np.ones(len(data)) if weights is None else np.asarray(weights, dtype=np.float64)
     if w.size != len(data):
         raise EvaluationError("重みの件数が学習行列と合わない")
+    # **評価の目的変数は既定で学習と同じ。** 渡されたときだけ分かれる
+    actual = y if eval_target is None else np.asarray(eval_target, dtype=np.float64)
+    if actual.size != len(data):
+        raise EvaluationError("評価の目的変数の件数が学習行列と合わない")
 
     results: list[Fold] = []
     for index in positions:
@@ -192,6 +202,6 @@ def walk_forward(
             n_test=int(test.sum()),
             best_iteration=best,
             probs=np.asarray(predict(data.features[test]), dtype=np.float64),
-            actual=y[test],
+            actual=actual[test],
         ))
     return Evaluation(folds=tuple(results))

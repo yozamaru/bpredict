@@ -27,6 +27,8 @@ import pytest
 from batch.features import player_rate, team_rate
 from batch.model.dataset import MatrixError, PlayerRateData
 from batch.model.train_player import (
+    SHRINK_K,
+    SHRINK_K_GRID,
     SHRINK_K_INITIAL,
     MinutesProvider,
     PlayerModelError,
@@ -36,7 +38,9 @@ from batch.model.train_player import (
     rate_recent_learner,
     rate_target,
     rate_weights,
+    realized_pct,
     shrink_column,
+    shrink_k_for,
     usable_rate_rows,
 )
 
@@ -374,3 +378,83 @@ def test_the_provider_requires_a_single_validation_season() -> None:
     index = data.minutes_features.index
     with pytest.raises(PlayerModelError, match="検証の季"):
         provider.for_fold(index[:10], index)
+
+
+# --- `k` の選び方（2.3.1） ---
+
+def test_realized_pct_is_made_over_attempts() -> None:
+    """実現値は `made / att`。**`k` に依らない固定の物差し**（2.3.1）。"""
+    data = fake_data(per_season=40)
+    found = realized_pct(data, "ft_pct")
+    expected = (data.shots["ft_pct_made"].to_numpy()
+                / data.shots["ft_pct_att"].to_numpy())
+    assert np.allclose(found, expected)
+
+
+def test_realized_pct_rejects_a_count() -> None:
+    with pytest.raises(PlayerModelError, match="成功率3項目"):
+        realized_pct(fake_data(per_season=20), "ast")
+
+
+def test_the_shrunk_target_collapses_as_k_grows() -> None:
+    """**`k` を上げると目的変数の分散が潰れる。** これが MAE を必ず下げる人工物の正体。
+
+    実データでは `fg2_pct` の SD が 0.319（実現値）→ 0.020（k=80）になり、
+    実現値との相関が 1.00 → 0.52 まで落ちた（2.3.1）。**ここを固定しておかないと、
+    将来また MAE で `k` を選んでしまう。**
+    """
+    data = fake_data(per_season=60)
+    spreads = [rate_target(data, "fg2_pct", k).std() for k in SHRINK_K_GRID]
+    assert spreads == sorted(spreads, reverse=True), spreads
+    assert spreads[-1] < spreads[0]
+
+
+def test_the_realized_yardstick_does_not_move_with_k() -> None:
+    """**評価の目的変数は `k` に依らない。** だから `k` を比べられる。"""
+    data = fake_data(per_season=60)
+    first = evaluate_rate(
+        data, "ft_pct", k=10.0, num_boost_round=ROUNDS, realized=True)
+    second = evaluate_rate(
+        data, "ft_pct", k=80.0, num_boost_round=ROUNDS, realized=True)
+    # 行の集合（`att > 0`）は `k` に依らないため、実測値はまったく同じになる
+    assert np.allclose(first.folds[-1].actual, second.folds[-1].actual)
+
+
+def test_realized_is_ignored_for_counts() -> None:
+    """カウントは `k` に依らないため、物差しを替えない。"""
+    data = fake_data(per_season=60)
+    plain = evaluate_rate(data, "ast", num_boost_round=ROUNDS)
+    marked = evaluate_rate(data, "ast", num_boost_round=ROUNDS, realized=True)
+    assert np.allclose(plain.folds[-1].actual, marked.folds[-1].actual)
+
+
+def test_walk_forward_rejects_a_mismatched_eval_target() -> None:
+    """件数が合わない評価の目的変数を黙って受けない。"""
+    from batch.model.evaluate import EvaluationError, walk_forward
+    data = fake_data(per_season=40)
+    picked = data.subset(usable_rate_rows(data, "ast", SHRINK_K_INITIAL))
+    features = rate_model_features(picked, "ast", SHRINK_K_INITIAL)
+    with pytest.raises(EvaluationError, match="評価の目的変数"):
+        walk_forward(
+            picked.as_training_data(features),
+            rate_recent_learner("ast"),
+            target=rate_target(picked, "ast", SHRINK_K_INITIAL),
+            eval_target=np.zeros(3),
+        )
+
+
+def test_the_measured_k_is_recorded_per_target() -> None:
+    """**項目ごとに測って選んだ値を持つ**（2.3.1）。共有の1つに畳まない。
+
+    1試合の試投数が 2FG と FT で2.5倍違うため、1つの `k` を共有すると
+    FT だけが過度に平均へ寄る。
+    """
+    assert set(SHRINK_K) == {name for name, _, _ in team_rate.PCT_TARGETS}
+    assert all(k in SHRINK_K_GRID for k in SHRINK_K.values())
+    assert shrink_k_for("fg3_pct") == 80.0
+
+
+def test_counts_have_no_k() -> None:
+    """カウント11項目は `k` を使わない（目的変数に入らない）。"""
+    with pytest.raises(PlayerModelError, match="成功率3項目"):
+        shrink_k_for("ast")

@@ -323,6 +323,20 @@ def evaluate_avail(
 SHRINK_K_GRID: tuple[float, ...] = (10.0, 20.0, 40.0, 80.0)
 SHRINK_K_INITIAL = 20.0
 
+#: 実データで探索して選んだ `k`（2026-10-05。詳細設計 2.3.1）。
+#: **実現値（`made / att`）に対する MAE が最小のもの**を項目ごとに採った —
+#: シュリンク済みの目的変数に対する MAE は `k` を上げるだけで下がるため使えない。
+#: **3項目すべてグリッドの端が選ばれた**（最適は外側にある可能性がある）。
+#: 差は MAE の 0.3〜1.4% であり、グリッドは広げない（運営者が決めた探索範囲）
+SHRINK_K: dict[str, float] = {"fg2_pct": 10.0, "fg3_pct": 80.0, "ft_pct": 10.0}
+
+
+def shrink_k_for(target: str) -> float:
+    """その項目の `k`。**カウント11項目は `k` を使わない**（目的変数に入らない）。"""
+    if target not in SHRINK_K:
+        raise PlayerModelError(f"成功率3項目にない: {target}")
+    return SHRINK_K[target]
+
 
 def shrink_column(
     made: Floats, attempts: Floats, prior: Floats, k: float,
@@ -377,6 +391,22 @@ def rate_target(data: PlayerRateData, target: str, k: float) -> Floats:
         data.shots[f"{target}_made"].to_numpy(dtype=np.float64),
         data.shots[f"{target}_att"].to_numpy(dtype=np.float64),
         data.features[f"{target}_prior"].to_numpy(dtype=np.float64), k)
+
+
+def realized_pct(data: PlayerRateData, target: str) -> Floats:
+    """実現した成功率（`made / att`）。**`k` に依らない固定の物差し**（2.3.1）。
+
+    シュリンク済みの目的変数は `k` を上げると分散が潰れ、**MAE が必ず下がる**。
+    `k` の選定はこちらに対して測る — **整合化が最終的に食わせる量そのもの**で
+    あり（`made = pct × att`）、要件 6.8.6 が誤差を実績に対して定義しているのと
+    同じ向きである。
+    """
+    if target not in {name for name, _, _ in team_rate.PCT_TARGETS}:
+        raise PlayerModelError(f"成功率3項目にない: {target}")
+    made = data.shots[f"{target}_made"].to_numpy(dtype=np.float64)
+    attempts = data.shots[f"{target}_att"].to_numpy(dtype=np.float64)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.asarray(made / attempts, dtype=np.float64)
 
 
 def rate_weights(data: PlayerRateData, target: str) -> Floats | None:
@@ -535,11 +565,16 @@ def evaluate_rate(
     max_folds: int = PLAYER_MAX_FOLDS, num_boost_round: int = NUM_BOOST_ROUND_MAX,
     learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
     provider: MinutesProvider | None = None,
+    realized: bool = False,
 ) -> Evaluation:
     """第3段の1項目を walk-forward で評価する。**分割器を2つ作らない。**
 
     `provider` を渡すと第2段の当てはめを使い回す（14本 × `k` のグリッドで
     同じ fold を何度も当てはめ直さないため）。省略すると `data` から作る。
+
+    `realized=True` のとき、成功率3項目を**実現値（`made / att`）に対して**
+    評価する。**`k` を比べるときは必ずこれを使う** — シュリンク済みの目的変数に
+    対する MAE は `k` を上げるだけで下がり、比較にならない（2.3.1）。
     """
     frame = data.subset(usable_rate_rows(data, target, k))
     features = rate_model_features(frame, target, k)
@@ -547,9 +582,15 @@ def evaluate_rate(
         learner = learn_rate(
             provider or MinutesProvider(data, num_boost_round=num_boost_round),
             target, num_boost_round=num_boost_round)
+    # **`k` の比較は実現値に対して行う**（2.3.1）。学習の目的変数は変えない
+    against_realized = (
+        realized_pct(frame, target)
+        if realized and target not in team_rate.COUNT_TARGETS else None
+    )
     return walk_forward(
         frame.as_training_data(features), learner,
         target=rate_target(frame, target, k),
+        eval_target=against_realized,
         weights=rate_weights(frame, target),
         max_folds=max_folds,
     )

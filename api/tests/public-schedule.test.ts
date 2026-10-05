@@ -202,26 +202,69 @@ describe('GET /results?date=', () => {
     return s;
   }
 
+  /** 確率帯の通算成績。`bucketContext` の出どころ（詳細設計 1.6 / 3.3） */
+  async function seedBucket(key: string, n: number, rate: number) {
+    await env.DB.prepare(
+      `INSERT INTO accuracy_summary
+         (scope,scope_key,model_version,n,accuracy,brier,actual_rate)
+       VALUES ('BUCKET',?, '', ?, 0.65, 0.2, ?)
+       ON CONFLICT(scope,scope_key,model_version) DO UPDATE
+          SET n = excluded.n, actual_rate = excluded.actual_rate`,
+    ).bind(key, n, rate).run();
+  }
+
+  type ResultsBody = { data: { results: { homeScore: number; evaluation: {
+    isCorrect: boolean;
+    bucketContext: { bucket: string; n: number; correct: number; rate: number } | null;
+  } }[] } };
+
   it('的中した試合を実績と予測の対比で返す', async () => {
     const date = nextDate();
     await seedFinished({ isCorrect: 1, date });
+    await seedBucket('60-70%', 42, 0.69);
     const body = await (await get(`/results?date=${date}`, { token: null }))
-      .json<{ data: { results: { homeScore: number;
-        evaluation: { isCorrect: boolean; bucket: string | null } }[] } }>();
+      .json<ResultsBody>();
     expect(body.data.results).toHaveLength(1);
     expect(body.data.results[0]!.homeScore).toBe(88);
     expect(body.data.results[0]!.evaluation.isCorrect).toBe(true);
     // 確率帯は「60-70%」の形（prob_bucket = 6）
-    expect(body.data.results[0]!.evaluation.bucket).toBe('60-70%');
+    expect(body.data.results[0]!.evaluation.bucketContext?.bucket).toBe('60-70%');
   });
 
   it('**外れた試合も同じ形で返す**（隠さない。要件 8.3）', async () => {
     const date = nextDate();
     await seedFinished({ isCorrect: 0, date });
     const body = await (await get(`/results?date=${date}`, { token: null }))
-      .json<{ data: { results: { evaluation: { isCorrect: boolean } }[] } }>();
+      .json<ResultsBody>();
     expect(body.data.results).toHaveLength(1);
     expect(body.data.results[0]!.evaluation.isCorrect).toBe(false);
+  });
+
+  it('**外れた試合にその確率帯の通算的中率が付く**（要件 8.3）', async () => {
+    // 帯のラベルだけでは「68%と予想した試合は42試合中29試合が的中」を出せない。
+    // **母数（n）と的中数（correct）が要る**
+    const date = nextDate();
+    await seedFinished({ isCorrect: 0, date });
+    await seedBucket('60-70%', 42, 0.69);
+    const body = await (await get(`/results?date=${date}`, { token: null }))
+      .json<ResultsBody>();
+    const context = body.data.results[0]!.evaluation.bucketContext;
+    expect(context).not.toBeNull();
+    expect(context!.n).toBe(42);
+    // correct は actual_rate × n から戻す（列として持っていない）
+    expect(context!.correct).toBe(29);
+    expect(context!.rate).toBeCloseTo(0.69, 5);
+  });
+
+  it('通算成績がまだ無ければ bucketContext は null（帯だけを出さない）', async () => {
+    const date = nextDate();
+    await seedFinished({ isCorrect: 1, date });
+    await env.DB.prepare(
+      `DELETE FROM accuracy_summary WHERE scope='BUCKET' AND scope_key='60-70%'`,
+    ).run();
+    const body = await (await get(`/results?date=${date}`, { token: null }))
+      .json<ResultsBody>();
+    expect(body.data.results[0]!.evaluation.bucketContext).toBeNull();
   });
 
   it('VOID（中止・延期）は返さない', async () => {

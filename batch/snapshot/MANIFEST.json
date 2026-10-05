@@ -21,12 +21,12 @@
       "sha256": "21f38974abcce8141bcf7a554f29c4ee40c82d67077e9a6f49ad5632940425af"
     },
     "player_seasons": {
-      "rows": 0,
-      "sha256": "c3a3ec7d304a9b542e6b28d84c6a14c3f63310b05c2b031baf5dc2bdef3cee6a"
+      "rows": 3495,
+      "sha256": "d4cd33198b749219625a16ce882bb57dd771587a9503c0182d55e4d9ed16680b"
     },
     "players": {
-      "rows": 1028,
-      "sha256": "75d0cffde1b06f163f55a39e3a45dff0de3e403f1c6b0f1c286b472cc441c286"
+      "rows": 1047,
+      "sha256": "f51c06f30776f1babd311406e465dff9370debb434909169c604993b0d9e2c99"
     },
     "seasons": {
       "rows": 11,
@@ -53,7 +53,7 @@
       "sha256": "e78ddb99bace09d3527a493ca3743272979f812394bd94ee70beb605a47fa98a"
     }
   },
-  "generated_at": "2026-10-04T21:15:19Z",
+  "generated_at": "2026-10-05T05:36:52Z",
   "max_finished_at": "2026-10-04T08:05:00Z",
   "version": 1
 }

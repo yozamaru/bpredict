@@ -358,6 +358,29 @@ SNAPSHOT_DEFAULTS: dict[str, object] = {
 }
 
 
+def rosters_payload(
+    *,
+    players: Sequence[Mapping[str, object]],
+    player_seasons: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """`POST /internal/rosters` の本文（詳細設計 3.4 / 4.13）。
+
+    **出せないものはキーを送らない。** `height_cm` / `roster_type` /
+    `joined_on` / `left_on` はいずれも出典が無く（要件 5.3）、口の側で
+    「NULL で上書きしない」保護が掛かっている。
+
+    **片方だけでも送れる。** `players` を先に入れる FK の順序は口の側が持つ。
+    """
+    if not players and not player_seasons:
+        raise PayloadError("選手も所属断面も空である")
+    body: dict[str, object] = {}
+    if players:
+        body["players"] = [dict(p) for p in players]
+    if player_seasons:
+        body["playerSeasons"] = [dict(s) for s in player_seasons]
+    return body
+
+
 def _snake(key: str) -> str:
     return _SNAKE.sub("_", key).lower()
 
@@ -375,6 +398,9 @@ SNAPSHOT_TABLES: dict[str, str] = {
     "clubSeasons": "club_seasons",
     "teamGameStats": "team_game_stats",
     "playerGameStats": "player_game_stats",
+    # **`POST /internal/rosters` も受ける**（詳細設計 4.13）。書かないと第1段から
+    # 見えない — 入力はスナップショットだけである（絶対ルール3）
+    "playerSeasons": "player_seasons",
 }
 
 #: **スナップショットが持たない配列**（基本設計 2.2 のファイル一覧）。

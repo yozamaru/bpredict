@@ -549,6 +549,8 @@ KEYS: Mapping[str, tuple[str, ...]] = {
     "venues": ("id",),
     "venue_source_keys": ("source_code",),
     "club_seasons": ("club_id", "season_id"),
+    # `POST /internal/rosters` が送る（詳細設計 4.13）。D1 の主キーと同じ3列
+    "player_seasons": ("player_id", "season_id", "club_id"),
 }
 
 #: **既存の行では上書きしない列。** D1 の upsert が `update` に入れていない列と

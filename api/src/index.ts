@@ -17,6 +17,7 @@ import { masters } from './routes/internal/masters';
 import { metrics, models } from './routes/internal/models';
 import { ops } from './routes/internal/ops';
 import { predictions } from './routes/internal/predictions';
+import { rosters } from './routes/internal/rosters';
 import { accuracy } from './routes/public/accuracy';
 import { games } from './routes/public/games';
 import { schedule } from './routes/public/schedule';
@@ -46,6 +47,7 @@ app.use('/internal/entries', ingest);
 app.use('/internal/ratings', ingest);
 app.use('/internal/venue-revisions', ingest);
 app.use('/internal/venues', ingest);
+app.use('/internal/rosters', ingest);
 app.use('/internal/predictions', ingest);
 app.use('/internal/predictions/*', ingest);
 app.use('/internal/evaluate', ingest);
@@ -59,6 +61,7 @@ app.use('/internal/finalize', auth(['FINALIZE_TOKEN']));
 
 app.route('/internal/masters', masters);
 app.route('/internal', facts);                     // /games /stats /entries /ratings
+app.route('/internal', rosters);                   // /rosters
 app.route('/internal/predictions', predictions);   // POST / と GET /pending
 app.route('/internal/finalize', finalize);
 app.route('/internal/models', models);             // POST / と GET /active /:version/artifact

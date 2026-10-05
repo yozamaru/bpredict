@@ -26,6 +26,7 @@ const POSTS = [
   '/internal/entries',
   '/internal/ratings',
   '/internal/venue-revisions',
+  '/internal/rosters',
   '/internal/predictions',
   '/internal/finalize',
   '/internal/evaluate',

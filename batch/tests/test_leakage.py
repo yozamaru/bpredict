@@ -19,7 +19,13 @@ import pytest
 from batch.features.base import Context, build_context
 from batch.features.builder import FEATURE_KEYS, build_features
 from batch.features.dataset import Dataset, export_sqlite
-from batch.features.player_rate import MINUTES_KEYS, build_minutes_features
+from batch.features.player_rate import (
+    AVAIL_KEYS,
+    MINUTES_KEYS,
+    build_avail_features,
+    build_minutes_features,
+    candidates,
+)
 from batch.features.team_rate import all_feature_keys, build_team_rate_features
 
 TOLERANCE = 1e-9
@@ -698,6 +704,189 @@ def test_player_minutes_mutation_trial_detects_an_intentional_leak(
 
     def leaky(connection: sqlite3.Connection) -> dict[str, float]:
         base = _player_features(connection, game_id, as_of, club_id, player_id)
+        row = connection.execute(
+            "SELECT minutes FROM player_game_stats WHERE game_id = ? AND player_id = ?",
+            (game_id, player_id)).fetchone()
+        return {**base, "minutes_l5_player": base["minutes_l5_player"] + float(row[0])}
+
+    before = leaky(seeded_db)
+    seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 40 WHERE game_id = ? AND player_id = ?",
+        (game_id, player_id))
+    seeded_db.commit()
+
+    with pytest.raises(AssertionError):
+        _assert_same(before, leaky(seeded_db))
+
+
+# --- 第1段 PlayerAvail の候補集合と特徴量（詳細設計 2.3.1） ---
+#
+# **候補集合そのものにも当てる。** 特徴量が守られていても、候補が未来の情報から
+# 作られていればリークである（`player_seasons` は取得した時点の断面であり、
+# 季中の加入を加入前の試合に持ち込む）。列の検証だけでは捕まらない。
+
+
+def _avail_target(
+    con: sqlite3.Connection, offset_from_end: int = 0,
+) -> tuple[str, datetime, str, str]:
+    """終盤の終了済み試合から、候補に入る選手を1人選ぶ。"""
+    game_id, as_of, club_id, player_id = _player_target(con, offset_from_end)
+    return game_id, as_of, club_id, player_id
+
+
+def _avail_features(
+    con: sqlite3.Connection, game_id: str, as_of: datetime,
+    club_id: str, player_id: str,
+) -> dict[str, float]:
+    return build_avail_features(
+        game_id, as_of, export_sqlite(con), club_id, player_id)
+
+
+def _candidates(
+    con: sqlite3.Connection, game_id: str, as_of: datetime, club_id: str,
+) -> list[str]:
+    return candidates(build_context(game_id, as_of, export_sqlite(con)), club_id)
+
+
+def test_player_avail_target_game_mutation_does_not_change_features(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**本命。** 対象試合を撹乱しても、第1段の5列が不変であること。
+
+    `games_played_ratio_l10` と `days_since_last_played` は対象試合の出場が
+    混ざると動く。**その試合に出場したかは目的変数である。**
+    """
+    game_id, as_of, club_id, player_id = _avail_target(seeded_db)
+    before = _avail_features(seeded_db, game_id, as_of, club_id, player_id)
+
+    seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 40, started = 1, pts = 40"
+        " WHERE game_id = ?", (game_id,))
+    seeded_db.execute(
+        "UPDATE games SET home_score = 200, away_score = 0 WHERE id = ?", (game_id,))
+    seeded_db.commit()
+
+    _assert_same(before, _avail_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+
+
+def test_player_avail_target_game_does_not_enter_the_candidates(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**候補に対象試合の出場者が混ざらないこと。**
+
+    `finished_at` を `as_of` より前に書き換えてから確かめる。`as_of` の比較だけ
+    なら対象試合は自然に落ちるため（自分の `tipoff_at` 時点ではまだ終わって
+    いない）、**2本目の関門である明示的な除外が効いているか**はこうしないと
+    見えない（6.1 の「入口ごと」）。
+    """
+    season = str(seeded_db.execute(
+        "SELECT id FROM seasons ORDER BY start_date DESC LIMIT 1").fetchone()[0])
+    row = seeded_db.execute(
+        "SELECT id, tipoff_at, home_club_id FROM games"
+        " WHERE status = 'FINISHED' AND season_id = ?"
+        " ORDER BY game_date, id LIMIT 1", (season,)).fetchone()
+    game_id, as_of, club_id = (
+        str(row[0]), datetime.fromisoformat(str(row[1])), str(row[2]))
+
+    # 開幕戦なので当季の候補は前季由来だけ。対象試合だけに出場する選手を足す
+    seeded_db.execute(
+        "INSERT INTO players (id, name) VALUES ('p-new', 'ダミー')")
+    seeded_db.execute(
+        "INSERT INTO player_game_stats (game_id, player_id, club_id, game_date,"
+        " minutes, fetched_at) SELECT id, 'p-new', ?, game_date, 20.0, tipoff_at"
+        "  FROM games WHERE id = ?", (club_id, game_id))
+    # **対象試合を「as_of より前に終わった」ことにする**
+    early = (as_of - timedelta(days=1)).isoformat(
+        timespec="seconds").replace("+00:00", "Z")
+    seeded_db.execute(
+        "UPDATE games SET finished_at = ? WHERE id = ?", (early, game_id))
+    seeded_db.commit()
+
+    assert "p-new" not in _candidates(seeded_db, game_id, as_of, club_id)
+
+
+def test_player_avail_future_game_mutation_does_not_change_features(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """`as_of` 以降に終了した試合を撹乱しても不変であること。"""
+    game_id, as_of, club_id, player_id = _avail_target(seeded_db, offset_from_end=200)
+    before = _avail_features(seeded_db, game_id, as_of, club_id, player_id)
+    names = _candidates(seeded_db, game_id, as_of, club_id)
+
+    boundary = as_of.isoformat(timespec="seconds").replace("+00:00", "Z")
+    changed = seeded_db.execute(
+        "UPDATE player_game_stats SET minutes = 1, started = 0 WHERE game_id IN"
+        " (SELECT id FROM games WHERE finished_at > ?)", (boundary,),
+    ).rowcount
+    seeded_db.commit()
+    assert changed > 0, "撹乱対象がない。テストが空振りしている"
+
+    _assert_same(before, _avail_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+    assert names == _candidates(seeded_db, game_id, as_of, club_id)
+
+
+def test_player_avail_as_of_is_actually_applied(seeded_db: sqlite3.Connection) -> None:
+    """**陽性確認。** `as_of` を前にずらすと値が変化すること。
+
+    合成シードは選手ごとに分数が一定なので、**古い試合だけ分数を変えて**
+    差を作る（第2段と同じ理由）。
+    """
+    game_id, as_of, club_id, player_id = _avail_target(seeded_db)
+    old_games = seeded_db.execute(
+        "SELECT p.game_id FROM player_game_stats p JOIN games g ON g.id = p.game_id"
+        " WHERE p.player_id = ? AND g.game_date < (SELECT game_date FROM games WHERE id = ?)"
+        " ORDER BY g.game_date DESC LIMIT 10 OFFSET 3",
+        (player_id, game_id)).fetchall()
+    assert old_games, "古い試合が無い。テストが空振りしている"
+    seeded_db.executemany(
+        "UPDATE player_game_stats SET minutes = 3.0 WHERE game_id = ? AND player_id = ?",
+        [(str(g[0]), player_id) for g in old_games])
+    seeded_db.commit()
+
+    now = _avail_features(seeded_db, game_id, as_of, club_id, player_id)
+    past = _avail_features(
+        seeded_db, game_id, as_of - timedelta(days=30), club_id, player_id)
+    changed = [k for k in now if abs(now[k] - past[k]) > TOLERANCE]
+    assert changed, f"as_of を30日戻しても1列も変わらない: {sorted(now)}"
+
+
+def test_player_avail_excludes_unfinished_games(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """`SCHEDULED` の試合が候補にも窓にも入らないこと。"""
+    game_id, as_of, club_id, player_id = _avail_target(seeded_db)
+    before = _avail_features(seeded_db, game_id, as_of, club_id, player_id)
+    names = _candidates(seeded_db, game_id, as_of, club_id)
+
+    boundary = as_of.isoformat(timespec="seconds").replace("+00:00", "Z")
+    changed = seeded_db.execute(
+        "UPDATE games SET status = 'SCHEDULED', finished_at = NULL,"
+        " home_score = NULL, away_score = NULL WHERE finished_at > ?", (boundary,),
+    ).rowcount
+    seeded_db.commit()
+    assert changed > 0, "撹乱対象がない。テストが空振りしている"
+
+    _assert_same(before, _avail_features(
+        seeded_db, game_id, as_of, club_id, player_id))
+    assert names == _candidates(seeded_db, game_id, as_of, club_id)
+
+
+def test_player_avail_keys_are_fixed(seeded_db: sqlite3.Connection) -> None:
+    game_id, as_of, club_id, player_id = _avail_target(seeded_db)
+    row = _avail_features(seeded_db, game_id, as_of, club_id, player_id)
+    assert tuple(row) == AVAIL_KEYS
+
+
+def test_player_avail_mutation_trial_detects_an_intentional_leak(
+    seeded_db: sqlite3.Connection,
+) -> None:
+    """**テストのテスト。** 意図的にリークさせた実装で撹乱テストが落ちること。"""
+    game_id, as_of, club_id, player_id = _avail_target(seeded_db)
+
+    def leaky(connection: sqlite3.Connection) -> dict[str, float]:
+        base = _avail_features(connection, game_id, as_of, club_id, player_id)
         row = connection.execute(
             "SELECT minutes FROM player_game_stats WHERE game_id = ? AND player_id = ?",
             (game_id, player_id)).fetchone()

@@ -420,6 +420,129 @@ class PlayerMinutesData:
         )
 
 
+@dataclass(frozen=True)
+class PlayerAvailData:
+    """**1行は「1試合 × 出場しうる選手」**（2.3.1）。
+
+    候補は `player_rate.candidates()` が過去の出場実績から作る。**ロスター
+    （`player_seasons`）を使わない** — 取得した断面は時点を持たず、季中の加入が
+    加入前の試合の候補に現れる（絶対ルール1）。
+
+    正例は「`player_game_stats` にその試合・そのクラブの行がある」ことである。
+    **`minutes` が NULL でも正例にする** — ボックススコアに名前があれば出場で
+    あり、第2段が NULL 行を落とすのは目的変数が出場時間だからである。
+    """
+
+    features: pd.DataFrame
+    #: 出場したか（0/1）
+    played: Floats
+    game_ids: list[str]
+    player_ids: list[str]
+    club_ids: list[str]
+    season_ids: list[str]
+    game_dates: list[str]
+    #: **候補に入らなかった出場の件数。** 季の1試合目の新加入が主である
+    #: （2.3.1 の実測で全体の 1.3%）。**黙って落とさず数える**
+    uncovered: int = 0
+    #: 候補が空だった（試合, クラブ）の件数。前季の実績がないクラブ
+    empty_candidates: int = 0
+
+    def __len__(self) -> int:
+        return len(self.game_ids)
+
+    @property
+    def seasons(self) -> list[str]:
+        seen: list[str] = []
+        for season in self.season_ids:
+            if season not in seen:
+                seen.append(season)
+        return seen
+
+    def as_training_data(self) -> TrainingData:
+        """`walk_forward` に渡す形。**分割器を2つ作らない**（`evaluate.py`）。
+
+        目的変数は 0/1 なので `home_win` に載せる。`margin` / `total` は
+        この行に意味を持たないため NaN を置く。
+        """
+        blank = np.full(len(self), np.nan, dtype=np.float64)
+        return TrainingData(
+            features=self.features,
+            home_win=self.played,
+            margin=blank,
+            total=blank,
+            game_ids=self.game_ids,
+            season_ids=self.season_ids,
+            game_dates=self.game_dates,
+            spectator_restricted=[None] * len(self),
+        )
+
+
+def build_player_avail_matrix(ds: Dataset) -> PlayerAvailData:
+    """候補 × 終了した試合の行を組む。
+
+    **候補に入らなかった出場を正例として足さない。** 足すと全列が既定値の行が
+    正例になり、「履歴がない → 出場する」を教えることになる（既定値は最も
+    出場しない層のためのものである。2.3.1）。**件数は `uncovered` に残す。**
+    """
+    games = ds.table("games")
+    finished = games[games["status"] == "FINISHED"].copy()
+    if finished.empty:
+        raise MatrixError("終了した試合が1件もない")
+    finished = finished.sort_values(["tipoff_at", "id"], kind="stable")
+
+    stats = ds.table("player_game_stats")
+    appeared: dict[tuple[str, str], set[str]] = {}
+    for record in stats.to_dict("records"):
+        key = (str(record["game_id"]), str(record["club_id"]))
+        appeared.setdefault(key, set()).add(str(record["player_id"]))
+
+    prepared = prepare(ds)
+    rows: list[dict[str, float]] = []
+    played: list[float] = []
+    game_ids: list[str] = []
+    player_ids: list[str] = []
+    club_ids: list[str] = []
+    season_ids: list[str] = []
+    game_dates: list[str] = []
+    uncovered = 0
+    empty = 0
+
+    for game in finished.itertuples():
+        game_id = str(game.id)
+        # **`Context` は試合ごとに1回だけ作る**（`player_rate.minutes_row`）
+        context = build_context(game_id, as_of(game.tipoff_at), ds, prepared)
+        for club_id in (str(game.home_club_id), str(game.away_club_id)):
+            names = player_rate.candidates(context, club_id)
+            actual = appeared.get((game_id, club_id), set())
+            if not names:
+                empty += 1
+                uncovered += len(actual)
+                continue
+            uncovered += len(actual - set(names))
+            for player_id in names:
+                rows.append(player_rate.avail_row(context, club_id, player_id))
+                played.append(1.0 if player_id in actual else 0.0)
+                game_ids.append(game_id)
+                player_ids.append(player_id)
+                club_ids.append(club_id)
+                season_ids.append(str(game.season_id))
+                game_dates.append(str(game.game_date))
+
+    if not rows:
+        raise MatrixError("PlayerAvail の学習行を1件も作れなかった")
+    return PlayerAvailData(
+        features=pd.DataFrame(rows, columns=list(player_rate.AVAIL_KEYS)),
+        played=np.asarray(played, dtype=np.float64),
+        game_ids=game_ids,
+        player_ids=player_ids,
+        club_ids=club_ids,
+        season_ids=season_ids,
+        game_dates=game_dates,
+        uncovered=uncovered,
+        empty_candidates=empty,
+    )
+
+
 def build_player_minutes_matrix(ds: Dataset) -> PlayerMinutesData:
     """出場した選手の行を、終了した試合すべてについて組む。
 

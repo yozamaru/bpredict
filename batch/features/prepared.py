@@ -182,6 +182,10 @@ class Prepared:
     #: (クラブ, シーズン) → 同。シーズンは **`team_games` 経由**で引く
     player_club_season_positions: dict[tuple[str, str], Positions] = field(
         default_factory=dict)
+    #: シーズン → **直前の1季**（無ければ None）。第1段の候補集合が引く（2.3.1）。
+    #: **「過去のいずれかの季」にしない** — 最初の季にはコールドスタートが残り、
+    #: 昇格クラブと同じ扱いにする（2.5）
+    previous_season: dict[str, str | None] = field(default_factory=dict)
 
     def as_of_ns(self, as_of: datetime) -> int:
         """`as_of` を `_utc_ns` と同じ単位の整数にする。**単位は `UNIT` 1か所。**"""
@@ -270,4 +274,28 @@ def prepare(dataset: Dataset) -> Prepared:
         club_season_positions=club_season_positions,
         player_club_positions=player_club_positions,
         player_club_season_positions=player_club_season_positions,
+        previous_season=_previous_seasons(dataset.tables.get("seasons")),
     )
+
+
+def _previous_seasons(seasons: pd.DataFrame | None) -> dict[str, str | None]:
+    """シーズン → 直前の1季。
+
+    **`seasons` が無い `Dataset` を落とさない。** 手で組んだ部分的な `Dataset`
+    （`test_features_prepared.py` の Elo の検査など）は1〜2テーブルしか持たない。
+    代わりに**使う側で落とす** — `Context.previous_season_id` が季を引けなければ
+    `FeatureError` を投げる。ここで黙って {} を返して候補集合が静かに
+    「当季だけ」に縮むことを防ぐ。
+
+    **並べるのは `start_date` である。** `id` の降順で並べない — 文字列比較では
+    `'2016-17-B1' < '2026-27-PREMIER'` のような暦順と一致しない組が出る
+    （公開APIの `latestSeasonId` が同じ理由で `start_date` を使う。詳細設計 3.3）。
+    """
+    if seasons is None or seasons.empty:
+        return {}
+    ordered = seasons.sort_values("start_date", kind="stable")
+    ids = [str(value) for value in ordered["id"]]
+    return {
+        season: (ids[position - 1] if position else None)
+        for position, season in enumerate(ids)
+    }

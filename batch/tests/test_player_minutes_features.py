@@ -9,7 +9,7 @@
 | `test_window_does_not_cross_season_boundary` | シーズン境界を越えない |
 | `test_row_is_dropped_without_history` | 過去が無ければ行を落とす |
 | `test_other_clubs_appearances_are_not_counted` | 所属は実績で判定する（規約6） |
-| `test_stages_one_and_three_are_not_implemented` | 組めない段を黙って作らない |
+| `test_stage_three_is_not_implemented` | 組めない段を黙って作らない |
 """
 from __future__ import annotations
 
@@ -245,17 +245,17 @@ def test_missing_minutes_drops_the_row(seeded_db: sqlite3.Connection) -> None:
 
 # --- 組めない段を作らない ---
 
-def test_stages_one_and_three_are_not_implemented() -> None:
-    """**第1段と第3段を黙って作らない**（2.3.1）。
+def test_stage_three_is_not_implemented() -> None:
+    """**第3段を黙って作らない**（2.3.1）。
 
-    第1段は「出場しうる選手」を列挙できず、第3段は `k` / `prior` /
-    `usage_l10` / `position` が未定義である。**実装が先に出ると、設計に無い
+    `k` / `prior` / `usage_l10` が未定義である。**実装が先に出ると、設計に無い
     仕様が「実装しながら決めた値」として残る。**
+
+    第1段は v1.106 で候補集合を定めてから実装した（`test_player_avail_*`）。
     """
     import batch.model.train_player as tp
-    assert not hasattr(tp, "evaluate_avail"), "第1段は設計が決まってから実装する"
     assert not hasattr(tp, "evaluate_rates"), "第3段は設計が決まってから実装する"
 
     from batch.features import player_rate
-    for name in ("usage_l10", "shrunk_pct", "position"):
+    for name in ("usage_l10", "shrunk_pct"):
         assert not hasattr(player_rate, name), f"{name} は 2.3.1 で未定義である"

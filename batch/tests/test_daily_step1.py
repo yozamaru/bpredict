@@ -416,6 +416,8 @@ class Outcome:
 
     results: ClassVar[list[Any]] = []
     skipped: ClassVar[list[Any]] = []
+    #: `meta.json` の `latestResultDate` になる（詳細設計 3.7）
+    latest_result_date: str | None = None
 
 
 class Ratings:
@@ -441,7 +443,9 @@ def test_settle_runs_the_match_and_then_the_elo(
         daily_ingest.evaluate_job, "run", lambda **_k: record("evaluate", Outcome()))
     monkeypatch.setattr(
         daily_ingest.ratings_job, "run", lambda **_k: record("ratings", Ratings()))
-    status = daily_ingest.run_settle(None, log=lambda _m: None)  # type: ignore[arg-type]
+    status, _date = daily_ingest.run_settle(
+        None,  # type: ignore[arg-type]
+        log=lambda _m: None)
     assert (called, status) == (["evaluate", "ratings"], "SUCCESS")
 
 
@@ -463,9 +467,13 @@ def test_the_elo_still_runs_when_the_match_fails(
 
     monkeypatch.setattr(daily_ingest.evaluate_job, "run", boom)
     monkeypatch.setattr(daily_ingest.ratings_job, "run", ran)
-    status = daily_ingest.run_settle(None, log=lambda _m: None)  # type: ignore[arg-type]
+    status, date = daily_ingest.run_settle(
+        None,  # type: ignore[arg-type]
+        log=lambda _m: None)
     assert called == ["ratings"]
     assert status == "PARTIAL"
+    # **照合が落ちた回は日付を主張しない。** 書き出し側が前回の値を引き継ぐ（3.7）
+    assert date is None
 
 
 def test_a_failed_elo_does_not_stop_the_job(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -476,8 +484,10 @@ def test_a_failed_elo_does_not_stop_the_job(monkeypatch: pytest.MonkeyPatch) -> 
         raise SnapshotError("スナップショットに games がない")
 
     monkeypatch.setattr(daily_ingest.ratings_job, "run", boom)
-    assert daily_ingest.run_settle(
-        None, log=lambda _m: None) == "PARTIAL"  # type: ignore[arg-type]
+    status, _date = daily_ingest.run_settle(
+        None,  # type: ignore[arg-type]
+        log=lambda _m: None)
+    assert status == "PARTIAL"
 
 
 def test_settle_comes_before_the_inference_in_main(
@@ -486,9 +496,9 @@ def test_settle_comes_before_the_inference_in_main(
     """**推論より前に回す。** 後に回すとその日の推論が古い Elo を使う。"""
     order: list[str] = []
 
-    def settled(*_a: object, **_k: object) -> str:
+    def settled(*_a: object, **_k: object) -> tuple[str, str | None]:
         order.append("settle")
-        return "SUCCESS"
+        return "SUCCESS", None
 
     def loaded(_p: object) -> Dataset:
         order.append("inference")
@@ -528,3 +538,21 @@ def test_a_game_starting_within_thirty_minutes_is_not_predicted() -> None:
 def test_the_margin_is_thirty_minutes() -> None:
     """設計 4.1 の値をそのまま使う。**勝手に変えない。**"""
     assert daily_ingest.INFERENCE_MARGIN_MINUTES == 30
+
+
+def test_settle_returns_the_latest_matched_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**照合した最も新しい試合日を返す**（`meta.json` の `latestResultDate`）。
+
+    `/results`（引数なし）が既定で見る日になる。時計を使わない（詳細設計 3.7）。
+    """
+    class Matched(Outcome):
+        latest_result_date = "2026-10-07"
+
+    monkeypatch.setattr(daily_ingest.evaluate_job, "run", lambda **_k: Matched())
+    monkeypatch.setattr(daily_ingest.ratings_job, "run", lambda **_k: Ratings())
+    status, date = daily_ingest.run_settle(
+        None,  # type: ignore[arg-type]
+        log=lambda _m: None)
+    assert (status, date) == ("SUCCESS", "2026-10-07")

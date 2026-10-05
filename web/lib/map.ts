@@ -10,7 +10,9 @@ import type {
   GamesByDate,
   Meta,
   ReasonShape,
+  ResultsByDate,
 } from '@/lib/source';
+import type { ResultView } from '@/components/prediction/ResultComparison';
 import type { AccuracyView, Club, GameView, PlayerView, ReasonView } from '@/lib/view';
 
 /** 遅延と判定する間隔（時間。基本設計 4.5）。 */
@@ -301,6 +303,49 @@ export function toPlayers(list: unknown[]): PlayerView[] {
       || raw.error === undefined
     ) continue;
     out.push(toPlayer(raw as RawPlayer));
+  }
+  return out;
+}
+
+/**
+ * `/results?date=` の応答を画面の形にする（詳細設計 3.3）。
+ *
+ * **判定と誤差と帯の通算はサーバが出した値を使う**（`ResultView` の注記）。
+ * 画面でスコアから計算し直すと、VOID の扱いが画面側の実装に漏れる。
+ *
+ * **揃っていない行は落とす。** `evaluation` は `prediction_results` がある試合に
+ * だけ付き、`bucketContext` が null の行は帯の通算を併記できない — 要件 8.3 は
+ * 「その確率帯の通算的中率を併記する」と定めており、**併記できない行を出さない**。
+ */
+export function toResults(source: ResultsByDate): ResultView[] {
+  const out: ResultView[] = [];
+  for (const row of source.results) {
+    const { prediction: p, evaluation: e } = row;
+    if (
+      p === null || e === null
+      || row.homeScore === null || row.awayScore === null
+      || p.predHomeScore === null || p.predAwayScore === null
+      || e.isCorrect === null || e.scoreError === null
+      || e.bucketContext === null
+    ) continue;
+    out.push({
+      gameId: row.gameId,
+      home: { name: toClub(row.home).name },
+      away: { name: toClub(row.away).name },
+      homeScore: row.homeScore,
+      awayScore: row.awayScore,
+      homeWinProb: p.homeWinProb,
+      predHomeScore: p.predHomeScore,
+      predAwayScore: p.predAwayScore,
+      isCorrect: e.isCorrect,
+      scoreError: e.scoreError,
+      bucket: {
+        label: e.bucketContext.bucket,
+        n: e.bucketContext.n,
+        correct: e.bucketContext.correct,
+        rate: e.bucketContext.rate,
+      },
+    });
   }
   return out;
 }

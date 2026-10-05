@@ -47,13 +47,17 @@ def prediction(**over: object) -> dict[str, object]:
 def game(**over: object) -> dict[str, object]:
     base: dict[str, object] = {
         "id": "g1", "status": "FINISHED", "home_score": 88.0, "away_score": 81.0,
+        # `game_date` は DDL で NOT NULL（1.3）。`latestResultDate` の出どころ（3.7）
+        "game_date": "2026-10-07",
     }
     base.update(over)
     return base
 
 
 def games(rows: list[dict[str, object]]) -> pd.DataFrame:
-    return pd.DataFrame(rows, columns=["id", "status", "home_score", "away_score"])
+    return pd.DataFrame(
+        rows,
+        columns=["id", "status", "home_score", "away_score", "game_date"])
 
 
 # --- A-04: 中止・延期 ---
@@ -377,3 +381,48 @@ def test_every_scope_carries_the_score_mae() -> None:
     assert {r.scope for r in rows} >= {"OVERALL", "SEASON", "MODEL", "BUCKET"}
     for row in rows:
         assert row.score_mae is not None, row.scope
+
+
+# --- `latestResultDate`（詳細設計 3.7） ---
+
+def test_latest_result_date_is_the_newest_counted_game() -> None:
+    """**照合した、母数に入る試合の最も新しい日**を返す。
+
+    `/results`（引数なし）が既定で見る日になる。**並び順に依らない** —
+    `pending` が返す順序は決まっていない。
+    """
+    out = evaluate(
+        [prediction(predictionId="p1", gameId="g1"),
+         prediction(predictionId="p2", gameId="g2"),
+         prediction(predictionId="p3", gameId="g3")],
+        games([
+            game(id="g1", game_date="2026-10-07"),
+            game(id="g3", game_date="2026-10-05"),
+            game(id="g2", game_date="2026-10-09"),
+        ]),
+    )
+    assert len(out.results) == 3
+    assert out.latest_result_date == "2026-10-09"
+
+
+def test_void_games_do_not_set_the_latest_result_date() -> None:
+    """**`VOID` は数えない。** 中止・延期は `/results` に出ない（3.3）。
+
+    数えてしまうと、画面が「その日の結果」を見に行って空を出す。
+    """
+    out = evaluate(
+        [prediction(predictionId="p1", gameId="g1"),
+         prediction(predictionId="p2", gameId="g2")],
+        games([
+            game(id="g1", game_date="2026-10-07"),
+            game(id="g2", game_date="2026-10-09", status="CANCELLED",
+                 home_score=None, away_score=None),
+        ]),
+    )
+    assert [r.outcome for r in out.results].count("VOID") == 1
+    assert out.latest_result_date == "2026-10-07"
+
+
+def test_no_match_leaves_the_latest_result_date_unset() -> None:
+    """照合が0件なら None。書き出し側が前回の値を引き継ぐ（3.7）。"""
+    assert evaluate([], games([])).latest_result_date is None

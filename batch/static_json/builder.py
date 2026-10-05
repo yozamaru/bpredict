@@ -154,6 +154,10 @@ class MetaInput:
     # `SUCCESS` 以外の回では前回の値を引き継ぐ。決めるのは writer 側
     last_success_at: str | None
     model_versions: list[str] = field(default_factory=list)
+    #: **`/results`（引数なし）が既定で見る日**（詳細設計 3.7）。照合した試合の
+    #: 最も新しい `game_date`。**この回に照合が無ければ前回の値を引き継ぐ**
+    #: （`last_success_at` と同じ型。決めるのは writer 側）
+    latest_result_date: str | None = None
 
 
 def _envelope(data: dict[str, Any], generated_at: str) -> dict[str, Any]:
@@ -406,6 +410,7 @@ def build_meta(source: MetaInput) -> dict[str, Any]:
             "dataAsOf": source.data_as_of,
             "lastRunStatus": source.last_run_status,
             "lastSuccessAt": source.last_success_at,
+            "latestResultDate": source.latest_result_date,
             "modelVersions": list(source.model_versions),
         },
         source.generated_at,

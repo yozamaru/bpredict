@@ -67,6 +67,27 @@ def test_a_missing_number_is_allowed() -> None:
     assert split_position("PG") == ("PG", None)
 
 
+def test_an_unregistered_position_is_kept_as_none() -> None:
+    """**本番で出た（2026-10-05。クラブ 712 の1名）。**
+
+    ポジション欄が `#` だけ（ポジションも背番号も空）の選手が実在する。
+    **落とすと登録選手が候補一覧から消え、第1段の目的を損なう** —
+    `player_seasons.position` は NULL 許容であり、設計が「ポジションなし」を
+    想定している。
+    """
+    assert split_position("#") == (None, None)
+    assert split_position("#7") == (None, "7")
+
+
+def test_an_unregistered_position_still_guards_a_notation_change() -> None:
+    """**空を None にしても関門は消えない。**
+
+    表記が変わると「空でない未知の値」になり、そちらは引き続き落ちる。
+    """
+    with pytest.raises(ValidationError):
+        split_position("ガード #8")
+
+
 def test_a_number_that_is_not_digits_is_rejected() -> None:
     with pytest.raises(ValidationError):
         split_position("PG #??")
@@ -174,6 +195,19 @@ def test_the_image_attributes_are_not_read() -> None:
     entry = parse_roster(noisy).entries[0]
     assert (entry.player_id, entry.name, entry.position) == ("9001", "架空選手一", "SG")
     assert plain[0].name == "架空選手一"
+
+
+def test_an_unregistered_player_is_counted_not_dropped() -> None:
+    """一覧でも落とさず、件数を `unregistered` で返す。"""
+    body = page([
+        card("9001", "架空選手一", "SG #8"),
+        card("9002", "架空選手二", "#"),        # 未登録
+        card("9003", "架空選手三", "G #9"),     # 読めない
+    ])
+    roster = parse_roster(body)
+    assert [e.player_id for e in roster.entries] == ["9001", "9002"]
+    assert [e.position for e in roster.entries] == ["SG", None]
+    assert (roster.dropped, roster.unregistered) == (1, 1)
 
 
 def test_only_four_fields_are_kept() -> None:

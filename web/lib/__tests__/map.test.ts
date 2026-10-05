@@ -18,6 +18,8 @@ import {
   generatedAtLabel,
   isStale,
   shiftDate,
+  toPlayer,
+  toPlayers,
   toAccuracy,
   toClub,
   toGame,
@@ -237,4 +239,82 @@ test('ローカル D1 の実応答で的中数と言い換えが出る', () => {
   assert.equal(correctCount(0.5, 2), 1);
   assert.equal(calibrationNote(0.24, 1), '予想を 76.0ポイント上回っています。');
   assert.equal(calibrationNote(0.82, 1), '予想を 18.0ポイント上回っています。');
+});
+
+// --- 個人スタッツ（工程12c。詳細設計 4.2 / 3.3） ---
+
+function rawPlayer(over: Record<string, unknown> = {}) {
+  return {
+    playerId: 'p1',
+    name: '架空 選手',
+    position: 'PG',
+    clubId: '703',
+    availProb: 0.95,
+    summary: { min: 31.2, pts: 18.4, reb: 3.1, ast: 6.1 },
+    error: { min: null, pts: null, reb: null, ast: null },
+    box: {
+      fg: { m: 6.4, a: 13.1, pct: 0.489 },
+      fg2: { m: 4.1, a: 7.8, pct: 0.526 },
+      fg3: { m: 2.3, a: 5.3, pct: 0.434 },
+      ft: { m: 3.3, a: 3.9, pct: 0.846 },
+      oreb: 0.6,
+      dreb: 2.5,
+      ast: 6.1,
+      tov: 2.2,
+      stl: 1.1,
+      blk: 0.3,
+      pf: 2.4,
+      fd: 3.1,
+      efgPct: 0.577,
+      tsPct: 0.601,
+    },
+    ...over,
+  };
+}
+
+test('導出値はサーバのものをそのまま使う', () => {
+  // **画面で計算しない**（ui-implementation スキル）。実装ごとにずれる
+  const player = toPlayer(rawPlayer());
+  assert.equal(player.derived.pts, 18.4);
+  assert.equal(player.derived.reb, 3.1);
+  assert.equal(player.derived.fg.pct, 0.489);
+  assert.equal(player.derived.efgPct, 0.577);
+});
+
+test('率が null なら null のまま渡す', () => {
+  // **試投数が閾値未満**という意味であり、0 ではない（詳細設計 3.3 の閾値表）
+  const raw = rawPlayer({
+    box: { ...rawPlayer().box, ft: { m: 0.8, a: 1.0, pct: null } },
+  });
+  const player = toPlayer(raw);
+  assert.equal(player.derived.ft.pct, null);
+});
+
+test('誤差の目安は null のまま渡す', () => {
+  // 要件 6.8.6 の `N` が未定義で、実績の対比が1件もない（詳細設計 2.3.1）。
+  // **0 を入れない** — 0 は「誤差がない」という意味を持ってしまう
+  const player = toPlayer(rawPlayer());
+  assert.deepEqual(player.err, { minutes: null, pts: null, reb: null, ast: null });
+});
+
+test('ポジションが未登録なら null', () => {
+  // 本番のロスターに実在する（詳細設計 1.2）。落とさず NULL で残す
+  const player = toPlayer(rawPlayer({ position: null }));
+  assert.equal(player.position, null);
+});
+
+test('5値のどれでもないポジションは null にする', () => {
+  // **型が嘘にならないようにする。** 取り込みは落とすが、画面は信じきらない
+  const player = toPlayer(rawPlayer({ position: 'G' }));
+  assert.equal(player.position, null);
+});
+
+test('形が合わない行は落とす', () => {
+  const list = [rawPlayer(), { playerId: 'p2' }, rawPlayer({ playerId: 'p3' })];
+  const players = toPlayers(list);
+  assert.deepEqual(players.map((p) => p.playerId), ['p1', 'p3']);
+});
+
+test('空の一覧は空を返す（例外にしない）', () => {
+  assert.deepEqual(toPlayers([]), []);
 });

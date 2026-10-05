@@ -11,7 +11,7 @@ import type {
   Meta,
   ReasonShape,
 } from '@/lib/source';
-import type { AccuracyView, Club, GameView, ReasonView } from '@/lib/view';
+import type { AccuracyView, Club, GameView, PlayerView, ReasonView } from '@/lib/view';
 
 /** 遅延と判定する間隔（時間。基本設計 4.5）。 */
 export const STALE_HOURS = 24;
@@ -188,4 +188,119 @@ export function calibrationNote(predicted: number, actual: number): string {
   return gap < 0
     ? `予想を ${amount}ポイント下回っています。`
     : `予想を ${amount}ポイント上回っています。`;
+}
+
+/** 試合詳細の `playerPredictions[]`（詳細設計 3.3 / 3.7）。 */
+type RawShooting = { m: number; a: number; pct: number | null };
+type RawPlayer = {
+  playerId: string;
+  name: string;
+  position: string | null;
+  clubId: string;
+  availProb: number;
+  summary: { min: number; pts: number; reb: number; ast: number };
+  error: {
+    min: number | null;
+    pts: number | null;
+    reb: number | null;
+    ast: number | null;
+  };
+  box: {
+    fg: RawShooting;
+    fg2: RawShooting;
+    fg3: RawShooting;
+    ft: RawShooting;
+    oreb: number;
+    dreb: number;
+    ast: number;
+    tov: number;
+    stl: number;
+    blk: number;
+    pf: number;
+    fd: number;
+    efgPct: number | null;
+    tsPct: number | null;
+  };
+};
+
+const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
+
+/**
+ * ポジション。**5値のどれでもなければ null** にする。
+ *
+ * 取り込みは5値のどれでもない値を落とすが（詳細設計 1.2）、**画面はサーバを
+ * 信じきらない** — 列挙にない値をそのまま出すと、型が嘘になる。
+ */
+function asPosition(value: string | null): PlayerView['position'] {
+  if (value === null) return null;
+  return (POSITIONS as readonly string[]).includes(value)
+    ? (value as PlayerView['position'])
+    : null;
+}
+
+/**
+ * **導出はサーバが済ませている。** `summary` / `box` をそのまま写すだけで、
+ * 得点・リバウンド・率をここで計算しない（ui-implementation スキル）。
+ * クライアントで計算すると実装ごとにずれる。
+ *
+ * **`pct` が null は「試投数が閾値未満で率を出さない」**（詳細設計 3.3 の閾値表）。
+ * 閾値の判定もサーバ側にあり、ここでは判定しない。
+ */
+export function toPlayer(raw: RawPlayer): PlayerView {
+  const box = raw.box;
+  return {
+    playerId: raw.playerId,
+    name: raw.name,
+    position: asPosition(raw.position),
+    availProb: raw.availProb,
+    minutes: raw.summary.min,
+    fg2a: box.fg2.a,
+    fg3a: box.fg3.a,
+    fta: box.ft.a,
+    fg2Pct: box.fg2.a > 0 ? box.fg2.m / box.fg2.a : 0,
+    fg3Pct: box.fg3.a > 0 ? box.fg3.m / box.fg3.a : 0,
+    ftPct: box.ft.a > 0 ? box.ft.m / box.ft.a : 0,
+    oreb: box.oreb,
+    dreb: box.dreb,
+    ast: box.ast,
+    tov: box.tov,
+    stl: box.stl,
+    blk: box.blk,
+    pf: box.pf,
+    fd: box.fd,
+    err: {
+      minutes: raw.error.min,
+      pts: raw.error.pts,
+      reb: raw.error.reb,
+      ast: raw.error.ast,
+    },
+    derived: {
+      pts: raw.summary.pts,
+      reb: raw.summary.reb,
+      fg: box.fg,
+      fg2: box.fg2,
+      fg3: box.fg3,
+      ft: box.ft,
+      efgPct: box.efgPct,
+    },
+  };
+}
+
+/**
+ * 形が合わない行は落とす。**件数は呼び出し側が見る** — 画面は
+ * 「0人なら出さない」だけで、何人落ちたかを主張しない。
+ */
+export function toPlayers(list: unknown[]): PlayerView[] {
+  const out: PlayerView[] = [];
+  for (const item of list) {
+    const raw = item as Partial<RawPlayer>;
+    if (
+      typeof raw.playerId !== 'string'
+      || raw.summary === undefined
+      || raw.box === undefined
+      || raw.error === undefined
+    ) continue;
+    out.push(toPlayer(raw as RawPlayer));
+  }
+  return out;
 }

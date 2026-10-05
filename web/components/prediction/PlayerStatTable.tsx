@@ -16,6 +16,16 @@ function Shooting({ value }: { value: { m: number; a: number; pct: number | null
   );
 }
 
+/**
+ * 誤差の目安。**null なら何も出さない**（要件 6.8.6 の `N` が未定義であり、
+ * 過去の個人予測と実績の対比が1件もない。詳細設計 2.3.1）。
+ * **0 と書かない** — 0 は「誤差がない」という意味を持ってしまう。
+ */
+function Error_({ value }: { value: number | null }) {
+  if (value === null) return null;
+  return <span className="text-ink-2"> ±{value.toFixed(1)}</span>;
+}
+
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-2 py-0.5">
@@ -38,7 +48,7 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
     <section className="mt-6">
       <h3 className="text-[15px] font-extrabold">個人スタッツ予測</h3>
       <p className="mt-1 text-[11px] leading-relaxed text-ink-3">
-        出場確率50%以上の選手を表示しています。± は直近の試合における誤差の目安です。
+        出場確率50%以上の選手を表示しています。
       </p>
       <ul className="mt-2 flex flex-col gap-1.5">
         {shown.map((player) => {
@@ -49,7 +59,10 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
               <details>
                 <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-2">
                   <span className="w-24 shrink-0 truncate text-[13px] font-bold">{player.name}</span>
-                  <span className="w-7 shrink-0 text-[11px] text-ink-2">{player.position}</span>
+                  {/* 未登録は「—」。**空にしない** — 列が詰まって見える */}
+                  <span className="w-7 shrink-0 text-[11px] text-ink-2">
+                    {player.position ?? '—'}
+                  </span>
                   <span className="flex-1 text-right text-[13px]">{player.minutes.toFixed(1)}分</span>
                   <span className="w-11 text-right text-[13px] font-bold">{d.pts.toFixed(1)}</span>
                   <span className="w-9 text-right text-[13px]">{d.reb.toFixed(1)}</span>
@@ -63,10 +76,12 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
                 </summary>
                 <dl className="border-t border-rule px-3 py-2">
                   <Row label="出場時間">
-                    {player.minutes.toFixed(1)}分 <span className="text-ink-2">±{player.err.minutes.toFixed(1)}</span>
+                    {player.minutes.toFixed(1)}分
+                    <Error_ value={player.err.minutes} />
                   </Row>
                   <Row label="得点">
-                    {d.pts.toFixed(1)} <span className="text-ink-2">±{player.err.pts.toFixed(1)}</span>
+                    {d.pts.toFixed(1)}
+                    <Error_ value={player.err.pts} />
                   </Row>
                   <Row label="FG">
                     <Shooting value={d.fg} />
@@ -81,14 +96,16 @@ export function PlayerStatTable({ players }: { players: PlayerView[] }) {
                     <Shooting value={d.ft} />
                   </Row>
                   <Row label="リバウンド">
-                    {d.reb.toFixed(1)} <span className="text-ink-2">±{player.err.reb.toFixed(1)}</span>
+                    {d.reb.toFixed(1)}
+                    <Error_ value={player.err.reb} />
                     <span className="text-ink-2">
                       {' '}
                       （OR {player.oreb.toFixed(1)} / DR {player.dreb.toFixed(1)}）
                     </span>
                   </Row>
                   <Row label="アシスト">
-                    {player.ast.toFixed(1)} <span className="text-ink-2">±{player.err.ast.toFixed(1)}</span>
+                    {player.ast.toFixed(1)}
+                    <Error_ value={player.err.ast} />
                   </Row>
                   <Row label="ターンオーバー">{player.tov.toFixed(1)}</Row>
                   <Row label="スティール">{player.stl.toFixed(1)}</Row>

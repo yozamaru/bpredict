@@ -11,6 +11,10 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
+    // `node --test` が TypeScript を直に実行するため、テストの import は
+    // 拡張子つき（`../map.ts`）で書く必要がある。`noEmit` との併用は許される。
+    // **テストも型検査の対象に残す**（除外すると静かに型が崩れる）
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

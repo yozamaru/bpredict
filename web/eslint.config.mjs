@@ -29,4 +29,11 @@ export default tseslint.config(
       globals: { URL: 'readonly', console: 'readonly', process: 'readonly' },
     },
   },
+  {
+    // 単体テスト。`node:test` の `test()` は Promise を返すが、**実行器が待つ**
+    // （テスト側で await すると、1件ごとに直列化されて意味が変わる）。
+    // この1件だけを外す — 型情報つきの検査そのものは残す（除くと静かに型が崩れる）
+    files: ['lib/__tests__/**/*.ts'],
+    rules: { '@typescript-eslint/no-floating-promises': 'off' },
+  },
 );

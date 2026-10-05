@@ -33,8 +33,8 @@ from batch.model.dataset import (
     PlayerMinutesData,
     PlayerRateData,
 )
-from batch.model.evaluate import MAX_FOLDS, Evaluation, walk_forward
-from batch.model.params import NUM_BOOST_ROUND_MAX
+from batch.model.evaluate import Evaluation, walk_forward
+from batch.model.params import NUM_BOOST_ROUND_MAX, PLAYER_MAX_FOLDS
 from batch.model.train_score import learn_score
 from batch.model.train_winner import learn_winner
 
@@ -120,7 +120,7 @@ def recent_learner(column: str = "minutes_l5_player") -> Callable[
 
 
 def evaluate_minutes(
-    data: PlayerMinutesData, *, max_folds: int = MAX_FOLDS,
+    data: PlayerMinutesData, *, max_folds: int = PLAYER_MAX_FOLDS,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
 ) -> Evaluation:
     """第2段の walk-forward 評価。**分割器を2つ作らない**（`evaluate.py`）。
@@ -139,7 +139,7 @@ def evaluate_minutes(
 
 
 def evaluate_baseline(
-    data: PlayerMinutesData, *, max_folds: int = MAX_FOLDS,
+    data: PlayerMinutesData, *, max_folds: int = PLAYER_MAX_FOLDS,
     learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
 ) -> Evaluation:
     """同じ fold でベースラインを測る。**同一の分割で比べる**（4.6）。
@@ -289,7 +289,7 @@ def ratio_learner(column: str = "games_played_ratio_l10") -> Callable[
 
 
 def evaluate_avail(
-    data: PlayerAvailData, *, max_folds: int = MAX_FOLDS,
+    data: PlayerAvailData, *, max_folds: int = PLAYER_MAX_FOLDS,
     num_boost_round: int = NUM_BOOST_ROUND_MAX,
     calibrated: bool = False,
     on_calibrator: Callable[[Platt], None] | None = None,
@@ -532,7 +532,7 @@ def rate_recent_learner(target: str) -> Callable[
 
 def evaluate_rate(
     data: PlayerRateData, target: str, *, k: float = SHRINK_K_INITIAL,
-    max_folds: int = MAX_FOLDS, num_boost_round: int = NUM_BOOST_ROUND_MAX,
+    max_folds: int = PLAYER_MAX_FOLDS, num_boost_round: int = NUM_BOOST_ROUND_MAX,
     learner: Callable[..., tuple[Callable[[pd.DataFrame], Floats], int]] | None = None,
     provider: MinutesProvider | None = None,
 ) -> Evaluation:

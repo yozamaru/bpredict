@@ -296,26 +296,32 @@ def prediction_payload(
     features: Mapping[str, float],
     model_versions: Mapping[str, str],
     reasons: Sequence[Mapping[str, object]] = (),
+    team_targets: Sequence[Mapping[str, object]] = (),
+    player_predictions: Sequence[Mapping[str, object]] = (),
+    rate_versions: Mapping[tuple[str, str], str] | None = None,
 ) -> dict[str, object]:
     """`POST /internal/predictions` の本文（詳細設計 4.2 のステップ4）。
 
     **1リクエストに1試合である**（3.4 の口がそう作られている）。
 
-    **出せないものはキーを送らない。** `teamTargets` / `playerPredictions` は、
-    TeamRate が未登録（4.5.1）・個人スタッツの第1段と第3段が組めない（2.3.1）
-    ため0件になる。**`teamTargets` は「2件か0件」でなければ Zod が拒否する** —
-    1件は片側だけ整合化した状態であり、原理的に誤りである。
+    **`teamTargets` は「2件か0件」でなければ Zod が拒否する** — 1件は片側だけ
+    整合化した状態であり、原理的に誤りである。**個人スタッツも両チーム揃って
+    初めて送る**（4.2）— 画面は「ホームだけフルボックススコアがある」状態を
+    想定していない。
 
-    **`reasons` は工程13 で出るようになったが、現在の21列では2件である**
-    （`VENUE` に該当列がなく、`PLAYER` の3列は定数で寄与が厳密に 0。2.7.1）。
-    **したがって受け入れ基準 A-01（根拠3件以上と個人スタッツ）は依然として
-    満たさない。** 満たさないことを承知のうえで、勝敗確率と予想スコアを先に通す。
+    **`reasons` は現在の21列では2件である**（`VENUE` に該当列がなく、`PLAYER` の
+    3列は定数で寄与が厳密に 0。2.7.1）。**したがって受け入れ基準 A-01 の
+    「根拠3件以上」は依然として満たさない。** 満たさないことを承知のうえで通す。
 
     **`isProvisional` は常に 1。** エントリー情報を取得していない（`game_entries`
     は0行）。確定するのは `gameday_update` が入ってからである。
     """
     if not model_versions:
         raise PayloadError("使ったモデルの版が空である")
+    if len(team_targets) == 1:
+        raise PayloadError("teamTargets は2件か0件（片側だけは原理的に誤り）")
+    if player_predictions and not team_targets:
+        raise PayloadError("チーム目標なしに個人スタッツを送れない")
     return {
         "gameId": game_id,
         "seasonId": season_id,
@@ -337,9 +343,80 @@ def prediction_payload(
         "modelBundle": [
             {"modelType": model_type, "target": "", "modelVersion": version}
             for model_type, version in model_versions.items()
+        ] + [
+            # **30本は `target` を持つ**（4.5.1）。`prediction_model_bundle` の
+            # 主キーは `(prediction_id, model_type, target)` であり、14本を
+            # `target` なしで入れると1本目以外が主キー違反で落ちる
+            {"modelType": model_type, "target": target, "modelVersion": version}
+            for (model_type, target), version in sorted(
+                (rate_versions or {}).items())
         ],
         **({"reasons": [dict(r) for r in reasons]} if reasons else {}),
+        **({"teamTargets": [dict(r) for r in team_targets]} if team_targets else {}),
+        **(
+            {"playerPredictions": [dict(r) for r in player_predictions]}
+            if player_predictions else {}
+        ),
     }
+
+
+#: 整合化の14項目 → `prediction_team_targets` の列（詳細設計 1.5）。
+#: **キーを2箇所に書かない** — 整合化の集合は `batch/model/reconcile.py` が正で、
+#: ここは DB の列名への写しだけを持つ。
+TEAM_TARGET_COLUMNS: Mapping[str, str] = {
+    "fg2a": "tgtFg2a", "fg3a": "tgtFg3a", "fta": "tgtFta",
+    "fg2_pct": "tgtFg2Pct", "fg3_pct": "tgtFg3Pct", "ft_pct": "tgtFtPct",
+    "oreb": "tgtOreb", "dreb": "tgtDreb", "ast": "tgtAst", "tov": "tgtTov",
+    "stl": "tgtStl", "blk": "tgtBlk", "pf": "tgtPf", "fd": "tgtFd",
+}
+
+#: 同じ14項目 → `player_predictions` の列。
+PLAYER_COLUMNS: Mapping[str, str] = {
+    "fg2a": "predFg2a", "fg3a": "predFg3a", "fta": "predFta",
+    "fg2_pct": "predFg2Pct", "fg3_pct": "predFg3Pct", "ft_pct": "predFtPct",
+    "oreb": "predOreb", "dreb": "predDreb", "ast": "predAst", "tov": "predTov",
+    "stl": "predStl", "blk": "predBlk", "pf": "predPf", "fd": "predFd",
+}
+
+
+def team_target_payload(
+    *, club_id: str, is_home: bool, targets: Mapping[str, float],
+) -> dict[str, object]:
+    """`prediction_team_targets` の1行（整合化の前段を通した後の値）。
+
+    **成功率は `[0, 1]` を出ない**（ロジット空間でシフトしたため）。それでも
+    DB の CHECK 制約があるため、**ここで丸めない** — 出たら Zod が 400 を返し、
+    上流の欠陥として気づけるようにする（無言でクリップしない。2.4）。
+    """
+    missing = sorted(k for k in TEAM_TARGET_COLUMNS if k not in targets)
+    if missing:
+        raise PayloadError(f"チーム目標に項目が足りない: {missing}")
+    row: dict[str, object] = {"clubId": club_id, "isHome": 1 if is_home else 0}
+    for key, column in TEAM_TARGET_COLUMNS.items():
+        row[column] = float(targets[key])
+    return row
+
+
+def player_prediction_payload(
+    *, player_id: str, club_id: str, avail_prob: float, minutes: float,
+    counts: Mapping[str, float], pcts: Mapping[str, float],
+) -> dict[str, object]:
+    """`player_predictions` の1行（整合化を通した後の値）。
+
+    **`err_*` は送らない。** 要件 6.8.6 の `N`（直近N試合）が未定義であり、
+    過去の個人予測と実績の対比が1件もない（2.3.1）。**0 を入れない** —
+    0 は「誤差がない」という意味を持ってしまう。
+    """
+    row: dict[str, object] = {
+        "playerId": player_id, "clubId": club_id,
+        "availProb": float(avail_prob), "predMinutes": float(minutes),
+    }
+    for key, column in PLAYER_COLUMNS.items():
+        source = pcts if key.endswith("_pct") else counts
+        if key not in source:
+            raise PayloadError(f"選手予測に項目が足りない: {key}")
+        row[column] = float(source[key])
+    return row
 
 
 #: `POST /internal/games` の本文のキー → スナップショットの列（詳細設計 4.2 のステップ2）。

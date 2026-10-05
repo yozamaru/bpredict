@@ -93,7 +93,12 @@ export type ReasonView = {
 export type PlayerView = {
   playerId: string;
   name: string;
-  position: 'PG' | 'SG' | 'SF' | 'PF' | 'C';
+  /**
+   * **null を許す。** 本番のロスターにはポジション未登録の選手が実在する
+   * （2026-27 のクラブ 712 に1名。詳細設計 1.2）。**落とすと登録選手が
+   * 候補一覧から消える**ため、NULL で残すのが設計の判断である。
+   */
+  position: 'PG' | 'SG' | 'SF' | 'PF' | 'C' | null;
   availProb: number;
   minutes: number;
   fg2a: number;
@@ -110,12 +115,23 @@ export type PlayerView = {
   blk: number;
   pf: number;
   fd: number;
-  /** 誤差の目安は主要4項目のみ（要件 6.8.6） */
-  err: { minutes: number; pts: number; reb: number; ast: number };
+  /**
+   * 誤差の目安は主要4項目のみ（要件 6.8.6）。
+   *
+   * **null を許す。** 定義は「当該選手の直近N試合の絶対誤差の中央値」だが、
+   * **`N` が未定義で、過去の個人予測と実績の対比が1件もない**（詳細設計 2.3.1）。
+   * **0 を入れない** — 0 は「誤差がない」という意味を持ってしまう。
+   */
+  err: {
+    minutes: number | null;
+    pts: number | null;
+    reb: number | null;
+    ast: number | null;
+  };
   /**
    * 導出値。**サーバが導出した値をそのまま表示する**（ui-implementation スキル）。
-   * クライアントで計算すると実装ごとにずれる。11b では API の
-   * `summary` / `box`（詳細設計 3.3）がこの位置に入る。
+   * クライアントで計算すると実装ごとにずれる。**ここに入るのは API と静的JSON の
+   * `summary` / `box`（詳細設計 3.3 / 3.7）である。**
    * `pct` が null は「試投数が閾値未満で率を出さない」を意味する。
    */
   derived: {
@@ -128,35 +144,6 @@ export type PlayerView = {
     efgPct: number | null;
   };
 };
-
-/** 試投数が閾値未満なら率を出さない（詳細設計 3.3 の閾値表） */
-export const PCT_THRESHOLD = { fg: 4, split: 3, ft: 3 } as const;
-
-/**
- * 導出の規則。**画面からは呼ばない。** 11a では fixture（サーバ役）が使い、
- * 11b では API が同じ導出を行う。恒等式は要件 6.8.2 にある。
- */
-export function derive(
-  source: Omit<PlayerView, 'derived'>,
-): PlayerView['derived'] {
-  const fg2m = source.fg2Pct * source.fg2a;
-  const fg3m = source.fg3Pct * source.fg3a;
-  const ftm = source.ftPct * source.fta;
-  const fga = source.fg2a + source.fg3a;
-  const fgm = fg2m + fg3m;
-  const show = (attempted: number, threshold: number, pct: number) =>
-    attempted >= threshold ? pct : null;
-  return {
-    // 得点は恒等式で導出する。独立に予測しない
-    pts: fg2m * 2 + fg3m * 3 + ftm,
-    reb: source.oreb + source.dreb,
-    fg: { m: fgm, a: fga, pct: show(fga, PCT_THRESHOLD.fg, fga > 0 ? fgm / fga : 0) },
-    fg2: { m: fg2m, a: source.fg2a, pct: show(source.fg2a, PCT_THRESHOLD.split, source.fg2Pct) },
-    fg3: { m: fg3m, a: source.fg3a, pct: show(source.fg3a, PCT_THRESHOLD.split, source.fg3Pct) },
-    ft: { m: ftm, a: source.fta, pct: show(source.fta, PCT_THRESHOLD.ft, source.ftPct) },
-    efgPct: show(fga, PCT_THRESHOLD.fg, fga > 0 ? (fgm + 0.5 * fg3m) / fga : 0),
-  };
-}
 
 /**
  * 状態バッジの種類。**該当しなければ null で、何も出さない。**

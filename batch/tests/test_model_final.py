@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ import pytest
 from batch.model import final
 from batch.model.dataset import TrainingData
 from batch.model.evaluate import Evaluation, Fold
+from batch.model.final import RateEvaluations, team_rate_targets, version_of
 from batch.model.registry import load_logistic, load_logistic_means
 
 
@@ -194,3 +196,55 @@ def test_a_non_positive_sigma_is_rejected() -> None:
     degenerate = Evaluation(folds=(fold("s2", 80, flat, flat),))
     with pytest.raises(final.FinalFitError):
         final.build_records(fake_data(), evaluations(margin=degenerate))
+
+
+# ---------------------------------------------------------------------------
+# 30本（詳細設計 4.5.1。v1.114）
+# ---------------------------------------------------------------------------
+
+
+def test_the_version_carries_the_target() -> None:
+    """**`target` を持つ28本は版に `target` を挟む**（詳細設計 4.5.1）。
+
+    `model_versions.version` は主キーであり、`TEAM_RATE` の14本は `model_type`
+    が同じである。14本すべてが `team_rate-v1.0.0` になると、**1本目の登録で
+    以後13本が主キー違反で落ちる。**
+    """
+    assert version_of("TEAM_RATE", "1.0.0", "fg2a") == "team_rate-fg2a-v1.0.0"
+    assert version_of("PLAYER_RATE", "1.2.3", "fg3_pct") == (
+        "player_rate-fg3_pct-v1.2.3")
+    # `target` を持たないものは従来どおり
+    assert version_of("WINNER", "1.0.0") == "winner-v1.0.0"
+    assert version_of("PLAYER_AVAIL", "1.0.0", "") == "player_avail-v1.0.0"
+
+
+def test_every_target_gets_its_own_version() -> None:
+    """14本の版が重複しない（主キーが衝突しないことの直接の検査）。"""
+    versions = {version_of("TEAM_RATE", "1.0.0", t) for t in team_rate_targets()}
+    assert len(versions) == 14
+
+
+def test_the_targets_come_from_the_feature_module() -> None:
+    """**14項目の出どころは `features/team_rate.py` が正**（4.5.1）。
+
+    `final.py` に写しを持つと、項目を増やしたときに片方だけが古くなる。
+    """
+    from batch.features.team_rate import TARGETS
+
+    assert team_rate_targets() == tuple(TARGETS)
+
+
+def test_missing_evaluations_are_named() -> None:
+    """**14本が揃っていなければ登録しない**（4.5.1）。黙って少なく登録しない。"""
+    evaluation = cast("Any", object())
+    partial = RateEvaluations(
+        team_rate={"fg2a": evaluation}, team_rate_baseline={"fg2a": evaluation},
+        avail=evaluation, avail_baseline=evaluation,
+        minutes=evaluation, minutes_baseline=evaluation,
+        player_rate={}, player_rate_baseline={},
+    )
+    absent = partial.missing()
+    # TEAM_RATE は13本、PLAYER_RATE は14本足りない
+    assert len(absent) == 27
+    assert "TEAM_RATE/fg2a" not in absent
+    assert "PLAYER_RATE/fg2a" in absent

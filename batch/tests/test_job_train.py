@@ -8,15 +8,40 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 import pytest
+from numpy.typing import NDArray
 
+from batch.features.team_rate import TARGETS
 from batch.jobs import train
-from batch.model.dataset import TrainingData, time_decay_weights
+from batch.model.criteria import Decision
+from batch.model.dataset import (
+    PlayerAvailData,
+    PlayerMinutesData,
+    PlayerRateData,
+    TeamRateData,
+    TrainingData,
+    time_decay_weights,
+)
 from batch.model.evaluate import Fold
 from batch.model.params import TIME_DECAY_LAMBDA_INITIAL
+from batch.model.registry import ModelRecord
+from batch.model.train_player import (
+    SHRINK_K,
+    SHRINK_K_INITIAL,
+    rate_model_features,
+    rate_target,
+    usable_rate_rows,
+)
+from batch.tests.test_train_player import fake_data as fake_minutes_data
+from batch.tests.test_train_player_avail import fake_data as fake_avail_data
+from batch.tests.test_train_player_rates import fake_data as fake_rate_data
+from batch.tests.test_train_team_rates import fake_data as fake_team_rate_data
+
+type Floats = NDArray[np.float64]
 
 SEASONS = ("s1", "s2", "s3", "s4")
 
@@ -504,6 +529,38 @@ def fake_report(*, adopt: bool) -> train.Report:
     )
 
 
+def fake_rate_report(*, adopt: bool = True) -> train.RateReport:
+    """30本の判定だけを持つ `RateReport`（評価そのものは別のテストで見る）。"""
+    names = ["PLAYER_AVAIL", "PLAYER_MIN"]
+    for target in TARGETS:
+        names += [f"TEAM_RATE/{target}", f"PLAYER_RATE/{target}"]
+    assert len(names) == 30
+    decisions = {
+        name: Decision(adopt=True, failures=[], notes=[]) for name in names
+    }
+    if not adopt:
+        decisions["TEAM_RATE/fg2a"] = Decision(
+            adopt=False, failures=["想定外の定数列がある（own_fg2a_l10）"], notes=[])
+    return train.RateReport(
+        evaluations=cast("train.RateEvaluations", object()),
+        decisions=decisions,
+        rows={name: 1200 for name in names},
+    )
+
+
+def fake_rate_records(count: int = 30) -> list[ModelRecord]:
+    """30本ぶんの `ModelRecord`（中身は登録の検査に使わない）。"""
+    out: list[ModelRecord] = []
+    for index in range(count):
+        out.append(ModelRecord(
+            version=f"team_rate-x{index}-v1.0.0", model_type="TEAM_RATE",
+            target=f"x{index}", algo="lightgbm", trained_at="2026-10-05T00:00:00Z",
+            train_rows=1200, train_range="s1..s3", eval_window="s3..s3",
+            params={}, feature_list=["pace_own"], artifact_text="tree\n",
+        ))
+    return out
+
+
 def test_register_sends_nothing_when_the_criteria_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -515,24 +572,96 @@ def test_register_sends_nothing_when_the_criteria_fail(
     api = FakeApi()
     data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
     versions = train.register_models(
-        data, fake_report(adopt=False), api=api, log=lambda _m: None)  # type: ignore[arg-type]
+        data, fake_report(adopt=False), api=api,  # type: ignore[arg-type]
+        rates=fake_rate_report(), matrices=cast("Any", (1, 2, 3, 4)),
+        log=lambda _m: None)
     assert versions == []
     assert api.sent == []
 
 
-def test_register_activates_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
-    """判定を通ったら3本とも `activate=True` で送る。"""
+def test_register_sends_nothing_without_the_rate_evaluation() -> None:
+    """**30本の評価が無ければ登録しない**（詳細設計 4.5.1）。
+
+    勝敗の3本だけを入れ替えると、登録済みの30本（前の世代）と組み合わさる。
+    `prediction_model_bundle` が1予測につき33行を記録することに意味があるのは、
+    33本が同じ世代であるときだけである。
+    """
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    lines: list[str] = []
+    versions = train.register_models(
+        data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+        log=lines.append)
+    assert versions == []
+    assert api.sent == []
+    assert any("30本の評価がない" in line for line in lines)
+
+
+def test_register_sends_nothing_when_one_rate_model_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**1本でも落ちたら33本とも登録しない**（詳細設計 4.5.1）。
+
+    個人スタッツはチーム予測に整合化してから保存するため（2.4）、一部だけ
+    世代を入れ替えると整合化の両側が別の世代のモデルから出る。
+    """
     monkeypatch.setattr(
         "batch.model.final.train_final",
         lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
     )
     api = FakeApi()
     data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    lines: list[str] = []
     versions = train.register_models(
-        data, fake_report(adopt=True), api=api, log=lambda _m: None)  # type: ignore[arg-type]
-    assert versions == ["winner-v1.0.0", "margin-v1.0.0", "total-v1.0.0"]
-    assert [p for p, _ in api.sent] == ["models"] * 3
+        data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+        rates=fake_rate_report(adopt=False), matrices=cast("Any", (1, 2, 3, 4)),
+        log=lines.append)
+    assert versions == []
+    assert api.sent == []
+    assert any("33本とも登録しない" in line for line in lines)
+
+
+def test_register_activates_all_thirty_three(monkeypatch: pytest.MonkeyPatch) -> None:
+    """判定を通ったら**33本とも** `activate=True` で送る（詳細設計 4.5.1）。"""
+    monkeypatch.setattr(
+        "batch.model.final.train_final",
+        lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
+    )
+    monkeypatch.setattr(
+        train, "build_rate_records", lambda **_k: fake_rate_records())
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    versions = train.register_models(
+        data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+        rates=fake_rate_report(), matrices=cast("Any", (1, 2, 3, 4)),
+        log=lambda _m: None)
+    assert versions[:3] == ["winner-v1.0.0", "margin-v1.0.0", "total-v1.0.0"]
+    assert len(versions) == 33
+    assert [p for p, _ in api.sent] == ["models"] * 33
     assert all(body["activate"] is True for _p, body in api.sent)
+
+
+def test_register_refuses_a_count_other_than_thirty_three(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**本数を検査する**（詳細設計 4.5.1）。
+
+    14本のどれかが静かに抜けると、推論が「30本が揃っていない」として個人
+    スタッツを出さなくなる（4.2）。**気づけるように落とす。**
+    """
+    monkeypatch.setattr(
+        "batch.model.final.train_final",
+        lambda f, a, w, *, num_boost_round, params=None: (object(), "tree\n"),
+    )
+    monkeypatch.setattr(
+        train, "build_rate_records", lambda **_k: fake_rate_records(29))
+    api = FakeApi()
+    data = fake_data(per_season=40, seasons=("s1", "s2", "s3"))
+    with pytest.raises(train.TrainError, match="33"):
+        train.register_models(
+            data, fake_report(adopt=True), api=api,  # type: ignore[arg-type]
+            rates=fake_rate_report(), matrices=cast("Any", (1, 2, 3, 4)),
+            log=lambda _m: None)
 
 
 def test_an_unmet_gate_is_not_a_failure() -> None:
@@ -568,3 +697,109 @@ def test_register_needs_the_score_evaluations() -> None:
     without = train.replace(report, margin=None, total=None)
     with pytest.raises(train.TrainError):
         train.evaluations_of(without)
+
+# --- 30本の判定（詳細設計 4.5.1） ---
+#
+# **`evaluate_rates` は monkeypatch する。** 46本の当てはめを CI で回す必要はない
+# （評価そのものは各 train モジュールのテストが見る）。ここで見たいのは
+# **判定に渡す表**であり、そこが実データで14本すべてを落としていた。
+
+
+def flat(data: TrainingData, target: Floats, *, folds: int = 3) -> train.Evaluation:
+    """**学習しない** `Evaluation`（判定の経路だけを通す）。"""
+    return train.walk_forward(
+        data,
+        lambda tx, ty, tw, vx, vy: ((lambda f: np.full(len(f), float(ty.mean()))), 20),
+        target=target, max_folds=folds,
+    )
+
+
+def spread(
+    data: TrainingData, target: Floats, column: str | None = None, *, folds: int = 3,
+) -> train.Evaluation:
+    """二値分類の `Evaluation`。**確率に幅を持たせる** — 定数だと ECE が
+    等頻度10ビンに分かれず、ノイズフロアの推定も意味を失う。
+
+    `column` を渡すとその列をそのまま確率として出す（**ベースラインより良い
+    予測**になる。条件1 は「学習しない予測」を上回ることを求める）。
+    """
+    def predictor(features: pd.DataFrame) -> Floats:
+        if column is None:
+            return np.full(len(features), float(target.mean()))
+        values: Floats = features[column].to_numpy(dtype=np.float64)
+        return np.clip(values, 0.05, 0.95)
+
+    return train.walk_forward(
+        data,
+        lambda tx, ty, tw, vx, vy: (predictor, 20),
+        target=target, max_folds=folds,
+    )
+
+
+def fake_rate_evaluations(
+    team: TeamRateData, avail: PlayerAvailData,
+    minutes: PlayerMinutesData, rate: PlayerRateData,
+) -> train.RateEvaluations:
+    """30本ぶんの `Evaluation`。中身は判定の経路を通すためだけに使う。"""
+    team_ev = {
+        target: flat(team.as_training_data(target), team.target(target))
+        for target in TARGETS
+    }
+    rate_ev: dict[str, train.Evaluation] = {}
+    for target in TARGETS:
+        k = SHRINK_K.get(target, SHRINK_K_INITIAL)
+        subset = rate.subset(usable_rate_rows(rate, target, k))
+        rate_ev[target] = flat(
+            subset.as_training_data(rate_model_features(subset, target, k)),
+            rate_target(subset, target, k))
+    avail_ev = spread(
+        avail.as_training_data(), avail.played, "games_played_ratio_l10")
+    avail_base = spread(avail.as_training_data(), avail.played)
+    minutes_ev = flat(minutes.as_training_data(), minutes.minutes)
+    return train.RateEvaluations(
+        team_rate=team_ev, team_rate_baseline=dict(team_ev),
+        avail=avail_ev, avail_baseline=avail_base,
+        minutes=minutes_ev, minutes_baseline=minutes_ev,
+        player_rate=rate_ev, player_rate_baseline=dict(rate_ev),
+    )
+
+
+def test_the_rate_gate_sees_pred_minutes_filled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**第3段の判定は `pred_minutes` を埋めた表に対して行う**（4.5.1）。
+
+    行列はこの列を NaN で持つため（2.3.1）、埋める前の表を渡すと14本すべてが
+    「欠損率100% / 定数列」で落ちる。**実データで実際にそうなった**（2026-10-05）。
+    """
+    # **n >= 500 を満たす大きさにする**（要件 6.5 の条件1）。満たさないと
+    # `passes_criteria` が他の条件を見ずに返し、**この検査が素通りする**
+    team = fake_team_rate_data(per_season=300)
+    avail = fake_avail_data(per_season=300)
+    minutes = fake_minutes_data(per_season=300)
+    rate = fake_rate_data(per_season=400)
+    monkeypatch.setattr(
+        train, "evaluate_rates",
+        lambda **_: fake_rate_evaluations(team, avail, minutes, rate))
+
+    report = train.evaluate_rate_models(
+        team_data=team, avail_data=avail, minutes_data=minutes, rate_data=rate,
+        log=lambda _: None)
+
+    assert len(report.decisions) == 30
+    failed = {
+        name: d.failures for name, d in report.decisions.items() if not d.adopt
+    }
+    assert failed == {}, failed
+
+
+def test_the_unfilled_matrix_would_fail_the_gate() -> None:
+    """**変異試験。** `pred_minutes` を埋めない表を渡すと必ず落ちること。
+
+    これが落ちなくなったら、上のテストは何も守っていない。
+    """
+    rate = fake_rate_data(per_season=400)
+    features = rate_model_features(rate, "ast", SHRINK_K_INITIAL)
+    decision = train._rate_decision("PLAYER_RATE/ast", features, 1200)
+    assert not decision.adopt
+    assert any("pred_minutes" in f for f in decision.failures)

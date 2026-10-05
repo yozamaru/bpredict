@@ -8,13 +8,14 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { PlayerStatTable } from '@/components/prediction/PlayerStatTable';
 import { ProbabilityBar } from '@/components/prediction/ProbabilityBar';
 import { ReasonList } from '@/components/prediction/ReasonList';
 import { ResultComparison } from '@/components/prediction/ResultComparison';
 import { StatusBadge } from '@/components/prediction/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ACTIONS, LOADING, LOAD_ERROR, NO_PREDICTION } from '@/lib/messages';
-import { toClub, toGame, toReason } from '@/lib/map';
+import { toClub, toGame, toPlayers, toReason } from '@/lib/map';
 import { fetchGameDetail, fetchGameFromApi, type GameDetail } from '@/lib/source';
 import { statusBadgeKind, type GameView, type ReasonView } from '@/lib/view';
 
@@ -55,6 +56,8 @@ export function GameDetailView({ gameId }: { gameId: string }) {
   const away = toClub(game.away);
   const view = toGame({ ...game, prediction: detail.prediction });
   const reasons: ReasonView[] = (detail.prediction?.reasons ?? []).map(toReason);
+  // **導出はサーバが済ませている。** 画面は写すだけ（ui-implementation スキル）
+  const players = toPlayers(detail.playerPredictions);
   // **出す状態が無いときはバッジを出さない。** `statusBadgeKind` は該当なしで
   // null を返す（暫定でも確定でも序盤でもない状態が存在する）
   const badge = view === null ? null : statusBadgeKind(view);
@@ -91,7 +94,8 @@ export function GameDetailView({ gameId }: { gameId: string }) {
           </div>
           {detail.evaluation !== null && <Finished detail={detail} view={view} />}
           {reasons.length > 0 && <Reasons reasons={reasons} view={view} />}
-          <Notes detail={detail} />
+          {players.length > 0 && <PlayerStatTable players={players} />}
+          <Notes detail={detail} players={players.length} />
         </>
       )}
     </>
@@ -158,17 +162,19 @@ function Reasons({ reasons, view }: { reasons: ReasonView[]; view: GameView }) {
 }
 
 /** 出せていないものを隠さない（要件 8.3「予測の確からしさを隠さない」）。 */
-function Notes({ detail }: { detail: GameDetail }) {
+function Notes({ detail, players }: { detail: GameDetail; players: number }) {
   return (
     <ul className="mt-5 list-none space-y-1 p-0 text-[10.5px] leading-relaxed text-ink-3">
       <li className="relative pl-[11px] before:absolute before:left-0 before:text-ink-3 before:content-['—']">
         予想スコアは<b className="font-bold text-ink-2">整数</b>で表示します。
         1試合あたりの平均誤差が8〜10点あるため、小数第1位は精度の誤認を招きます。
       </li>
-      {detail.playerPredictions.length === 0 && (
+      {players === 0 && (
+        // **理由を断定しない。** 出ない原因は複数ある（30本が未登録 /
+        // チーム目標が到達不能で破棄 / 季の1試合目で候補が空）。
+        // 画面で切り分けられないものを断定して書かない
         <li className="relative pl-[11px] before:absolute before:left-0 before:text-ink-3 before:content-['—']">
-          <b className="font-bold text-ink-2">個人スタッツの予測はまだ出していません。</b>
-          出場選手の発表を取り込む仕組みが未実装のためです。
+          <b className="font-bold text-ink-2">この試合の個人スタッツ予測はありません。</b>
         </li>
       )}
       {detail.prediction !== null && detail.prediction.isProvisional && (

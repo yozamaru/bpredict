@@ -70,10 +70,20 @@ class Inputs:
     """判定に使う数値。**測る側が揃えてから渡す。**"""
 
     n: int
-    brier: float
-    baseline_elo_brier: float
     null_rates: Mapping[str, float]
     constant_columns: Sequence[str]
+    #: 確率予測の Brier。**回帰モデルでは None**（要件 6.5 の「条件の射程」）。
+    #: None のとき条件1〜3 を課さない — Brier も ECE も確率予測の指標であり、
+    #: **MAE に対する最小実質差は設計文書のどこにも無い**。ここで発明しない
+    brier: float | None = None
+    #: そのモデルの「学習しない予測」の Brier。勝敗は Elo単体ロジスティック
+    #: 回帰、第1段は「直近10試合の出場率」（詳細設計 4.5.1 の表）。
+    #: **`brier` があるなら必ず要る** — 片方だけ渡すのは呼び出し側の誤りである
+    baseline_elo_brier: float | None = None
+    #: 条件1 の相手の呼び名。**落ちた理由に何と比べたかを残す** —
+    #: 「ベースライン」とだけ出すと、勝敗の Elo単体と第1段の出場率が
+    #: 区別できない（どちらも「学習しない予測」だが別物である）
+    baseline_label: str = "Elo単体"
     ece: float | None = None
     ece_floor: float | None = None
     #: 現行モデルを**同一の評価ウィンドウで再評価した** Brier。
@@ -130,11 +140,49 @@ def passes_criteria(inputs: Inputs) -> Decision:
     failures: list[str] = []
     notes: list[str] = []
 
+    if (inputs.brier is None) != (inputs.baseline_elo_brier is None):
+        raise CriteriaError("Brier とベースラインの片方だけが渡された")
+
+    if inputs.brier is None:
+        # **回帰モデル。** 条件1〜3 を課せない（要件 6.5 の「条件の射程」）。
+        # **黙って飛ばさない** — 課していないことを記録に残す
+        notes.append(
+            "回帰モデルのため条件1〜3（ベースライン比較 / 現行モデルとの有意差 / ECE）"
+            "を課していない — Brier と ECE は確率予測の指標であり、MAE に対する"
+            "最小実質差は設計文書にない（要件 6.5）")
+        if inputs.comparison_blocked is not None:
+            failures.append(
+                f"比較できないため採用しない（{inputs.comparison_blocked}）")
+    else:
+        failures.extend(_probability_failures(inputs, notes))
+
+    # 4. 特徴量の欠損率
+    worst = max(inputs.null_rates.items(), key=lambda kv: kv[1], default=None)
+    if worst is not None and worst[1] > MAX_FEATURE_NULL_RATE:
+        failures.append(f"欠損率が {MAX_FEATURE_NULL_RATE:.0%} を超える特徴量がある（{worst[0]}）")
+
+    # 5. 分散が0の列。**欠損率では捕まらない**（NULL ではなく定数のため）
+    unexpected = [c for c in inputs.constant_columns if c not in KNOWN_CONSTANT]
+    known = [c for c in inputs.constant_columns if c in KNOWN_CONSTANT]
+    if unexpected:
+        failures.append(f"想定外の定数列がある（{' / '.join(sorted(unexpected))}）")
+    for name in sorted(known):
+        notes.append(f"定数列（既知）: {name} — {KNOWN_CONSTANT[name]}")
+
+    return Decision(adopt=not failures, failures=failures, notes=notes)
+
+
+def _probability_failures(inputs: Inputs, notes: list[str]) -> list[str]:
+    """条件1〜3（確率予測にだけ課せるもの）。`notes` に追記する。"""
+    assert inputs.brier is not None and inputs.baseline_elo_brier is not None
+    failures: list[str] = []
+
     # 1. ベースライン（Elo単体ロジスティック回帰）を上回る。
     #    **これを超えられなければ LightGBM を使う理由がない**（要件 6.4）
     if not inputs.brier < inputs.baseline_elo_brier:
         failures.append(
-            f"Brier {inputs.brier:.4f} が Elo単体 {inputs.baseline_elo_brier:.4f} を上回らない"
+            f"Brier {inputs.brier:.4f} が{inputs.baseline_label} "
+            f"{inputs.baseline_elo_brier:.4f} を上回らない"
         )
 
     # 2. 現行モデルとの比較。**同一の評価ウィンドウで再評価した値**を使う
@@ -189,17 +237,4 @@ def passes_criteria(inputs: Inputs) -> Decision:
                 f" 下限 {ECE_THRESHOLD_FLOOR:.4f}）"
             )
 
-    # 4. 特徴量の欠損率
-    worst = max(inputs.null_rates.items(), key=lambda kv: kv[1], default=None)
-    if worst is not None and worst[1] > MAX_FEATURE_NULL_RATE:
-        failures.append(f"欠損率が {MAX_FEATURE_NULL_RATE:.0%} を超える特徴量がある（{worst[0]}）")
-
-    # 5. 分散が0の列。**欠損率では捕まらない**（NULL ではなく定数のため）
-    unexpected = [c for c in inputs.constant_columns if c not in KNOWN_CONSTANT]
-    known = [c for c in inputs.constant_columns if c in KNOWN_CONSTANT]
-    if unexpected:
-        failures.append(f"想定外の定数列がある（{' / '.join(sorted(unexpected))}）")
-    for name in sorted(known):
-        notes.append(f"定数列（既知）: {name} — {KNOWN_CONSTANT[name]}")
-
-    return Decision(adopt=not failures, failures=failures, notes=notes)
+    return failures

@@ -40,6 +40,7 @@ from typing import cast
 
 import pandas as pd
 
+from batch.features.base import build_context
 from batch.features.builder import FEATURE_KEYS, build_features
 from batch.features.dataset import (
     Dataset,
@@ -59,14 +60,28 @@ from batch.loader.api import InternalApi, LoaderError, Poster, RejectedError
 from batch.loader.limits import max_rows_per_request
 from batch.loader.payload import (
     SeasonRef,
+    player_prediction_payload,
     prediction_payload,
     series_numbers,
     snapshot_rows,
+    team_target_payload,
     upcoming_games_payload,
 )
 from batch.model.dataset import as_of
 from batch.model.explain import payload_of as reason_payload
-from batch.model.predict import ActiveModels, PredictError, load_active
+from batch.model.predict import (
+    ActiveModels,
+    PredictError,
+    load_active,
+    load_active_rates,
+)
+from batch.model.predict_players import (
+    BoxScore,
+    BoxScoreError,
+    InfeasibleTargetError,
+    SideBox,
+    predict_box_score,
+)
 from batch.parser.errors import (
     DataUnavailable,
     OutOfScopeError,
@@ -91,7 +106,7 @@ from batch.scraper.client import (
     TransportError,
 )
 from batch.scraper.schedule import schedule_html_url
-from batch.static_json.builder import ReasonInput
+from batch.static_json.builder import PlayerInput, ReasonInput
 from batch.static_json.from_snapshot import PredictedGame, build_inputs
 from batch.static_json.writer import (
     DATA_DIR,
@@ -688,8 +703,14 @@ class InferenceResult:
     skipped_features: list[str] = field(default_factory=list)
     #: tipoff を過ぎていて 409 を受けた試合（cron 遅延で起きうる）
     skipped_after_tipoff: list[str] = field(default_factory=list)
+    #: 個人スタッツを破棄した試合（試合IDを出す。詳細設計 4.2 / 2.4）
+    skipped_box_score: list[str] = field(default_factory=list)
+    #: 個人スタッツまで出せた試合
+    with_box_score: int = 0
     data_as_of: str | None = None
     model_versions: dict[str, str] = field(default_factory=dict)
+    #: 30本の版。`(model_type, target)` → version。**揃っていなければ空**
+    rate_versions: dict[tuple[str, str], str] = field(default_factory=dict)
     #: ステップ5（静的JSON）に渡す。**D1 から読み戻さない**（詳細設計 4.2）
     rows: list[PredictedGame] = field(default_factory=list)
     #: 書き出したファイル数（0 なら書いていない）
@@ -738,6 +759,85 @@ def upcoming_for_inference(
     ]
 
 
+def player_labels(ds: Dataset) -> tuple[dict[str, str], dict[str, str | None]]:
+    """選手ID → 氏名 / ポジション。**画面に出す名前はスナップショットから取る。**
+
+    ポジションは `player_seasons` の断面で、**未登録は None**（本番で185名。1.2）。
+    同じ選手が複数季に現れるため、**最後に見た季の値**を採る（`player_seasons` は
+    `season_id` 昇順で並んでいない前提で、辞書の上書きに任せる）。
+    """
+    names: dict[str, str] = {}
+    if "players" in ds.tables:
+        for row in ds.tables["players"].itertuples():
+            names[str(row.id)] = str(row.name)
+    positions: dict[str, str | None] = {}
+    if "player_seasons" in ds.tables:
+        for row in ds.tables["player_seasons"].itertuples():
+            value = getattr(row, "position", None)
+            positions[str(row.player_id)] = (
+                None if value is None or pd.isna(value) else str(value))
+    return names, positions
+
+
+def _sides(box: BoxScore | None) -> list[tuple[SideBox, bool]]:
+    return [] if box is None else [(box.home, True), (box.away, False)]
+
+
+def team_target_rows(box: BoxScore | None) -> list[dict[str, object]]:
+    """`prediction_team_targets` の2行（または0行）。"""
+    return [
+        team_target_payload(
+            club_id=side.club_id, is_home=is_home, targets=side.targets)
+        for side, is_home in _sides(box)
+    ]
+
+
+def player_rows(box: BoxScore | None) -> list[dict[str, object]]:
+    """`player_predictions` の行。**両チーム分か0行**である（詳細設計 4.2）。"""
+    rows: list[dict[str, object]] = []
+    for side, _ in _sides(box):
+        players = side.players
+        for index, player_id in enumerate(players.player_ids):
+            rows.append(player_prediction_payload(
+                player_id=player_id, club_id=side.club_id,
+                avail_prob=side.avail[player_id],
+                minutes=float(players.minutes[index]),
+                counts={k: float(v[index]) for k, v in players.counts.items()},
+                pcts={k: float(v[index]) for k, v in players.pcts.items()},
+            ))
+    return rows
+
+
+def player_inputs(
+    box: BoxScore | None, names: Mapping[str, str],
+    positions: Mapping[str, str | None],
+) -> tuple[PlayerInput, ...]:
+    """静的JSON に渡す形（`batch/static_json/builder.py` の `PlayerInput`）。
+
+    **氏名が引けない選手は `player_id` を出さない。** 画面に内部IDを出すのは
+    避けたいが、**名前が無いことを隠すほうが悪い** — 取り込みが `players` を
+    書いているため、引けないのは上流の欠陥である。`（氏名不明）` と出す。
+    """
+    out: list[PlayerInput] = []
+    for side, _ in _sides(box):
+        players = side.players
+        for index, player_id in enumerate(players.player_ids):
+            counts = {k: float(v[index]) for k, v in players.counts.items()}
+            pcts = {k: float(v[index]) for k, v in players.pcts.items()}
+            out.append(PlayerInput(
+                player_id=player_id,
+                name=names.get(player_id, "（氏名不明）"),
+                club_id=side.club_id,
+                position=positions.get(player_id),
+                avail_prob=side.avail[player_id],
+                minutes=float(players.minutes[index]),
+                **{k: counts[k] for k in ("fg2a", "fg3a", "fta", "oreb", "dreb",
+                                          "ast", "tov", "stl", "blk", "pf", "fd")},
+                **{k: pcts[k] for k in ("fg2_pct", "fg3_pct", "ft_pct")},
+            ))
+    return tuple(out)
+
+
 def run_inference(
     api: InternalApi, *, ds: Dataset, run_id: str,
     now: datetime | None = None, log: Callable[[str], None] = print,
@@ -753,8 +853,12 @@ def run_inference(
     moment = (now or datetime.now(UTC)).astimezone(UTC)
     stamp = moment.isoformat(timespec="seconds").replace("+00:00", "Z")
     models: ActiveModels = load_active(api, list(FEATURE_KEYS))
+    # **30本は揃っていなくてもよい。** 勝率と予想スコアは出せる（詳細設計 4.2）。
+    # **黙って通さない** — 欠けている `model_type` をログに出す
+    rates = load_active_rates(api, log=log)
     result = InferenceResult(
-        data_as_of=ds.max_finished_at, model_versions=dict(models.versions))
+        data_as_of=ds.max_finished_at, model_versions=dict(models.versions),
+        rate_versions=dict(rates.versions) if rates is not None else {})
     if result.data_as_of is None:
         raise SnapshotError("スナップショットに終了した試合がない（data_as_of が出ない）")
 
@@ -766,6 +870,7 @@ def run_inference(
 
     # **索引は1回だけ作る**（詳細設計 2.1.1）。試合ごとに作ると桁が変わる
     prepared = prepare(ds)
+    names, positions = player_labels(ds)
     for game_id, season_id, tipoff_at in targets:
         try:
             # **`as_of` は必ず `games.tipoff_at` である**（用語集 / 2.1）。
@@ -773,11 +878,31 @@ def run_inference(
             features = build_features(
                 game_id, as_of(tipoff_at), ds, prepared)
             prediction = models.predict(features)
+            # **30本が無ければ `Context` を作らない。** `build_features` が
+            # 内側で1つ作っており、個人スタッツを出さない回では要らない
+            context = (
+                None if rates is None
+                else build_context(game_id, as_of(tipoff_at), ds, prepared)
+            )
         except (ValueError, KeyError, PredictError) as error:
             # **件数だけでなく試合IDを出す**（詳細設計 4.4）。件数だけでは調査できない
             log(f"  - skip {game_id} {type(error).__name__}: {error}")
             result.skipped_features.append(game_id)
             continue
+
+        # **チーム目標と個人スタッツ。** 失敗したらこの試合の個人スタッツだけを
+        # 破棄し、チーム予測は保存する（詳細設計 2.4 / 4.2）。**ジョブは止めない**
+        box: BoxScore | None = None
+        if rates is not None and context is not None:
+            try:
+                box = predict_box_score(
+                    rates, context,
+                    home_score=prediction.home_score,
+                    away_score=prediction.away_score,
+                )
+            except (InfeasibleTargetError, BoxScoreError, ValueError, KeyError) as error:
+                log(f"  - 個人スタッツなし {game_id} {type(error).__name__}: {error}")
+                result.skipped_box_score.append(game_id)
         # **根拠は寄与から機械的に出る**（詳細設計 2.7.1）。例外を投げる経路は
         # 「列が足りない」だけで、それは `models.predict` が先に落とす
         reasons = models.explainer.reasons(features)
@@ -788,6 +913,12 @@ def run_inference(
                 prediction=prediction, features=features,
                 model_versions=models.versions,
                 reasons=[reason_payload(r) for r in reasons],
+                team_targets=team_target_rows(box),
+                player_predictions=player_rows(box),
+                # **使ったモデルだけを並べる**（詳細設計 4.2 の `modelBundle`）。
+                # 個人スタッツを破棄した試合では30本の値が1つも保存されないため、
+                # 束にも入れない — **どの値がどのモデルから出たか**の記録である
+                rate_versions=result.rate_versions if box is not None else None,
             ))
         except RejectedError:
             # 409（tipoff 経過）か 400。**この試合だけ飛ばして続ける** —
@@ -796,12 +927,15 @@ def run_inference(
             result.skipped_after_tipoff.append(game_id)
             continue
         result.predicted += 1
+        if box is not None:
+            result.with_box_score += 1
         result.rows.append(PredictedGame(
             game_id=game_id,
             home_win_prob=prediction.home_win_prob,
             pred_home_score=prediction.home_score,
             pred_away_score=prediction.away_score,
             model_version=models.versions["WINNER"],
+            players=player_inputs(box, names, positions),
             reasons=tuple(
                 ReasonInput(
                     group_key=r.group_key, label_ja=r.label_ja,

@@ -20,6 +20,7 @@ from batch.static_json.builder import (
     GameDetailInput,
     GameInput,
     GameListInput,
+    PlayerInput,
     PredictionInput,
     ReasonInput,
 )
@@ -41,6 +42,9 @@ class PredictedGame:
     #: 根拠（詳細設計 2.7.1）。**現在の21列では2件**（`VENUE` に該当列がなく、
     #: `PLAYER` の3列は定数で寄与が厳密に 0）。空のこともある
     reasons: tuple[ReasonInput, ...] = ()
+    #: 整合化後の個人スタッツ（詳細設計 4.2）。**両チーム分か0件**である —
+    #: 片側だけ出すと、画面の合計行が片方しか並べられない（5.3）
+    players: tuple[PlayerInput, ...] = ()
 
 
 def _clubs(ds: Dataset) -> dict[str, tuple[str, str]]:
@@ -155,6 +159,7 @@ def build_inputs(
             details.append(GameDetailInput(
                 game=game, prediction=prediction,
                 reasons=[] if found is None else list(found.reasons),
+                players=[] if found is None else list(found.players),
             ))
 
     # **的中率は渡さない（null）。** `accuracy_summary` は D1 にあり読む口が無く、

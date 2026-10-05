@@ -150,11 +150,10 @@ def features_for(row: dict[str, float], target: str) -> dict[str, float]:
     return {key: row[key] for key in feature_keys(target)}
 
 
-def build_team_rate_features(
-    game_id: str, as_of: datetime, ds: Dataset, club_id: str,
-    prepared: Prepared | None = None,
+def team_rate_row(
+    context: Context, club_id: str,
 ) -> dict[str, float] | None:
-    """`as_of` 時点で確定している情報のみから、1行（試合 × クラブ）を作る。
+    """1行（試合 × クラブ）を、**できあいの `Context` から**作る。
 
     返すのは**14本ぶんの列をまとめた1行**である（`all_feature_keys()`）。
     モデル1本に渡すのは `features_for(row, target)` の6列だけ。
@@ -163,10 +162,13 @@ def build_team_rate_features(
     分からなければカウントの水準が決まらず、既定値で埋めると目的変数の分散の
     大半を説明できない行が学習に混ざる（詳細設計 2.2.1）。
 
+    **推論は `Context` を試合ごとに1回だけ作ってここを呼ぶ。** ホームと
+    アウェイで2回呼ぶため、`build_context` を内側に置くと2倍かかる
+    （`minutes_row` が同じ形をしている理由と同じ。2.3.1）。
+
     `club_id` は対象試合の出場クラブでなければならない。別のクラブを渡すのは
     呼び出し側の誤りであり、黙って計算しない。
     """
-    context = build_context(game_id, as_of, ds, prepared)
     if club_id == context.home_club_id:
         opponent_id = context.away_club_id
     elif club_id == context.away_club_id:
@@ -198,6 +200,14 @@ def build_team_rate_features(
     if set(row) != expected:
         raise ValueError(f"特徴量のキーが定義と一致しない: {sorted(set(row) ^ expected)}")
     return {key: row[key] for key in all_feature_keys()}
+
+
+def build_team_rate_features(
+    game_id: str, as_of: datetime, ds: Dataset, club_id: str,
+    prepared: Prepared | None = None,
+) -> dict[str, float] | None:
+    """1行だけ作る入口。**多数の行を回すときは使わない**（`team_rate_row` を使う）。"""
+    return team_rate_row(build_context(game_id, as_of, ds, prepared), club_id)
 
 
 def _as_float(value: float | None) -> float:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -151,3 +152,115 @@ def load_active(api: Any, feature_list: list[str], *, league: str = "PREMIER") -
 def _sha(row: dict[str, Any]) -> str | None:
     value = row.get("artifactSha256")
     return value if isinstance(value, str) and value else None
+
+
+# ---------------------------------------------------------------------------
+# 30本（TEAM_RATE 14 / PLAYER_AVAIL / PLAYER_MIN / PLAYER_RATE 14）
+# ---------------------------------------------------------------------------
+
+#: 揃っていなければ個人スタッツを出さない30本（詳細設計 4.5.1）。
+#: **勝敗の3本とは扱いが違う** — あちらが欠けたら1件も書かないが、こちらが
+#: 欠けたら勝敗だけを書く（個人スタッツは「出ない」状態が設計上許されている。4.2）
+RATE_TYPES = ("TEAM_RATE", "PLAYER_AVAIL", "PLAYER_MIN", "PLAYER_RATE")
+
+
+@dataclass(frozen=True)
+class RateModels:
+    """30本。`versions` は `prediction_model_bundle` に書く。"""
+
+    #: 目的変数 → booster（14本）
+    team_rate: dict[str, Any]
+    avail: Any
+    minutes: Any
+    #: 目的変数 → booster（14本）
+    player_rate: dict[str, Any]
+    #: 成功率3項目のシュリンクの `k`（`model_versions.params` から読む）
+    shrink_k: dict[str, float]
+    #: `(model_type, target)` → version
+    versions: dict[tuple[str, str], str]
+
+
+def load_active_rates(
+    api: Any, *, league: str = "PREMIER",
+    log: Callable[[str], None] = lambda _: None,
+) -> RateModels | None:
+    """30本を読み出す。**揃っていなければ `None` を返す**（4.2）。
+
+    **例外にしない。** 勝敗の3本と違い、30本が欠けても勝率と予想スコアは出せる。
+    **ただし黙って通さない** — 欠けている `model_type` をログに出す（登録し忘れに
+    気づけるようにする）。
+    """
+    from batch.features.player_rate import AVAIL_KEYS, MINUTES_KEYS, rate_model_keys
+    from batch.features.team_rate import PCT_TARGETS, TARGETS, feature_keys
+
+    rows: dict[tuple[str, str], dict[str, Any]] = {}
+    for model in active_models(api, league):
+        model_type = str(model.get("modelType") or "")
+        if model_type in RATE_TYPES:
+            rows[(model_type, str(model.get("target") or ""))] = model
+
+    wanted: list[tuple[str, str, tuple[str, ...]]] = [
+        ("PLAYER_AVAIL", "", tuple(AVAIL_KEYS)),
+        ("PLAYER_MIN", "", tuple(MINUTES_KEYS)),
+    ]
+    for target in TARGETS:
+        wanted.append(("TEAM_RATE", target, feature_keys(target)))
+        wanted.append(("PLAYER_RATE", target, rate_model_keys(target)))
+
+    absent = [f"{t}/{g}" if g else t for t, g, _ in wanted if (t, g) not in rows]
+    if absent:
+        log(f"predict: 30本が揃っていない（{len(absent)}本）: {' / '.join(absent[:6])}")
+        return None
+
+    pct_names = {name for name, _, _ in PCT_TARGETS}
+    boosters: dict[tuple[str, str], Any] = {}
+    shrink_k: dict[str, float] = {}
+    try:
+        for model_type, target, columns in wanted:
+            row = rows[(model_type, target)]
+            recorded = row.get("featureList")
+            if not isinstance(recorded, str) or json.loads(recorded) != list(columns):
+                raise PredictError(
+                    f"{model_type}/{target or '-'} の feature_list が一致しない")
+            version = str(row["version"])
+            booster = _booster(
+                fetch_artifact(api, version, expected_sha256=_sha(row)))
+            names = list(booster.feature_name())
+            if names and names != list(columns):
+                raise PredictError(
+                    f"{model_type}/{target or '-'} の列名が一致しない")
+            boosters[(model_type, target)] = booster
+            if model_type == "PLAYER_RATE" and target in pct_names:
+                shrink_k[target] = _shrink_k_of(row, target)
+    except RegistryError as error:
+        raise PredictError(f"artifact を読めない（{error}）") from error
+
+    return RateModels(
+        team_rate={t: boosters[("TEAM_RATE", t)] for t in TARGETS},
+        avail=boosters[("PLAYER_AVAIL", "")],
+        minutes=boosters[("PLAYER_MIN", "")],
+        player_rate={t: boosters[("PLAYER_RATE", t)] for t in TARGETS},
+        shrink_k=shrink_k,
+        versions={key: str(rows[key]["version"]) for key in rows},
+    )
+
+
+def _shrink_k_of(row: dict[str, Any], target: str) -> float:
+    """`model_versions.params` の `shrink_k`。
+
+    **学習時の値を読む。** `train_player.SHRINK_K` を推論側で参照すると、
+    登録済みのモデルと定数が食い違ったときに**目的変数の定義が静かにずれる**
+    （シュリンクは目的変数そのものを決める値である。2.3.1）。
+    """
+    params = row.get("params")
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except ValueError as error:
+            raise PredictError(f"{target} の params を読めない") from error
+    if not isinstance(params, dict) or "shrink_k" not in params:
+        raise PredictError(f"{target} の params に shrink_k がない")
+    value = float(params["shrink_k"])
+    if not math.isfinite(value) or value <= 0:
+        raise PredictError(f"{target} の shrink_k が正の有限値でない")
+    return value

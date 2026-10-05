@@ -134,6 +134,11 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npx eslint .
+      # `lib/` の単体検査（工程11b）。**時刻変換・遅延判定・丸めは、間違っても
+      # 画面が壊れず値だけが静かにずれる**。E2E は工程15 であり、それまでの
+      # 唯一の歯止めになる。**依存は増やさない** — Node 24 は TypeScript を
+      # そのまま実行でき、`node:test` が組み込みである
+      - run: npm run test:unit
       # 両テーマのコントラスト比 4.5:1 以上をトークンの単体検査で確かめる
       # （基本設計 6.1。目視のスナップショット確認では必ず見落とす）
       - run: npm run test:tokens

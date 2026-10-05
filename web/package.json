@@ -14,7 +14,8 @@
     "test:budget": "node scripts/check-js-budget.mjs",
     "test:links": "node scripts/check-links.mjs",
     "test:nav": "node scripts/check-nav.mjs",
-    "test:bar": "node scripts/check-bar.mjs"
+    "test:bar": "node scripts/check-bar.mjs",
+    "test:unit": "node --test \"lib/__tests__/*.test.ts\""
   },
   "dependencies": {
     "next": "^16.3.8",

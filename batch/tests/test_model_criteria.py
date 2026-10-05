@@ -115,6 +115,31 @@ def test_first_model_still_has_to_beat_the_baseline() -> None:
     assert not decision.adopt
 
 
+def test_a_blocked_comparison_is_not_treated_as_a_first_model() -> None:
+    """**比較できなかったときは採用しない。**
+
+    `current_brier=None` には2つの意味がある — 「現行モデルがない（初回登録）」と
+    「現行モデルはあるが比較できなかった」。**後者を前者として扱うと、条件1〜2 を
+    課さずに採用する** — 列を変えて `--initial` を忘れたときに起きる。
+    """
+    decision = passes_criteria(inputs(
+        current_brier=None, difference=None,
+        comparison_blocked="現行モデルの列が今の行列に無い（3列）",
+    ))
+    assert not decision.adopt
+    assert any("比較できないため採用しない" in f for f in decision.failures)
+    # **note ではなく failure である。** note は採用を止めない
+    assert not any("現行モデルがない" in n for n in decision.notes)
+
+
+def test_a_blocked_comparison_does_not_need_the_bootstrap() -> None:
+    """比較していないのだから差の信頼区間は無い。**例外にしない。**"""
+    decision = passes_criteria(inputs(
+        current_brier=None, difference=None, comparison_blocked="artifact を読めない",
+    ))
+    assert not decision.adopt
+
+
 # --- 較正 ---
 
 def test_ece_above_the_noise_floor_threshold_fails() -> None:

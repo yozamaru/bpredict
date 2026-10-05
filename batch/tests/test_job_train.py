@@ -535,6 +535,33 @@ def test_register_activates_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
     assert all(body["activate"] is True for _p, body in api.sent)
 
 
+def test_an_unmet_gate_is_not_a_failure() -> None:
+    """**基準未達は exit 0 である**（詳細設計 4.5 / 4.6）。
+
+    v1.101 まで exit 1 を返しており、**月次 cron が通常の結果を毎月「失敗」として
+    通知する**状態だった（実際に 2026-10-04 の実行が failure で終わった）。
+    4.5 は「新モデルを有効化せず現行を継続する」と定めるだけで `PARTIAL` も
+    exit 1 も求めておらず、要件 6.5 は**見逃す方向に倒すのは意図的な設計**だと
+    書いている。**毎月オオカミ少年をやると、本当の失敗が読み飛ばされる。**
+    """
+    lines: list[str] = []
+    assert train.exit_code(fake_report(adopt=False), log=lines.append) == 0
+    assert any("現行モデルを継続する" in line for line in lines)
+
+
+def test_a_blocked_comparison_is_a_failure() -> None:
+    """**「比較できなかった」は設定の誤りであり通知に乗せる**（詳細設計 4.6）。
+
+    列を変えて `--initial` を忘れた状態がこれである。基準未達と同じ扱いにすると、
+    気づかないまま条件1〜2 が課されない状態が続く。
+    """
+    report = train.replace(
+        fake_report(adopt=False),
+        comparison_blocked="現行モデルの列が今の行列に無い（3列）",
+    )
+    assert train.exit_code(report, log=lambda _m: None) == 1
+
+
 def test_register_needs_the_score_evaluations() -> None:
     """得点差・合計得点の評価がなければ登録できない（σ が出ない）。"""
     report = fake_report(adopt=True)

@@ -187,12 +187,17 @@ def test_the_gate_sees_the_current_model(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_the_gate_gets_nothing_when_the_comparison_is_impossible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """比較できないときは `None` を渡す。**条件1〜2 が落ちるため採用されない。**"""
+    """比較できないときは `current_brier` に `None` を渡す。
+
+    **ただし `comparison_blocked` も渡す。** `None` だけでは「現行モデルがない
+    （初回登録）」と区別できず、**条件1〜2 を課さずに採用してしまう**。
+    """
     seen: dict[str, object] = {}
     original = train.passes_criteria
 
     def spy(inputs: Any) -> Any:
         seen["current_brier"] = inputs.current_brier
+        seen["comparison_blocked"] = inputs.comparison_blocked
         return original(inputs)
 
     monkeypatch.setattr(train, "passes_criteria", spy)
@@ -201,4 +206,64 @@ def test_the_gate_gets_nothing_when_the_comparison_is_impossible(
         training, api=FakeApi(artifact=artifact([*COLUMNS, "消えた列"])),
         log=lambda _m: None)
     assert seen["current_brier"] is None
-    assert report.decision is not None
+    assert isinstance(seen["comparison_blocked"], str)
+    assert not report.decision.adopt
+
+
+def test_a_blocked_comparison_does_not_adopt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**これが本命である。**
+
+    v1.101 まで、比較できなかった場合は `current_brier=None` だけが渡り、
+    `passes_criteria` が「初回登録」として条件1〜2 を**飛ばして採用していた**。
+    `current_evaluation` のメッセージは「比較できないため採用しない」と言って
+    いたのに、返した値は採用させていた。
+
+    既存の検査はこれを捕まえられなかった — `current.evaluation is None` と
+    `report.decision is not None` しか見ておらず、**採用されたかどうかを
+    見ていなかった**。
+
+    **n を下限（500）より上にする。** 下限を割ると `passes_criteria` が他の条件を
+    見ずに返すため、**この検査が「標本が足りない」で通ってしまう**（実際に一度
+    そうなった）。
+    """
+    training = data(rows_per_season=300)
+    for api in (
+        FakeApi(artifact=artifact([*COLUMNS, "消えた列"])),   # 列が揃わない
+        FakeApi(fail=True),                                   # 照会に失敗した
+        FakeApi(artifact="これは JSON ではない"),              # artifact が読めない
+    ):
+        report = train.evaluate_all(training, api=api, log=lambda _m: None)
+        assert not report.decision.adopt
+        assert any("比較できない" in f for f in report.decision.failures)
+        assert report.comparison_blocked is not None
+
+
+def test_not_comparing_on_purpose_is_not_blocked() -> None:
+    """**`--initial` と「現行モデルがない」は `blocked` にしない。**
+
+    どちらも条件1〜2 を課さずに通す経路であり、設計どおりの状態である
+    （詳細設計 4.6）。ここを `blocked` にすると初回登録ができない。
+    """
+    training = data()
+    weights = np.ones(len(training))
+    assert not train._current_for(
+        FakeApi(artifact=artifact(COLUMNS)), training,
+        weights=weights, initial=True, max_folds=5).blocked
+    assert not train._current_for(
+        None, training, weights=weights, initial=False, max_folds=5).blocked
+    assert not train.current_evaluation(
+        FakeApi(version=None), training, weights=weights).blocked
+
+
+def test_an_unreadable_current_model_is_blocked() -> None:
+    """比較できない4つの経路すべてに `blocked` が立つ。"""
+    training = data()
+    weights = np.ones(len(training))
+    for api in (
+        FakeApi(fail=True),
+        FakeApi(artifact="これは JSON ではない"),
+        FakeApi(artifact=artifact([*COLUMNS, "消えた列"])),
+    ):
+        current = train.current_evaluation(api, training, weights=weights)
+        assert current.evaluation is None
+        assert current.blocked, current.reason

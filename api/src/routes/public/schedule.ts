@@ -90,6 +90,33 @@ function bucketLabel(bucket: number): string {
   return `${lower}-${lower + 10}%`;
 }
 
+/**
+ * 確率帯の通算成績をまとめて引く（詳細設計 3.3 の `bucketContext`）。
+ *
+ * **1クエリで済ませる。** 行ごとに引くと1試合1クエリになり、13試合の日には
+ * 14クエリを使う（1リクエスト50クエリの上限に対して無駄が大きい。絶対ルール3）。
+ * 確率帯は最大10種類しかないため、必要な帯をまとめて `IN` で取る。
+ */
+async function bucketContexts(db: D1Database, keys: string[]) {
+  const found = new Map<string, { bucket: string; n: number; correct: number; rate: number | null }>();
+  if (keys.length === 0) return found;
+  const rows = await db.prepare(
+    `SELECT scope_key, n, actual_rate FROM accuracy_summary
+      WHERE scope = 'BUCKET' AND model_version = ''
+        AND scope_key IN (${keys.map(() => '?').join(',')})`,
+  ).bind(...keys).all<{ scope_key: string; n: number; actual_rate: number | null }>();
+  for (const row of rows.results) {
+    found.set(row.scope_key, {
+      bucket: row.scope_key, n: row.n,
+      // **`correct` は `actual_rate × n` から戻す。** 列として持っていない
+      // （`accuracy_summary` は率と母数だけを持つ。詳細設計 1.6）
+      correct: Math.round((row.actual_rate ?? 0) * row.n),
+      rate: row.actual_rate,
+    });
+  }
+  return found;
+}
+
 async function overallAccuracy(db: D1Database) {
   // モデル横断の集計では `model_version` に空文字が入る（詳細設計 1.6）
   const row = await db.prepare(
@@ -171,13 +198,30 @@ schedule.get('/results', async (c) => {
         predAwayScore: row.pred_away_score,
         modelVersion: row.model_version,
       },
-      // **外れた試合でも同じ形で返す**（要件 8.3）
+      // **外れた試合でも同じ形で返す**（要件 8.3）。`bucketContext` は後で足す
       evaluation: {
         isCorrect: row.is_correct === 1,
         scoreError: row.score_mae,
-        bucket: row.prob_bucket === null ? null : bucketLabel(row.prob_bucket),
+        bucketKey: row.prob_bucket === null ? null : bucketLabel(row.prob_bucket),
       },
     }));
 
-  return okCached(c, { gameDate: checked.date, results }, CACHE.settled);
+  // **その確率帯の通算的中率を併記する**（要件 8.3「外れた試合を隠さない。
+  // 結果画面で実績と対比し、その確率帯の通算的中率を併記する」）。帯のラベルだけを
+  // 返すと、画面は「68%と予想した試合は42試合中29試合が的中」を出せない
+  const keys = [...new Set(
+    results.map((r) => r.evaluation.bucketKey).filter((k): k is string => k !== null))];
+  const contexts = await bucketContexts(c.env.DB, keys);
+  const withContext = results.map(({ evaluation, ...rest }) => ({
+    ...rest,
+    evaluation: {
+      isCorrect: evaluation.isCorrect,
+      scoreError: evaluation.scoreError,
+      bucketContext: evaluation.bucketKey === null
+        ? null
+        : contexts.get(evaluation.bucketKey) ?? null,
+    },
+  }));
+
+  return okCached(c, { gameDate: checked.date, results: withContext }, CACHE.settled);
 });

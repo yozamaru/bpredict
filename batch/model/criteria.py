@@ -19,6 +19,7 @@ from batch.model.metrics import Difference
 # 片方だけ直したときに「設計どおりのはずのゲート」が静かにずれる。
 from batch.model.params import (
     ECE_FLOOR_K,
+    ECE_THRESHOLD_FLOOR,
     MAX_FEATURE_NULL_RATE,
     MIN_EFFECT,
     MIN_EVAL_N,
@@ -26,6 +27,7 @@ from batch.model.params import (
 
 __all__ = [
     "ECE_FLOOR_K",
+    "ECE_THRESHOLD_FLOOR",
     "KNOWN_CONSTANT",
     "MAX_FEATURE_NULL_RATE",
     "MIN_EFFECT",
@@ -53,6 +55,9 @@ KNOWN_CONSTANT: Mapping[str, str] = {
     # 実データ 126,931行で**1種類（全件0）**、抜いても MAE が完全に同一だった
     # （2026-10-03 の実測）。`gameday_update` を実装したら外す
     "team_minutes_lost": "game_entries が空（gameday_update が未実装）",
+    # 第1段 PlayerAvail の列。`entry_is_official`（勝敗モデル）と**同じ値を見るが
+    # 列名が違う**ため、別に登録しないと採用が止まる（実データ 245,392行で全件0）
+    "entry_status": "game_entries が空（gameday_update が未実装）",
 }
 
 
@@ -150,16 +155,21 @@ def passes_criteria(inputs: Inputs) -> Decision:
                 f"（{inputs.difference.ci_low:+.4f}, {inputs.difference.ci_high:+.4f}）"
             )
 
-    # 3. 較正。**閾値はモデル自身の予測分布から毎回推定する**（固定値を持たない）
+    # 3. 較正。**閾値はモデル自身の予測分布から毎回推定し、下限を添える**
+    #    （要件 6.4。固定値には戻さない — 小標本ではフロアが閾値を決める）
     if inputs.ece is None or inputs.ece_floor is None:
         # ビンあたり50件を満たせないと ECE 自体が計算できない。
         # n >= 500 を通っているので、ここに来るのは分布が偏った場合である
         notes.append("ECE を算出できなかったため較正の検査を行わない")
     else:
-        limit = inputs.ece_floor * ECE_FLOOR_K
+        # **下限を取る。** ノイズフロアは n が大きいほど小さくなり、大標本では
+        # 到達不能になる（`ECE_THRESHOLD_FLOOR` に実測）
+        limit = max(inputs.ece_floor * ECE_FLOOR_K, ECE_THRESHOLD_FLOOR)
         if not inputs.ece < limit:
             failures.append(
-                f"ECE {inputs.ece:.4f} がノイズフロア由来の閾値 {limit:.4f} を下回らない"
+                f"ECE {inputs.ece:.4f} が閾値 {limit:.4f} を下回らない"
+                f"（ノイズフロア由来 {inputs.ece_floor * ECE_FLOOR_K:.4f} /"
+                f" 下限 {ECE_THRESHOLD_FLOOR:.4f}）"
             )
 
     # 4. 特徴量の欠損率

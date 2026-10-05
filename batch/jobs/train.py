@@ -291,6 +291,9 @@ class Report:
     route_notes: list[str] = field(default_factory=list)
     #: **勝率から導いた**得点差で測ったチーム得点 MAE（要件 6.1.1）
     derived_score_mae: float | None = None
+    #: 現行モデルがあるのに**比較できなかった**理由（詳細設計 4.6）。
+    #: 終了コードの判断に使う — 基準未達は設計どおりの結果だが、これは設定の誤りである
+    comparison_blocked: str | None = None
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
@@ -458,11 +461,18 @@ class Current:
     """現行モデルを同じウィンドウで再評価した結果（詳細設計 4.6）。
 
     `evaluation` が None なら比較できなかった（理由は `reason`）。
+
+    **「比較しない」と「比較できない」を区別する**（詳細設計 4.6）。前者は
+    `--initial` と初回登録で、条件1〜2 を課さずに通す。後者は現行モデルが
+    あるのに読めなかった場合で、**採用を止める** — 区別しないと、列を変えて
+    `--initial` を忘れたときに条件を課さずに差し替わる。
     """
 
     version: str | None = None
     evaluation: Evaluation | None = None
     reason: str = ""
+    #: True なら「比較できなかった」。採用を止める
+    blocked: bool = False
 
 
 def frozen_learner(model: Logistic, columns: Sequence[str]) -> Learner:
@@ -501,7 +511,7 @@ def current_evaluation(
         meta = api.get("metrics/active", {"modelType": "WINNER", "target": "",
                                           "league": "PREMIER"})
     except LoaderError as error:
-        return Current(reason=f"現行モデルの照会に失敗した（{error}）")
+        return Current(reason=f"現行モデルの照会に失敗した（{error}）", blocked=True)
     if not isinstance(meta, dict) or not isinstance(meta.get("version"), str):
         return Current(reason="現行モデルがない")
 
@@ -510,7 +520,8 @@ def current_evaluation(
         artifact = fetch_artifact(api, version)
     except (LoaderError, RegistryError) as error:
         return Current(
-            version=version, reason=f"現行モデルの artifact を読めない（{error}）")
+            version=version, reason=f"現行モデルの artifact を読めない（{error}）",
+            blocked=True)
 
     columns = list(data.features.columns)
     try:
@@ -520,7 +531,7 @@ def current_evaluation(
     except RegistryError:
         recorded = _artifact_features(artifact)
         if recorded is None:
-            return Current(version=version, reason="現行モデルの列が読めない")
+            return Current(version=version, reason="現行モデルの列が読めない", blocked=True)
         missing = [c for c in recorded if c not in columns]
         if missing:
             # **採用しない。** 比較できない以上、条件1〜2 を課せない（4.6）
@@ -528,8 +539,9 @@ def current_evaluation(
                 version=version,
                 reason=(
                     f"現行モデルの列が今の行列に無い（{len(missing)}列）。"
-                    "比較できないため採用しない。意図した差し替えなら --initial を使う"
+                    "意図した差し替えなら --initial を使う"
                 ),
+                blocked=True,
             )
         model = load_logistic(artifact, recorded)
         used = recorded
@@ -650,6 +662,9 @@ def evaluate_all(
             f"train: 現行 {current.version} を同じウィンドウで再評価した"
             f"（Brier {current_brier:.6f} / 差 {current_difference.point:+.6f}）"
         )
+    elif current is not None and current.blocked:
+        # **採用を止める。** ログだけ出して通すと、条件1〜2 を課さずに差し替わる
+        log(f"train: 現行モデルと比較できない（{current.reason}）")
     elif current is not None and current.reason:
         log(f"train: 現行モデルと比較しない（{current.reason}）")
 
@@ -663,6 +678,7 @@ def evaluate_all(
         ece_floor=floor,
         current_brier=current_brier,
         difference=current_difference,
+        comparison_blocked=current.reason if current.blocked else None,
     ))
     return Report(
         n=winner.n,
@@ -677,6 +693,7 @@ def evaluate_all(
         adopted_route=adopted_route, adopted_difference=adopted_difference,
         route_notes=route_notes,
         derived_score_mae=derived_team_score_mae(winner, margin, total, sigma),
+        comparison_blocked=current.reason if current.blocked else None,
     )
 
 
@@ -800,6 +817,30 @@ def register_models(
     return registered
 
 
+def exit_code(report: Report, *, log: Callable[[str], None] = print) -> int:
+    """登録しなかったときの終了コード（詳細設計 4.5 / 4.6）。
+
+    **基準未達は失敗ではない。** 4.5 は「新モデルを有効化せず現行を継続する」と
+    定めるだけで、`PARTIAL` も exit 1 も求めていない（`PARTIAL` + exit 1 は
+    artifact が 1.5MB を超えた場合の規定である）。要件 6.5 は検出力が低いことを
+    承知のうえで**見逃す方向に倒すのは意図的な設計**だと書いており、
+    **基準未達は月次の通常の結果**である。
+
+    **月に一度「失敗」を出すと、本当の失敗が読み飛ばされる。** 基本設計 4.3 の
+    「`PARTIAL` を exit 0 で終えると誰も気づかない」の裏返しで、毎月
+    オオカミ少年をやると通知そのものが効かなくなる。
+
+    **ただし「比較できなかった」は設定の誤りであり、通知に乗せる。** 列を変えて
+    `--initial` を忘れた状態がこれである（4.6）。
+    """
+    if report.comparison_blocked is not None:
+        print(f"train: 現行モデルと比較できなかった（{report.comparison_blocked}）",
+              file=sys.stderr)
+        return 1
+    log(f"train: 現行モデルを継続する（{report.decision.summary}）")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="勝敗モデルを評価する（登録はしない）")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
@@ -864,7 +905,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"train: 登録に失敗（{type(error).__name__}）", file=sys.stderr)
             return 1
         if not versions:
-            return 1          # 採用基準未達は PARTIAL 相当。通知に乗せる
+            return exit_code(report)
     return 0
 
 

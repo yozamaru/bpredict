@@ -76,6 +76,11 @@ class Inputs:
     current_brier: float | None = None
     #: 試合ごとの Brier 差のブートストラップ。初回登録では None
     difference: Difference | None = None
+    #: **現行モデルがあるのに比較できなかった**理由（詳細設計 4.6）。
+    #: `current_brier=None` には2つの意味がある — 「現行モデルがない（初回登録）」と
+    #: 「現行モデルはあるが比較できなかった」。**後者を前者として扱うと、条件1〜2 を
+    #: 課さずに採用してしまう**（列を変えて `--initial` を忘れたときに起きる）
+    comparison_blocked: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,7 +126,12 @@ def passes_criteria(inputs: Inputs) -> Decision:
 
     # 2. 現行モデルとの比較。**同一の評価ウィンドウで再評価した値**を使う
     #    （`model_versions.cv_brier` は学習当時の値であり比較にならない）
-    if inputs.current_brier is None:
+    if inputs.comparison_blocked is not None:
+        # **採用しない。** 比較できない以上、条件1〜2 を課せない（詳細設計 4.6）。
+        # **ここを note にすると、条件を課さずに採用する** — 現行モデルの列が
+        # 今の行列に無いときに、黙って差し替わる
+        failures.append(f"比較できないため採用しない（{inputs.comparison_blocked}）")
+    elif inputs.current_brier is None:
         # 初回登録。比較する相手がいない条件は課せない
         notes.append("現行モデルがないため Brier の比較と有意性の検査は行わない")
     else:

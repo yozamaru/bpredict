@@ -19,7 +19,7 @@
      "slug": "altiri-chiba"
     },
     "prediction": {
-     "homeWinProb": 0.46192708478804284,
+     "homeWinProb": 0.46192708478804295,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -73,7 +73,7 @@
      "slug": "ibaraki-robots"
     },
     "prediction": {
-     "homeWinProb": 0.1914853824120541,
+     "homeWinProb": 0.19148538241205415,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -100,7 +100,7 @@
      "slug": "utsunomiya-brex"
     },
     "prediction": {
-     "homeWinProb": 0.8248548679217157,
+     "homeWinProb": 0.8248548679217159,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -127,7 +127,7 @@
      "slug": "tokyo-sunrockers"
     },
     "prediction": {
-     "homeWinProb": 0.5997381738198166,
+     "homeWinProb": 0.5997381738198168,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-06T01:37:07Z"
+  "generatedAt": "2026-10-06T06:44:03Z"
  }
 }

@@ -127,13 +127,13 @@
      "slug": "ryukyu-golden-kings"
     },
     "prediction": {
-     "homeWinProb": 0.4213995882443241,
+     "homeWinProb": 0.42139958824432394,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 80.81009192917726,
-     "predHomeScore": 78.24265519105687
+     "predAwayScore": 80.81009192917728,
+     "predHomeScore": 78.24265519105685
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-08T10:35:00Z"
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-06T01:37:07Z"
+  "generatedAt": "2026-10-06T06:44:03Z"
  }
 }

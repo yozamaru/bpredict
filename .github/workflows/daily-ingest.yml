@@ -153,7 +153,13 @@ jobs:
       # **スナップショットと静的JSON をコミットする**（基本設計 1.2 の構成図）。
       # 変わっていなければ何もしない（空のコミットを積まない）。
       - name: スナップショットと静的JSON と選手一覧をコミット
+        id: commit
         if: ${{ github.event_name == 'schedule' || !inputs.dry_run }}
+        env:
+          # **`if:` に `secrets` を書かない。** 文脈の可否に依存すると、常に偽に
+          # なっても**黙って配らないだけ**で気づけない。ここで `-n` を見て
+          # 出力に落とし、後続は `steps.commit.outputs` だけを見る
+          PAGES_TOKEN: ${{ secrets.CF_PAGES_TOKEN }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -169,10 +175,49 @@ jobs:
           done
           if git diff --cached --quiet; then
             echo '変更なし'
+            # **配らない。** 中身が変わっていない回に同じものを配り直さない
+            echo 'deploy=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "データ: daily-ingest の書き出し（run ${GITHUB_RUN_ID}）"
           git push
+          # **コミットした回だけ配る**（詳細設計 4.2 のステップ6）。
+          # トークンが未登録なら飛ばす — 入れる前のリポジトリで赤くしない
+          if [[ -n "$PAGES_TOKEN" ]]; then
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::CF_PAGES_TOKEN が未登録のため Pages へ配らない'
+            echo 'deploy=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      # **書いただけでは本番に届かない**（詳細設計 4.2 のステップ6）。
+      # Pages は最後に配ったものを返し続けるため、配らないと本番が1日ぶん
+      # 古くなり、`meta.lastSuccessAt` が24時間を超えて毎日更新遅延バナーが出る。
+      #
+      # **落ちたらジョブが赤くなる。** `ingestion_logs` は更新しない（バッチは
+      # 既に終わっている）。配れなければ本番は古い `meta.json` を返し続けるため、
+      # **画面の遅延バナーは正しく出る** — 嘘が利用者に届かない。
+      # 復旧は手元から配る（詳細設計 8.1）。
+      - uses: actions/setup-node@v7
+        if: steps.commit.outputs.deploy == 'true'
+        with:
+          # 手元と CI を揃えて 24 を使う（`ci.yml` と同じ理由）
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Pages へ配る
+        if: steps.commit.outputs.deploy == 'true'
+        working-directory: web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm ci
+          npm run build
+          # **`web/` で `wrangler pages` を実行しない**（詳細設計 8.1）。
+          # Next.js を検出して `opennextjs-cloudflare build` を走らせるため、
+          # `out` を明示して渡す
+          npx wrangler pages deploy out --project-name bpredict --branch main
 
       # 取り込まない試合の一覧（不戦敗）を持ち帰る。**`daily_ingest` は
       # `contents: write` なので上のコミットに含まれる**が、`PARTIAL` で

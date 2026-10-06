@@ -39,19 +39,24 @@ const REQUIRED = [
  * `import` しないのは、このスクリプトが `.mjs` で TypeScript の読み込みに
  * 依存したくないためである（**依存も実行時の前提も増やさない**）。
  */
-function siteVersion() {
+function constant(name) {
   const file = resolve(import.meta.dirname, '..', 'lib', 'version.ts');
   const source = readFileSync(file, 'utf8');
-  const found = /SITE_VERSION\s*=\s*'([^']+)'/.exec(source);
+  const found = new RegExp(`${name}\\s*=\\s*'([^']+)'`).exec(source);
   if (!found) {
-    console.error('lib/version.ts から SITE_VERSION を読めない');
+    console.error(`lib/version.ts から ${name} を読めない`);
     process.exit(1);
   }
-  return found[1];
+  // `\u00a9` のようなエスケープを実際の文字に戻す（定数は TS の文字列リテラル）
+  return JSON.parse(`"${found[1].replace(/"/g, '\\"')}"`);
 }
 
+const VERSION = constant('SITE_VERSION');
+const COPYRIGHT = constant('SITE_COPYRIGHT');
+
 // 空白を畳んでから探すため、ここでも畳む（`ver. 1.0.0 beta` → `ver.1.0.0beta`）
-REQUIRED.push(siteVersion().replace(/\s+/g, ''));
+REQUIRED.push(VERSION.replace(/\s+/g, ''));
+REQUIRED.push(COPYRIGHT.replace(/\s+/g, ''));
 
 /**
  * 出てはならない表記（要件 4.5.5）。**公式との関係を示唆する表記**である。
@@ -116,6 +121,7 @@ if (missing.length > 0 || forbidden.length > 0) {
 }
 
 console.log(
-  `OK  ${pages.length}ページすべてに出典表記と非公式表明と版（${siteVersion()}）があり、`
+  `OK  ${pages.length}ページすべてに出典表記と非公式表明と版（${VERSION}）と`
+  + `著作権表示（${COPYRIGHT}）があり、`
   + `禁じた表記（${FORBIDDEN.length}種）はどこにも無い。`,
 );

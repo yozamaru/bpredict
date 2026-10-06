@@ -12,6 +12,7 @@
 // **一度入ると気づかないまま配信され続ける**種類の誤りである。
 //
 // 依存を増やさない（Node の標準モジュールだけ）。
+import { readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 
@@ -28,7 +29,29 @@ const REQUIRED = [
   '本サイトが独自に集計・加工したものです',
   '個人が運営する非公式サービスです',
   '各クラブへお問い合わせいただくことはご遠慮ください',
+  // **版**（要件 F-12 / 8.2）。下で `lib/version.ts` から読んで差し込む
 ];
+
+/**
+ * 版を**唯一の出典から読む**（要件 8.2）。ここに文字列を書き写すと、版を
+ * 上げたときに2か所を直すことになり、**片方が古くなっても検査は通る**。
+ *
+ * `import` しないのは、このスクリプトが `.mjs` で TypeScript の読み込みに
+ * 依存したくないためである（**依存も実行時の前提も増やさない**）。
+ */
+function siteVersion() {
+  const file = resolve(import.meta.dirname, '..', 'lib', 'version.ts');
+  const source = readFileSync(file, 'utf8');
+  const found = /SITE_VERSION\s*=\s*'([^']+)'/.exec(source);
+  if (!found) {
+    console.error('lib/version.ts から SITE_VERSION を読めない');
+    process.exit(1);
+  }
+  return found[1];
+}
+
+// 空白を畳んでから探すため、ここでも畳む（`ver. 1.0.0 beta` → `ver.1.0.0beta`）
+REQUIRED.push(siteVersion().replace(/\s+/g, ''));
 
 /**
  * 出てはならない表記（要件 4.5.5）。**公式との関係を示唆する表記**である。
@@ -93,6 +116,6 @@ if (missing.length > 0 || forbidden.length > 0) {
 }
 
 console.log(
-  `OK  ${pages.length}ページすべてに出典表記と非公式表明があり、`
+  `OK  ${pages.length}ページすべてに出典表記と非公式表明と版（${siteVersion()}）があり、`
   + `禁じた表記（${FORBIDDEN.length}種）はどこにも無い。`,
 );

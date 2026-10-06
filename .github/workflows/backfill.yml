@@ -127,7 +127,7 @@ jobs:
       # `if: always()` にするのは、PARTIAL で終わった回の分も失わないため。
       - name: 取り込まない試合の一覧を持ち帰る
         if: always() && hashFiles('batch/exclusions/excluded_games.json') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: excluded-games-${{ inputs.season }}-${{ github.run_id }}
           path: batch/exclusions/excluded_games.json

@@ -83,7 +83,7 @@ jobs:
       # CSV は artifact で受け渡す。**コミットしない**（基本設計 7.3）。
       - name: CSV を取り出す
         if: inputs.mode == 'derive'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: club-primary-venues
           path: db/seeds/master/club_primary_venues.csv

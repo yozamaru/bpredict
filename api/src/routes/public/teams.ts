@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import { CACHE } from '../../lib/cache';
 import { fail, okCached } from '../../lib/http';
 import { latestSeasonId, parseLimit, parseSlug } from '../../lib/params';
+import { playerStatOf, teamStatOf, type PlayerStatRow, type TeamStatRow } from '../../lib/stats';
 
 export type Env = { DB: D1Database };
 
@@ -107,6 +108,46 @@ teams.get('/teams/:slug', async (c) => {
       LIMIT ?`,
   ).bind(club.id, seasonId, limit).all<HistoryRow>();
 
+  // --- v1.118 で足した3つ（要件 F-10）。出典は集計テーブル（詳細設計 1.9）。
+  // **実行時に集計しない** — 1クラブの通算を `team_games` から引くと読取枠を食う
+
+  const summary = await c.env.DB.prepare(
+    `SELECT s.scope, s.scope_key, s.games, s.wins, s.points_for, s.points_against,
+            s.stat_games, s.fg2m, s.fg2a, s.fg3m, s.fg3a, s.ftm, s.fta,
+            s.oreb, s.dreb, s.ast, s.tov, s.stl, s.blk, s.pf, s.fd,
+            se.label AS season_label
+       FROM team_stat_summary s
+       LEFT JOIN seasons se ON se.id = s.scope_key
+      WHERE s.club_id = ?
+      ORDER BY s.scope, s.scope_key DESC`,
+  ).bind(club.id).all<TeamStatRow & { season_label: string | null }>();
+
+  // 当季の選手一覧。**`player_stat_summary` の季・クラブの索引で引く**。
+  // **`player_seasons` を使わない** — あれは取得した断面で、1試合も出ていない
+  // 選手を含み、季中に離脱した選手が消えている（詳細設計 2.3.1 / 3.3）
+  const roster = await c.env.DB.prepare(
+    `SELECT s.scope, s.scope_key, s.club_id, s.games, s.games_started, s.minutes,
+            s.fg2m, s.fg2a, s.fg3m, s.fg3a, s.ftm, s.fta, s.oreb, s.dreb,
+            s.ast, s.tov, s.stl, s.blk, s.pf, s.fd, s.pts,
+            p.id AS player_id, p.name,
+            ps.number, ps.position
+       FROM player_stat_summary s
+       JOIN players p ON p.id = s.player_id
+       LEFT JOIN player_seasons ps
+              ON ps.player_id = s.player_id AND ps.season_id = s.scope_key
+             AND ps.club_id = s.club_id
+      WHERE s.scope = 'SEASON' AND s.scope_key = ? AND s.club_id = ?
+      ORDER BY s.minutes DESC, p.id`,
+  ).bind(seasonId, club.id).all<
+    PlayerStatRow & {
+      player_id: string;
+      name: string;
+      number: string | null;
+      position: string | null;
+    }
+  >();
+
+  const career = summary.results.find((r) => r.scope === 'CAREER');
   const played = record?.played ?? 0;
   return okCached(c, {
     club: {
@@ -142,6 +183,27 @@ teams.get('/teams/:slug', async (c) => {
         margin: row.margin,
         // **外れた試合を隠さない**（要件 8.3）。未照合は null
         isCorrect: row.is_correct === null ? null : row.is_correct === 1,
+      };
+    }),
+    seasons: summary.results
+      .filter((row) => row.scope === 'SEASON')
+      .map((row) => ({
+        seasonId: row.scope_key,
+        label: row.season_label,
+        ...teamStatOf(row),
+      })),
+    career: career === undefined
+      ? null
+      : { seasonId: null, label: '通算', ...teamStatOf(career) },
+    roster: roster.results.map((row) => {
+      const stat = playerStatOf(row);
+      return {
+        playerId: row.player_id,
+        name: row.name,
+        number: row.number,
+        position: row.position,
+        games: stat.games,
+        perGame: stat.perGame,
       };
     }),
   }, CACHE.teams);

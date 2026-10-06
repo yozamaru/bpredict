@@ -330,4 +330,34 @@ describe('内部APIの要求ボディ（契約）', () => {
     }));
     expect(res.status).toBe(200);
   });
+
+  // ボックススコアのカウント14項目。**`plus_minus` は含まない**（詳細設計 1.9）
+  const COUNTS = {
+    fg2m: 4, fg2a: 8, fg3m: 2, fg3a: 5, ftm: 3, fta: 4,
+    oreb: 1, dreb: 3, ast: 5, tov: 2, stl: 1, blk: 0, pf: 2, fd: 3,
+  };
+
+  it('stat-summary — 契約どおりの本文が 200 で通る（選手）', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    const res = await post(
+      '/internal/stat-summary',
+      bodyFrom('internalStatSummaryPlayers', {
+        playerId: s.playerId, scope: 'SEASON', scopeKey: s.seasonId, clubId: s.homeId,
+        games: 2, gamesStarted: 1, minutes: 60, pts: 17, ...COUNTS,
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('stat-summary — 契約どおりの本文が 200 で通る（クラブ）', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    const res = await post(
+      '/internal/stat-summary',
+      bodyFrom('internalStatSummaryTeams', {
+        clubId: s.homeId, scope: 'CAREER', scopeKey: '', games: 2, wins: 1,
+        pointsFor: 160, pointsAgainst: 150, statGames: 1, ...COUNTS,
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
 });

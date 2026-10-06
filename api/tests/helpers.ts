@@ -75,6 +75,9 @@ export async function resetAll() {
     env.DB.prepare('DELETE FROM games WHERE id NOT IN (SELECT game_id FROM predictions)'),
     env.DB.prepare(
       'DELETE FROM model_versions WHERE version NOT IN (SELECT model_version FROM predictions)'),
+    // 集計（詳細設計 1.9）。**players / clubs より先に消す**（FK）
+    env.DB.prepare('DELETE FROM player_stat_summary'),
+    env.DB.prepare('DELETE FROM team_stat_summary'),
     env.DB.prepare('DELETE FROM player_seasons'),
     env.DB.prepare(
       'DELETE FROM players WHERE id NOT IN (SELECT player_id FROM player_predictions)'),

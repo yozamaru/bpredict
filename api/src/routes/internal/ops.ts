@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import { maxRowsPerRequest, MAX_QUERIES_PER_REQUEST, type TableName } from '../../config/batch-limits';
 import { fail, failValidation, ok, readJson } from '../../lib/http';
 import { insertStatements, upsertStatements, type Row } from '../../lib/sql';
-import { evaluateBody, logBody, summaryBody } from '../../schemas/ops';
+import { evaluateBody, logBody, statSummaryBody, summaryBody } from '../../schemas/ops';
 
 export type Env = { DB: D1Database };
 
@@ -168,4 +168,78 @@ ops.get('/venues', async (c) => {
     id: string; name: string; prefecture: string | null; lat: number | null; lng: number | null;
   }>();
   return ok(c, { count: rows.results.length, venues: rows.results });
+});
+
+const PLAYER_STAT_COLS = [
+  'player_id', 'scope', 'scope_key', 'club_id', 'games', 'games_started', 'minutes',
+  'fg2m', 'fg2a', 'fg3m', 'fg3a', 'ftm', 'fta', 'oreb', 'dreb',
+  'ast', 'tov', 'stl', 'blk', 'pf', 'fd', 'pts',
+] as const;
+
+const TEAM_STAT_COLS = [
+  'club_id', 'scope', 'scope_key', 'games', 'wins', 'points_for', 'points_against',
+  'stat_games', 'fg2m', 'fg2a', 'fg3m', 'fg3a', 'ftm', 'fta', 'oreb', 'dreb',
+  'ast', 'tov', 'stl', 'blk', 'pf', 'fd',
+] as const;
+
+/**
+ * 実績の集計（詳細設計 1.9 / 3.4 / 4.14）。
+ *
+ * **洗い替えない。upsert だけである。** 約4,650行は1リクエスト（160行）に収まらず、
+ * 分割すると後のリクエストの DELETE が前のリクエストで入れた行を消す
+ * （`/internal/ratings` が「同じ as_of_date を2リクエストに分けない」と警戒して
+ * いるのと同じ形）。upsert で足りる根拠は、取り込みが試合を削除しないことである。
+ *
+ * **`preserve` を置かない。** この口はこの2表の唯一の書き込み経路であり、
+ * 列を送らない別の経路が存在しない（Zod が全列を要求する）。
+ */
+ops.post('/stat-summary', async (c) => {
+  const json = await readJson(c);
+  if (!json.ok) return fail(c, 'BAD_REQUEST', 'JSON として解釈できない');
+  const parsed = statSummaryBody.safeParse(json.value);
+  if (!parsed.success) return failValidation(c, parsed.error.issues);
+  const players = parsed.data.playerStats ?? [];
+  const teams = parsed.data.teamStats ?? [];
+
+  for (const [table, n] of [
+    ['player_stat_summary', players.length],
+    ['team_stat_summary', teams.length],
+  ] as const) {
+    const over = overLimit(table, n);
+    if (over) return fail(c, 'BAD_REQUEST', over);
+  }
+
+  const playerRows: Row[] = players.map((s) => [
+    s.playerId, s.scope, s.scopeKey, s.clubId, s.games, s.gamesStarted, s.minutes,
+    s.fg2m, s.fg2a, s.fg3m, s.fg3a, s.ftm, s.fta, s.oreb, s.dreb,
+    s.ast, s.tov, s.stl, s.blk, s.pf, s.fd, s.pts,
+  ]);
+  const teamRows: Row[] = teams.map((s) => [
+    s.clubId, s.scope, s.scopeKey, s.games, s.wins, s.pointsFor, s.pointsAgainst,
+    s.statGames, s.fg2m, s.fg2a, s.fg3m, s.fg3a, s.ftm, s.fta, s.oreb, s.dreb,
+    s.ast, s.tov, s.stl, s.blk, s.pf, s.fd,
+  ]);
+
+  const stmts = [
+    ...upsertStatements(c.env.DB, 'player_stat_summary', PLAYER_STAT_COLS, playerRows, {
+      conflict: ['player_id', 'scope', 'scope_key', 'club_id'],
+      update: PLAYER_STAT_COLS.filter(
+        (x) => !['player_id', 'scope', 'scope_key', 'club_id'].includes(x),
+      ),
+      extra: ["updated_at = datetime('now')"],
+    }),
+    ...upsertStatements(c.env.DB, 'team_stat_summary', TEAM_STAT_COLS, teamRows, {
+      conflict: ['club_id', 'scope', 'scope_key'],
+      update: TEAM_STAT_COLS.filter((x) => !['club_id', 'scope', 'scope_key'].includes(x)),
+      extra: ["updated_at = datetime('now')"],
+    }),
+  ];
+  if (stmts.length > MAX_QUERIES_PER_REQUEST) {
+    return fail(c, 'BAD_REQUEST', `文数が上限を超えている: ${stmts.length}`);
+  }
+  await c.env.DB.batch(stmts);
+  return ok(c, {
+    applied: { playerStats: players.length, teamStats: teams.length },
+    statements: stmts.length,
+  });
 });

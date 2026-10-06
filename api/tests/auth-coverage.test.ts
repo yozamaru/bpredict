@@ -31,6 +31,7 @@ const POSTS = [
   '/internal/finalize',
   '/internal/evaluate',
   '/internal/summary',
+  '/internal/stat-summary',
   '/internal/log',
   '/internal/models',
 ];

@@ -21,6 +21,7 @@ from batch.jobs.daily_ingest import (
 )
 from batch.jobs.game_ingest import Sent
 from batch.jobs.seed_master import Season
+from batch.jobs.summarize_stats import Outcome as StatSummary
 from batch.loader.payload import NOT_IN_SNAPSHOT, PayloadError, snapshot_rows
 from batch.parser.errors import ValidationError
 from batch.parser.schedule_parser import (
@@ -443,10 +444,14 @@ def test_settle_runs_the_match_and_then_the_elo(
         daily_ingest.evaluate_job, "run", lambda **_k: record("evaluate", Outcome()))
     monkeypatch.setattr(
         daily_ingest.ratings_job, "run", lambda **_k: record("ratings", Ratings()))
+    # **実績の集計は最後に置く**（推論はこの2表を読まないため。詳細設計 4.2）
+    monkeypatch.setattr(
+        daily_ingest.summarize_job, "run",
+        lambda **_k: record("summarize", StatSummary()))
     status, _date = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)
-    assert (called, status) == (["evaluate", "ratings"], "SUCCESS")
+    assert (called, status) == (["evaluate", "ratings", "summarize"], "SUCCESS")
 
 
 def test_the_elo_still_runs_when_the_match_fails(
@@ -467,6 +472,8 @@ def test_the_elo_still_runs_when_the_match_fails(
 
     monkeypatch.setattr(daily_ingest.evaluate_job, "run", boom)
     monkeypatch.setattr(daily_ingest.ratings_job, "run", ran)
+    monkeypatch.setattr(
+        daily_ingest.summarize_job, "run", lambda **_k: StatSummary())
     status, date = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)
@@ -484,6 +491,8 @@ def test_a_failed_elo_does_not_stop_the_job(monkeypatch: pytest.MonkeyPatch) -> 
         raise SnapshotError("スナップショットに games がない")
 
     monkeypatch.setattr(daily_ingest.ratings_job, "run", boom)
+    monkeypatch.setattr(
+        daily_ingest.summarize_job, "run", lambda **_k: StatSummary())
     status, _date = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)
@@ -552,6 +561,8 @@ def test_settle_returns_the_latest_matched_date(
 
     monkeypatch.setattr(daily_ingest.evaluate_job, "run", lambda **_k: Matched())
     monkeypatch.setattr(daily_ingest.ratings_job, "run", lambda **_k: Ratings())
+    monkeypatch.setattr(
+        daily_ingest.summarize_job, "run", lambda **_k: StatSummary())
     status, date = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)

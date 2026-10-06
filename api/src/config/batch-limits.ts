@@ -51,6 +51,8 @@ export const COLUMN_COUNTS = {
   prediction_model_bundle: 4,
   prediction_results: 14,
   accuracy_summary: 10,
+  player_stat_summary: 23,
+  team_stat_summary: 23,
   ingestion_logs: 9,
 } as const;
 

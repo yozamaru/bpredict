@@ -226,6 +226,9 @@ def test_limits_follow_the_documented_formula() -> None:
         ("players", 5, 800),
         ("club_seasons", 8, 480),
         ("venue_source_keys", 2, 2000),
+        # 集計（0012 で追加。詳細設計 3.4 の表）
+        ("player_stat_summary", 23, 160),
+        ("team_stat_summary", 23, 160),
     ],
 )
 def test_limits_match_the_design_table(table: str, columns: int, limit: int) -> None:

@@ -70,6 +70,10 @@ export const fetchAccuracy = () => load<AccuracySummary>('/api/v1/accuracy');
 
 export const fetchTeam = (slug: string) => load<Team>(`/api/v1/teams/${slug}`);
 
+/** 選手別（要件 F-15 / 詳細設計 3.3）。**集計値だけが返る。** */
+export const fetchPlayer = (playerId: string) =>
+  load<Player>(`/api/v1/players/${playerId}`);
+
 // --- 契約ファイル（`contracts/public-shapes.json`）の形 ---
 //
 // **キーはあの契約が正である。** api 側と batch 側のテストが同じファイルを読んで
@@ -219,4 +223,83 @@ export type Team = {
     opponentScore: number | null;
     isCorrect: boolean | null;
   }[];
+  /** v1.118 で足した3つ（要件 F-10）。出典は集計テーブル（詳細設計 1.9）。 */
+  seasons: TeamSeasonStat[];
+  career: TeamSeasonStat | null;
+  roster: RosterEntry[];
+};
+
+/**
+ * 実績の集計（詳細設計 1.9 / 3.3）。**合計ではなく1試合平均が返る** — 導出は
+ * API が行い、クライアントで計算しない（実装ごとにずれる）。
+ */
+export type Shots = { m: number | null; a: number | null; pct: number | null };
+
+export type StatBox = {
+  fg: Shots;
+  fg2: Shots;
+  fg3: Shots;
+  ft: Shots;
+  oreb: number | null;
+  dreb: number | null;
+  ast: number | null;
+  tov: number | null;
+  stl: number | null;
+  blk: number | null;
+  pf: number | null;
+  fd: number | null;
+};
+
+export type PlayerStat = {
+  games: number;
+  gamesStarted: number;
+  perGame: {
+    minutes: number | null;
+    pts: number | null;
+    reb: number | null;
+    ast: number | null;
+  };
+  box: StatBox;
+};
+
+/** クラブの集計。**母数が2つある**（`games` と `box.statGames`。詳細設計 1.9）。 */
+export type TeamStat = {
+  games: number;
+  wins: number;
+  losses: number;
+  perGame: {
+    pointsFor: number | null;
+    pointsAgainst: number | null;
+    margin: number | null;
+  };
+  box: StatBox & { statGames: number };
+};
+
+export type TeamSeasonStat = TeamStat & { seasonId: string | null; label: string | null };
+
+export type RosterEntry = {
+  playerId: string;
+  name: string;
+  number: string | null;
+  position: string | null;
+  games: number;
+  perGame: PlayerStat['perGame'];
+};
+
+export type Player = {
+  player: { playerId: string; name: string };
+  current: {
+    seasonId: string;
+    clubSlug: string;
+    clubName: string | null;
+    number: string | null;
+    position: string | null;
+  } | null;
+  career: PlayerStat | null;
+  /** **季中に移籍した季は2行になる**（クラブ別に持つため。詳細設計 1.9）。 */
+  seasons: (PlayerStat & {
+    seasonId: string;
+    label: string | null;
+    club: { slug: string | null; name: string | null; shortName: string | null };
+  })[];
 };

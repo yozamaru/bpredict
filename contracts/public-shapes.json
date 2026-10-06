@@ -258,5 +258,59 @@
       "teamTargets[].tgtStl",
       "teamTargets[].tgtTov"
     ]
+  },
+  "internalStatSummaryPlayers": {
+    "$comment": "POST /internal/stat-summary の playerStats（batch/jobs/summarize_stats.py の _player_payload）",
+    "paths": [
+      "playerStats[].ast",
+      "playerStats[].blk",
+      "playerStats[].clubId",
+      "playerStats[].dreb",
+      "playerStats[].fd",
+      "playerStats[].fg2a",
+      "playerStats[].fg2m",
+      "playerStats[].fg3a",
+      "playerStats[].fg3m",
+      "playerStats[].fta",
+      "playerStats[].ftm",
+      "playerStats[].games",
+      "playerStats[].gamesStarted",
+      "playerStats[].minutes",
+      "playerStats[].oreb",
+      "playerStats[].pf",
+      "playerStats[].playerId",
+      "playerStats[].pts",
+      "playerStats[].scope",
+      "playerStats[].scopeKey",
+      "playerStats[].stl",
+      "playerStats[].tov"
+    ]
+  },
+  "internalStatSummaryTeams": {
+    "$comment": "POST /internal/stat-summary の teamStats（同 _team_payload）。2つの配列はどちらも省略可で、両方空は拒否される",
+    "paths": [
+      "teamStats[].ast",
+      "teamStats[].blk",
+      "teamStats[].clubId",
+      "teamStats[].dreb",
+      "teamStats[].fd",
+      "teamStats[].fg2a",
+      "teamStats[].fg2m",
+      "teamStats[].fg3a",
+      "teamStats[].fg3m",
+      "teamStats[].fta",
+      "teamStats[].ftm",
+      "teamStats[].games",
+      "teamStats[].oreb",
+      "teamStats[].pf",
+      "teamStats[].pointsAgainst",
+      "teamStats[].pointsFor",
+      "teamStats[].scope",
+      "teamStats[].scopeKey",
+      "teamStats[].statGames",
+      "teamStats[].stl",
+      "teamStats[].tov",
+      "teamStats[].wins"
+    ]
   }
 }

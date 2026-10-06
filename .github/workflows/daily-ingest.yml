@@ -152,7 +152,7 @@ jobs:
 
       # **スナップショットと静的JSON をコミットする**（基本設計 1.2 の構成図）。
       # 変わっていなければ何もしない（空のコミットを積まない）。
-      - name: スナップショットと静的JSON をコミット
+      - name: スナップショットと静的JSON と選手一覧をコミット
         if: ${{ github.event_name == 'schedule' || !inputs.dry_run }}
         run: |
           git config user.name 'github-actions[bot]'
@@ -162,7 +162,9 @@ jobs:
           # **取り込まない試合の一覧も入れる**（要件 5.3）。`backfill` は
           # `contents: read` のため artifact で持ち帰るしかないが、このジョブは
           # 自分でコミットできる
-          for path in batch/snapshot web/public/data batch/exclusions; do
+          # **`web/data` も入れる**（詳細設計 4.14）。`/players/[id]` の静的生成の
+          # 出典であり、**コミットされなければ次のビルドで選手ページが0件になる**
+          for path in batch/snapshot web/public/data web/data batch/exclusions; do
             [[ -e "$path" ]] && git add "$path"
           done
           if git diff --cached --quiet; then

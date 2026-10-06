@@ -7,12 +7,35 @@
 
 import { useEffect, useState } from 'react';
 import { HistoryRow, type HistoryView } from '@/components/prediction/HistoryRow';
+import { RosterTable } from '@/components/stats/RosterTable';
+import { CAREER_RANGE, FORFEIT_EXCLUDED, StatNotes } from '@/components/stats/StatNotes';
+import { StatSummaryTable, type StatRow } from '@/components/stats/StatSummaryTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ACTIONS, LOADING, LOAD_ERROR } from '@/lib/messages';
 import { dateLabel } from '@/lib/map';
-import { fetchTeam, type Team } from '@/lib/source';
+import { fetchTeam, type Team, type TeamSeasonStat } from '@/lib/source';
 
-export function TeamView({ slug }: { slug: string }) {
+/** 主要項目の見出し。`cells` と同じ数・同じ順（詳細設計 5.3） */
+const COLUMNS = ['勝', '敗', '得点', '失点'] as const;
+
+function teamRow(stat: TeamSeasonStat, key: string, label: string): StatRow {
+  return {
+    key,
+    label,
+    games: stat.games,
+    cells: [stat.wins, stat.losses, stat.perGame.pointsFor, stat.perGame.pointsAgainst],
+    box: stat.box,
+    // **母数が2つある。** どちらが何の母数かを書く（詳細設計 5.3）
+    denominatorLabel:
+      `以下は1試合平均（ボックススコアの母数 ${stat.box.statGames}試合）`,
+  };
+}
+
+export function TeamView({ slug, linkablePlayerIds }: {
+  slug: string;
+  /** 静的生成した選手ID。**範囲外にはリンクを張らない**（要件 8.2） */
+  linkablePlayerIds: readonly string[];
+}) {
   const [team, setTeam] = useState<Team | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -65,6 +88,16 @@ export function TeamView({ slug }: { slug: string }) {
       opponentScore: item.opponentScore,
       isCorrect: item.isCorrect,
     }));
+
+  // **通算を先に出す**（基本設計 5.2）。まず全体の水準を示す
+  const statRows: StatRow[] = [];
+  if (team.career !== null) statRows.push(teamRow(team.career, 'career', '通算'));
+  for (const season of team.seasons) {
+    statRows.push(
+      teamRow(season, season.seasonId ?? 'unknown', season.label ?? season.seasonId ?? '—'),
+    );
+  }
+  const linkable = new Set(linkablePlayerIds);
 
   return (
     <>
@@ -121,6 +154,18 @@ export function TeamView({ slug }: { slug: string }) {
           </div>
         )}
       </section>
+
+      {statRows.length > 0 && (
+        <StatSummaryTable heading="戦績" columns={COLUMNS} rows={statRows} />
+      )}
+
+      {team.roster.length > 0 && (
+        <RosterTable entries={team.roster} canLink={(id) => linkable.has(id)} />
+      )}
+
+      {(statRows.length > 0 || team.roster.length > 0) && (
+        <StatNotes notes={[CAREER_RANGE, FORFEIT_EXCLUDED]} />
+      )}
     </>
   );
 }

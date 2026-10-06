@@ -165,7 +165,7 @@ describe('GET /players/:playerId', () => {
   });
 
   it('率は合計を合計で割る（1試合ごとの率を平均しない）', async () => {
-    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
     await env.DB.prepare("INSERT INTO players (id,name) VALUES ('12345','架空 選手')").run();
     await post('/internal/stat-summary', {
       playerStats: [playerRow({
@@ -180,7 +180,7 @@ describe('GET /players/:playerId', () => {
   });
 
   it('試投数が0のときだけ率を出さない（実績に閾値を設けない）', async () => {
-    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
     await env.DB.prepare("INSERT INTO players (id,name) VALUES ('12345','架空 選手')").run();
     await post('/internal/stat-summary', {
       playerStats: [playerRow({
@@ -217,7 +217,7 @@ describe('GET /players/:playerId', () => {
   });
 
   it('予測値を1つも返さない（この口が返すのはすべて実績である）', async () => {
-    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
     await env.DB.prepare("INSERT INTO players (id,name) VALUES ('12345','架空 選手')").run();
     await post('/internal/stat-summary', {
       playerStats: [playerRow({

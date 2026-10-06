@@ -76,7 +76,7 @@ jobs:
       # 引き継ぐ。`parser-canary` / `backfill` / `daily-ingest` と同じキー空間を
       # 共有し、**合計で上限を守る**（詳細設計 4.8）。
       - name: スクレイパの状態を復元
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: batch/.scraper-state
           key: scraper-state-${{ github.run_id }}

@@ -115,7 +115,7 @@ jobs:
       # **合計で上限を守る**（詳細設計 4.8）。
       - name: スクレイパの状態を復元
         if: ${{ github.event_name == 'schedule' || inputs.results || inputs.upcoming }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: batch/.scraper-state
           key: scraper-state-${{ github.run_id }}

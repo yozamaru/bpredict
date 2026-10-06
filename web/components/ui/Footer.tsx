@@ -1,13 +1,16 @@
 import Link from 'next/link';
 
-import { SITE_VERSION } from '@/lib/version';
+import { SITE_COPYRIGHT, SITE_VERSION } from '@/lib/version';
 
 /**
- * 全ページ共通フッター。免責・出典・/about への到達性と**版**を常設する
- * （要件 F-12 / A-07）。
+ * 全ページ共通フッター。免責・出典・/about への到達性と**著作権表示**・**版**を
+ * 常設する（要件 F-12 / A-07）。
  * 出典の文言は要件 4.5.5 の確定文言をそのまま出す。短縮・言い換えをしない。
  *
- * **版は `lib/version.ts` から読む**（ここに書き写さない。要件 8.2）。
+ * **版と著作権表示は `lib/version.ts` から読む**（ここに書き写さない。要件 8.2）。
+ *
+ * **並びを入れ替えない**（出典 → 非公式表明 → /about → © → 版）。
+ * **© を出典より先に置くと、公式記録そのものへの権利主張と読まれる。**
  */
 export function Footer() {
   return (
@@ -29,9 +32,10 @@ export function Footer() {
           免責・出典・個人情報の取扱い
         </Link>
       </nav>
-      {/* 版（要件 F-12）。**数字は等幅で組む**（ui-implementation の規約）。
-          リンクにしない — 遷移先が無い */}
-      <p className="mt-1 font-mono tabular-nums">{SITE_VERSION}</p>
+      {/* 著作権表示と版（要件 F-12）。**数字は等幅で組む**（ui-implementation の
+          規約）。リンクにしない — 遷移先が無い。**© を出典より先に置かない** */}
+      <p className="mt-2 font-mono tabular-nums">{SITE_COPYRIGHT}</p>
+      <p className="font-mono tabular-nums">{SITE_VERSION}</p>
     </footer>
   );
 }

@@ -3,9 +3,9 @@
 | 項目 | 内容 |
 |---|---|
 | 生成 | **`python3 scripts/describe_schema.py` が生成する。手で編集しない** |
-| 生成日 | 2026-10-05 |
+| 生成日 | 2026-10-06 |
 | 構造の出典 | `db/migrations/*.sql`（列の説明は DDL のコメント） |
-| 行数の出典 | D1 の本番データ（`wrangler d1 export`） |
+| 行数の出典 | 未測定（`--database` が渡されていない） |
 | 定義と設計の理由 | **`docs/design-detail.md` 1章**。この文書では繰り返さない |
 
 この文書は「**いま実際に何が入っているか**」だけを扱う。列の意味・制約の理由・
@@ -15,61 +15,32 @@
 
 | 表 | 分類 | 列数 | 行数 | 役割 |
 |---|---|---:|---:|---|
-| [`accuracy_summary`](#accuracy_summary) | 評価 | 10 | 0 | 的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため） |
-| [`club_seasons`](#club_seasons) | マスタ | 8 | 0 | シーズンごとのクラブ断面。名称・リーグ・本拠は年度で変わる。**backfill が試合データから作る** |
-| [`club_source_ids`](#club_source_ids) | マスタ | 5 | 0 | 公式サイトのチームIDを `club_id` に解決する対応表。旧B1と新リーグをまたいで名寄せする |
-| [`clubs`](#clubs) | マスタ | 5 | 0 | 恒久的なクラブ。改称・リーグ移動があっても不変。表示名は `club_seasons` が持つ |
-| [`game_entries`](#game_entries) | ファクト | 6 | 0 | 試合ごとの出場登録。**取得のたびに全行を洗い替える**（推定行が残ると「暫定」が解除されない） |
-| [`games`](#games) | ファクト | 25 | 0 | 試合。主キーは公式試合ID（自然キーにしない — 延期で日付が変わると別レコードになる） |
-| [`ingestion_logs`](#ingestion_logs) | 運用 | 9 | 0 | ジョブの実行履歴。**例外オブジェクトをそのまま入れない**（型名と自前の短いメッセージに限る） |
-| [`model_versions`](#model_versions) | 評価（モデル） | 25 | 0 | 学習済みモデル。artifact をテキストで格納する（1.5MB 上限）。有効なものは種別ごとに常に1本 |
-| [`player_game_stats`](#player_game_stats) | ファクト | 24 | 0 | 選手別のボックススコア。`fgm` / `fga` / `reb` は持たず導出する（冗長列は不整合の余地になる） |
-| [`player_predictions`](#player_predictions) | 予測 | 31 | 0 | 選手単位の予測。**チーム予測へ整合化した後の値**を入れる。成功数と得点は導出するため列を持たない |
-| [`player_seasons`](#player_seasons) | マスタ | 8 | 0 | 選手の所属断面。シーズン途中の移籍にも対応する |
-| [`players`](#players) | マスタ | 5 | 0 | 恒久的な選手の人物マスタ。所属は持たない（`player_seasons` と実績側が持つ） |
-| [`prediction_model_bundle`](#prediction_model_bundle) | 予測 | 4 | 0 | その予測に使ったモデル一式。1本の予測は最大33本のモデルの合成である |
-| [`prediction_reasons`](#prediction_reasons) | 予測 | 8 | 0 | 判断根拠。個別特徴ではなく**要因グループ**に集約した SHAP 値を持つ |
-| [`prediction_results`](#prediction_results) | 評価 | 14 | 0 | 確定予測と実績の照合結果。**中止・延期は `VOID` として的中率の母数から外す** |
-| [`prediction_team_targets`](#prediction_team_targets) | 予測 | 17 | 0 | 整合化の目標値。**試投数と成功率の組**で持ち、`成功数 ≤ 試投数` を構造的に保証する |
-| [`predictions`](#predictions) | 予測 | 19 | 0 | 試合単位の予測。**追記のみ**で、再推論は旧行を `is_active = 0` にして新しい行を足す |
-| [`seasons`](#seasons) | マスタ | 5 | 0 | シーズン。`id` にリーグを含める（同一シーズンの PREMIER と ONE を同時に持てるようにする） |
-| [`team_game_stats`](#team_game_stats) | ファクト | 22 | 0 | チームのボックススコア。選手側と同じ粒度で持つ（整合化の基準になる） |
-| [`team_games`](#team_games) | ファクト | 10 | 0 | チーム視点の試合行。`games` への OR 条件つき JOIN を消すためにある。日程系の特徴量はここだけを読む |
-| [`team_ratings`](#team_ratings) | 派生 | 8 | 0 | 試合日ごとの Elo ほかのスナップショット。**1行はその試合日の終了時点の値である** |
-| [`venue_revisions`](#venue_revisions) | マスタ | 5 | 0 | 会場の改称と収容人数の履歴。過去試合は当時の値で表示する。**全期間を再計算して洗い替える派生** |
-| [`venue_source_keys`](#venue_source_keys) | マスタ | 2 | 0 | 公式の会場ID（`StadiumCD`）を `venue_id` に解決する対応表 |
-| [`venues`](#venues) | マスタ | 7 | 0 | 恒久的な会場。`id` は公式サイトの `StadiumCD`。`name` は初出の名称で固定する |
-
-**0 表にデータがあり、24 表が空である。**
-
-### 空の表とその理由
-
-| 表 | 理由 |
-|---|---|
-| `accuracy_summary` | `prediction_results` を畳んだ表。照合が始まってから（工程9b 以降） |
-| `club_seasons` | **理由が未記載** |
-| `club_source_ids` | **理由が未記載** |
-| `clubs` | **理由が未記載** |
-| `game_entries` | 取得するのは `gameday_update` で、まだ実装されていない（詳細設計 4.1） |
-| `games` | **理由が未記載** |
-| `ingestion_logs` | **理由が未記載** |
-| `model_versions` | 学習済みモデルの登録は工程8 |
-| `player_game_stats` | **理由が未記載** |
-| `player_predictions` | 親の `predictions` が空（工程9b） |
-| `player_seasons` | 登録区分とポジションの正規化が未決のため backfill が作らない（詳細設計 3.4） |
-| `players` | **理由が未記載** |
-| `prediction_model_bundle` | 親の `predictions` が空（工程9b） |
-| `prediction_reasons` | 親の `predictions` が空（工程9b） |
-| `prediction_results` | 照合は予測が入ってから（工程9b 以降） |
-| `prediction_team_targets` | 親の `predictions` が空（工程9b） |
-| `predictions` | 推論の結線は工程9b（詳細設計 9章） |
-| `seasons` | **理由が未記載** |
-| `team_game_stats` | **理由が未記載** |
-| `team_games` | **理由が未記載** |
-| `team_ratings` | **スナップショット側には 12,532 行ある。** D1 への書き戻しが未実施（詳細設計 4.1 の `rebuild-derived`） |
-| `venue_revisions` | **スナップショット側には 173 区間ある。** D1 への書き戻しが未実施（同上の `rebuild-derived`） |
-| `venue_source_keys` | **理由が未記載** |
-| `venues` | **理由が未記載** |
+| [`accuracy_summary`](#accuracy_summary) | 評価 | 10 | — | 的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため） |
+| [`club_seasons`](#club_seasons) | マスタ | 8 | — | シーズンごとのクラブ断面。名称・リーグ・本拠は年度で変わる。**backfill が試合データから作る** |
+| [`club_source_ids`](#club_source_ids) | マスタ | 5 | — | 公式サイトのチームIDを `club_id` に解決する対応表。旧B1と新リーグをまたいで名寄せする |
+| [`clubs`](#clubs) | マスタ | 5 | — | 恒久的なクラブ。改称・リーグ移動があっても不変。表示名は `club_seasons` が持つ |
+| [`game_entries`](#game_entries) | ファクト | 6 | — | 試合ごとの出場登録。**取得のたびに全行を洗い替える**（推定行が残ると「暫定」が解除されない） |
+| [`games`](#games) | ファクト | 25 | — | 試合。主キーは公式試合ID（自然キーにしない — 延期で日付が変わると別レコードになる） |
+| [`ingestion_logs`](#ingestion_logs) | 運用 | 9 | — | ジョブの実行履歴。**例外オブジェクトをそのまま入れない**（型名と自前の短いメッセージに限る） |
+| [`model_versions`](#model_versions) | 評価（モデル） | 25 | — | 学習済みモデル。artifact をテキストで格納する（1.5MB 上限）。有効なものは種別ごとに常に1本 |
+| [`player_game_stats`](#player_game_stats) | ファクト | 24 | — | 選手別のボックススコア。`fgm` / `fga` / `reb` は持たず導出する（冗長列は不整合の余地になる） |
+| [`player_predictions`](#player_predictions) | 予測 | 31 | — | 選手単位の予測。**チーム予測へ整合化した後の値**を入れる。成功数と得点は導出するため列を持たない |
+| [`player_seasons`](#player_seasons) | マスタ | 8 | — | 選手の所属断面。シーズン途中の移籍にも対応する |
+| [`player_stat_summary`](#player_stat_summary) | 集計 | 23 | — | 選手の実績の集計。シーズン別（**クラブ別**）と通算。保存するのは合計で、1試合平均は API が導出する |
+| [`players`](#players) | マスタ | 5 | — | 恒久的な選手の人物マスタ。所属は持たない（`player_seasons` と実績側が持つ） |
+| [`prediction_model_bundle`](#prediction_model_bundle) | 予測 | 4 | — | その予測に使ったモデル一式。1本の予測は最大33本のモデルの合成である |
+| [`prediction_reasons`](#prediction_reasons) | 予測 | 8 | — | 判断根拠。個別特徴ではなく**要因グループ**に集約した SHAP 値を持つ |
+| [`prediction_results`](#prediction_results) | 評価 | 14 | — | 確定予測と実績の照合結果。**中止・延期は `VOID` として的中率の母数から外す** |
+| [`prediction_team_targets`](#prediction_team_targets) | 予測 | 17 | — | 整合化の目標値。**試投数と成功率の組**で持ち、`成功数 ≤ 試投数` を構造的に保証する |
+| [`predictions`](#predictions) | 予測 | 19 | — | 試合単位の予測。**追記のみ**で、再推論は旧行を `is_active = 0` にして新しい行を足す |
+| [`seasons`](#seasons) | マスタ | 5 | — | シーズン。`id` にリーグを含める（同一シーズンの PREMIER と ONE を同時に持てるようにする） |
+| [`team_game_stats`](#team_game_stats) | ファクト | 22 | — | チームのボックススコア。選手側と同じ粒度で持つ（整合化の基準になる） |
+| [`team_games`](#team_games) | ファクト | 10 | — | チーム視点の試合行。`games` への OR 条件つき JOIN を消すためにある。日程系の特徴量はここだけを読む |
+| [`team_ratings`](#team_ratings) | 派生 | 8 | — | 試合日ごとの Elo ほかのスナップショット。**1行はその試合日の終了時点の値である** |
+| [`team_stat_summary`](#team_stat_summary) | 集計 | 23 | — | クラブの実績の集計。**母数を2つ持つ**（`games` は勝敗・得点、`stat_games` はボックススコア） |
+| [`venue_revisions`](#venue_revisions) | マスタ | 5 | — | 会場の改称と収容人数の履歴。過去試合は当時の値で表示する。**全期間を再計算して洗い替える派生** |
+| [`venue_source_keys`](#venue_source_keys) | マスタ | 2 | — | 公式の会場ID（`StadiumCD`）を `venue_id` に解決する対応表 |
+| [`venues`](#venues) | マスタ | 7 | — | 恒久的な会場。`id` は公式サイトの `StadiumCD`。`name` は初出の名称で固定する |
 
 ## 関連（ER図）
 
@@ -156,11 +127,9 @@ erDiagram
 
 ### accuracy_summary
 
-評価 ／ `db/migrations/0006_*.sql` ／ **0 行**
+評価 ／ `db/migrations/0006_*.sql` ／ 行数 —
 
 的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため）
-
-> `prediction_results` を畳んだ表。照合が始まってから（工程9b 以降）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -177,7 +146,7 @@ erDiagram
 
 ### club_seasons
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 シーズンごとのクラブ断面。名称・リーグ・本拠は年度で変わる。**backfill が試合データから作る**
 
@@ -194,7 +163,7 @@ erDiagram
 
 ### club_source_ids
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 公式サイトのチームIDを `club_id` に解決する対応表。旧B1と新リーグをまたいで名寄せする
 
@@ -208,7 +177,7 @@ erDiagram
 
 ### clubs
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 恒久的なクラブ。改称・リーグ移動があっても不変。表示名は `club_seasons` が持つ
 
@@ -222,11 +191,9 @@ erDiagram
 
 ### game_entries
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ 行数 —
 
 試合ごとの出場登録。**取得のたびに全行を洗い替える**（推定行が残ると「暫定」が解除されない）
-
-> 取得するのは `gameday_update` で、まだ実装されていない（詳細設計 4.1）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -239,7 +206,7 @@ erDiagram
 
 ### games
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ 行数 —
 
 試合。主キーは公式試合ID（自然キーにしない — 延期で日付が変わると別レコードになる）
 
@@ -273,7 +240,7 @@ erDiagram
 
 ### ingestion_logs
 
-運用 ／ `db/migrations/0007_*.sql` ／ **0 行**
+運用 ／ `db/migrations/0007_*.sql` ／ 行数 —
 
 ジョブの実行履歴。**例外オブジェクトをそのまま入れない**（型名と自前の短いメッセージに限る）
 
@@ -291,11 +258,9 @@ erDiagram
 
 ### model_versions
 
-評価（モデル） ／ `db/migrations/0004_*.sql` ／ **0 行**
+評価（モデル） ／ `db/migrations/0004_*.sql` ／ 行数 —
 
 学習済みモデル。artifact をテキストで格納する（1.5MB 上限）。有効なものは種別ごとに常に1本
-
-> 学習済みモデルの登録は工程8
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -327,7 +292,7 @@ erDiagram
 
 ### player_game_stats
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ 行数 —
 
 選手別のボックススコア。`fgm` / `fga` / `reb` は持たず導出する（冗長列は不整合の余地になる）
 
@@ -360,11 +325,9 @@ erDiagram
 
 ### player_predictions
 
-予測 ／ `db/migrations/0005_*.sql` ／ **0 行**
+予測 ／ `db/migrations/0005_*.sql` ／ 行数 —
 
 選手単位の予測。**チーム予測へ整合化した後の値**を入れる。成功数と得点は導出するため列を持たない
-
-> 親の `predictions` が空（工程9b）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -402,11 +365,9 @@ erDiagram
 
 ### player_seasons
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 選手の所属断面。シーズン途中の移籍にも対応する
-
-> 登録区分とポジションの正規化が未決のため backfill が作らない（詳細設計 3.4）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -419,9 +380,41 @@ erDiagram
 | `joined_on` | TEXT | 可 | — | — | 加入日 |
 | `left_on` | TEXT | 可 | — | — | 退団日 |
 
+### player_stat_summary
+
+集計 ／ `db/migrations/0012_*.sql` ／ 行数 —
+
+選手の実績の集計。シーズン別（**クラブ別**）と通算。保存するのは合計で、1試合平均は API が導出する
+
+| 列 | 型 | NULL | 既定値 | 値あり | 説明 |
+|---|---|---|---|---:|---|
+| `player_id` 🔑 | TEXT | 不可 | — | — | `players.id` への参照 |
+| `scope` 🔑 | TEXT | 不可 | — | — | `SEASON`（季の合計）か `CAREER`（通算） 許容値: `SEASON` / `CAREER` |
+| `scope_key` 🔑 | TEXT | 不可 | — | — | **季の行はクラブ別に持つ。** 季中の移籍が2行で出る。CAREER では空文字。 **NULL にしない** — SQLite は主キー列の NULL 重複を許す（0006 の accuracy_summary.model_version と同じ理由） |
+| `club_id` 🔑 | TEXT | 不可 | `''` | — | 季の行が指すクラブ。**`CAREER` では空文字**（NULL にしない） |
+| `games` | INTEGER | 不可 | — | — | 出場した試合数。**1試合平均の母数である**（要件 8.3） |
+| `games_started` | INTEGER | 不可 | `0` | — | 先発した試合数 |
+| `minutes` | REAL | 可 | — | — | 出場時間（分）。取得元は `MM:SS` 形式 |
+| `fg2m` | INTEGER | 可 | — | — | 2点シュート成功数 |
+| `fg2a` | INTEGER | 可 | — | — | 2点シュート試投数 |
+| `fg3m` | INTEGER | 可 | — | — | 3点シュート成功数 |
+| `fg3a` | INTEGER | 可 | — | — | 3点シュート試投数 |
+| `ftm` | INTEGER | 可 | — | — | フリースロー成功数 |
+| `fta` | INTEGER | 可 | — | — | フリースロー試投数 |
+| `oreb` | INTEGER | 可 | — | — | オフェンスリバウンド |
+| `dreb` | INTEGER | 可 | — | — | ディフェンスリバウンド |
+| `ast` | INTEGER | 可 | — | — | アシスト |
+| `tov` | INTEGER | 可 | — | — | ターンオーバー |
+| `stl` | INTEGER | 可 | — | — | スティール |
+| `blk` | INTEGER | 可 | — | — | ブロック |
+| `pf` | INTEGER | 可 | — | — | 自分が犯したファウル数 |
+| `fd` | INTEGER | 可 | — | — | 被ファウル数（FIBA 系の `FD`。NBA の「テイクチャージ」に相当する） |
+| `pts` | INTEGER | 可 | — | — | 得点。恒等式 `2FGM×2 + 3FGM×3 + FTM` の検証に使う |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+
 ### players
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 恒久的な選手の人物マスタ。所属は持たない（`player_seasons` と実績側が持つ）
 
@@ -435,11 +428,9 @@ erDiagram
 
 ### prediction_model_bundle
 
-予測 ／ `db/migrations/0005_*.sql` ／ **0 行**
+予測 ／ `db/migrations/0005_*.sql` ／ 行数 —
 
 その予測に使ったモデル一式。1本の予測は最大33本のモデルの合成である
-
-> 親の `predictions` が空（工程9b）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -450,11 +441,9 @@ erDiagram
 
 ### prediction_reasons
 
-予測 ／ `db/migrations/0005_*.sql` ／ **0 行**
+予測 ／ `db/migrations/0005_*.sql` ／ 行数 —
 
 判断根拠。個別特徴ではなく**要因グループ**に集約した SHAP 値を持つ
-
-> 親の `predictions` が空（工程9b）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -469,11 +458,9 @@ erDiagram
 
 ### prediction_results
 
-評価 ／ `db/migrations/0006_*.sql` ／ **0 行**
+評価 ／ `db/migrations/0006_*.sql` ／ 行数 —
 
 確定予測と実績の照合結果。**中止・延期は `VOID` として的中率の母数から外す**
-
-> 照合は予測が入ってから（工程9b 以降）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -494,11 +481,9 @@ erDiagram
 
 ### prediction_team_targets
 
-予測 ／ `db/migrations/0005_*.sql` ／ **0 行**
+予測 ／ `db/migrations/0005_*.sql` ／ 行数 —
 
 整合化の目標値。**試投数と成功率の組**で持ち、`成功数 ≤ 試投数` を構造的に保証する
-
-> 親の `predictions` が空（工程9b）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -522,11 +507,9 @@ erDiagram
 
 ### predictions
 
-予測 ／ `db/migrations/0005_*.sql` ／ **0 行**
+予測 ／ `db/migrations/0005_*.sql` ／ 行数 —
 
 試合単位の予測。**追記のみ**で、再推論は旧行を `is_active = 0` にして新しい行を足す
-
-> 推論の結線は工程9b（詳細設計 9章）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -552,7 +535,7 @@ erDiagram
 
 ### seasons
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 シーズン。`id` にリーグを含める（同一シーズンの PREMIER と ONE を同時に持てるようにする）
 
@@ -566,7 +549,7 @@ erDiagram
 
 ### team_game_stats
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ 行数 —
 
 チームのボックススコア。選手側と同じ粒度で持つ（整合化の基準になる）
 
@@ -597,7 +580,7 @@ erDiagram
 
 ### team_games
 
-ファクト ／ `db/migrations/0002_*.sql` ／ **0 行**
+ファクト ／ `db/migrations/0002_*.sql` ／ 行数 —
 
 チーム視点の試合行。`games` への OR 条件つき JOIN を消すためにある。日程系の特徴量はここだけを読む
 
@@ -616,11 +599,9 @@ erDiagram
 
 ### team_ratings
 
-派生 ／ `db/migrations/0003_*.sql` ／ **0 行**
+派生 ／ `db/migrations/0003_*.sql` ／ 行数 —
 
 試合日ごとの Elo ほかのスナップショット。**1行はその試合日の終了時点の値である**
-
-> **スナップショット側には 12,532 行ある。** D1 への書き戻しが未実施（詳細設計 4.1 の `rebuild-derived`）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -633,13 +614,43 @@ erDiagram
 | `pace` | REAL | 可 | — | — | ペース。同上 |
 | `games_played` | INTEGER | 不可 | — | — | その時点の消化試合数。10未満は Elo の信頼度が低い |
 
+### team_stat_summary
+
+集計 ／ `db/migrations/0012_*.sql` ／ 行数 —
+
+クラブの実績の集計。**母数を2つ持つ**（`games` は勝敗・得点、`stat_games` はボックススコア）
+
+| 列 | 型 | NULL | 既定値 | 値あり | 説明 |
+|---|---|---|---|---:|---|
+| `club_id` 🔑 | TEXT | 不可 | — | — | `clubs.id` への参照 |
+| `scope` 🔑 | TEXT | 不可 | — | — | `SEASON`（季の合計）か `CAREER`（通算） 許容値: `SEASON` / `CAREER` |
+| `scope_key` 🔑 | TEXT | 不可 | — | — | 勝敗・得点の母数（team_games で result IS NOT NULL の試合数） |
+| `games` | INTEGER | 不可 | — | — | 勝敗と得点の母数（`team_games` で結果が入っている試合数） |
+| `wins` | INTEGER | 不可 | — | — | `losses` の列を持たない（games - wins で導出できる冗長列） |
+| `points_for` | INTEGER | 可 | — | — | 総得点（`games` のスコアから取る） |
+| `points_against` | INTEGER | 可 | — | — | ボックススコアの母数（team_game_stats に行がある試合数） |
+| `stat_games` | INTEGER | 不可 | `0` | — | ボックススコアの母数。**`games` と別に持つ**（スタッツが欠ける試合が実在する） |
+| `fg2m` | INTEGER | 可 | — | — | 2点シュート成功数 |
+| `fg2a` | INTEGER | 可 | — | — | 2点シュート試投数 |
+| `fg3m` | INTEGER | 可 | — | — | 3点シュート成功数 |
+| `fg3a` | INTEGER | 可 | — | — | 3点シュート試投数 |
+| `ftm` | INTEGER | 可 | — | — | フリースロー成功数 |
+| `fta` | INTEGER | 可 | — | — | フリースロー試投数 |
+| `oreb` | INTEGER | 可 | — | — | オフェンスリバウンド |
+| `dreb` | INTEGER | 可 | — | — | ディフェンスリバウンド |
+| `ast` | INTEGER | 可 | — | — | アシスト |
+| `tov` | INTEGER | 可 | — | — | ターンオーバー |
+| `stl` | INTEGER | 可 | — | — | スティール |
+| `blk` | INTEGER | 可 | — | — | ブロック |
+| `pf` | INTEGER | 可 | — | — | 自分が犯したファウル数 |
+| `fd` | INTEGER | 可 | — | — | 被ファウル数（FIBA 系の `FD`。NBA の「テイクチャージ」に相当する） |
+| `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
+
 ### venue_revisions
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 会場の改称と収容人数の履歴。過去試合は当時の値で表示する。**全期間を再計算して洗い替える派生**
-
-> **スナップショット側には 173 区間ある。** D1 への書き戻しが未実施（同上の `rebuild-derived`）
 
 | 列 | 型 | NULL | 既定値 | 値あり | 説明 |
 |---|---|---|---|---:|---|
@@ -651,7 +662,7 @@ erDiagram
 
 ### venue_source_keys
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 公式の会場ID（`StadiumCD`）を `venue_id` に解決する対応表
 
@@ -662,7 +673,7 @@ erDiagram
 
 ### venues
 
-マスタ ／ `db/migrations/0001_*.sql` ／ **0 行**
+マスタ ／ `db/migrations/0001_*.sql` ／ 行数 —
 
 恒久的な会場。`id` は公式サイトの `StadiumCD`。`name` は初出の名称で固定する
 

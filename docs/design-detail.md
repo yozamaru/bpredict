@@ -1112,7 +1112,10 @@ CREATE TABLE player_stat_summary (
   pf INTEGER, fd INTEGER,
   pts INTEGER,
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (player_id, scope, scope_key, club_id)
+  PRIMARY KEY (player_id, scope, scope_key, club_id),
+  -- CAREER に季を、SEASON に空を入れさせない。**主キーの意味を守る**
+  CHECK ((scope = 'CAREER' AND scope_key = '' AND club_id = '')
+      OR (scope = 'SEASON' AND scope_key <> '' AND club_id <> ''))
 );
 -- クラブページの選手一覧がこの索引で引ける（約16行）
 CREATE INDEX idx_pss_club ON player_stat_summary(scope, scope_key, club_id);
@@ -1135,7 +1138,10 @@ CREATE TABLE team_stat_summary (
   ast INTEGER, tov INTEGER, stl INTEGER, blk INTEGER,
   pf INTEGER, fd INTEGER,
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (club_id, scope, scope_key)
+  PRIMARY KEY (club_id, scope, scope_key),
+  CHECK ((scope = 'CAREER' AND scope_key = '')
+      OR (scope = 'SEASON' AND scope_key <> '')),
+  CHECK (wins <= games)
 );
 ```
 
@@ -3299,8 +3305,9 @@ D1 に触れる前に済ませる**。クローラの総当たりが D1 に届�
     "current": { "seasonId": "2026-27-PREMIER", "clubSlug": "...", "clubName": "...",
                  "number": "25", "position": "PF" },
     // **通算を先に出す**（基本設計 5.2）。範囲は取り込み済みの11シーズン
-    "career": { "games": 613, "perGame": { "minutes": 28.4, "pts": 14.2,
-                                           "reb": 3.1, "ast": 5.8 },
+    "career": { "games": 613, "gamesStarted": 402,
+                "perGame": { "minutes": 28.4, "pts": 14.2,
+                             "reb": 3.1, "ast": 5.8 },
                 "box": { "fg": { "m": 5.2, "a": 11.4, "pct": 0.456 }, "...": null } },
     // **季中に移籍した季は2行になる**（クラブ別に持つため。1.9）。新しい季から
     "seasons": [
@@ -7485,6 +7492,7 @@ def test_stat_summary_rejects_a_career_row_with_a_scope_key():
 | 試合数が同じ行に出ていること | 1試合平均は母数なしで読めない |
 | 3つの注記が省略されていないこと | **消えても画面は壊れない**（`check-notes.mjs` と同じ理由） |
 | 順位の数字を振っていないこと | ランキングにしない（要件 3.1.1） |
+| **`out/players` の件数が `players.csv` と合うこと** | **`staticPlayerIds()` が空を返しても画面は壊れず、ページが静かに0件になる** —リンクは `canLink` で消え、`test:links` も落ちない |
 
 ### 6.5 回帰
 

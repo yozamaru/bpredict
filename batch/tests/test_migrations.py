@@ -39,7 +39,7 @@ def test_migrations_apply_cleanly():
     objects = con.execute(
         "SELECT type, COUNT(*) FROM sqlite_master WHERE sql IS NOT NULL GROUP BY type"
     ).fetchall()
-    assert dict(objects) == {"table": 24, "index": 18, "trigger": 13}
+    assert dict(objects) == {"table": 26, "index": 19, "trigger": 13}
 
     with pytest.raises(sqlite3.OperationalError):
         apply_migrations(con)

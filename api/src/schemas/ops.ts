@@ -72,3 +72,85 @@ export const logBody = z
     errorMessage: z.string().max(256).nullable().optional(),
   })
   .strict();
+
+/**
+ * 実績の集計（詳細設計 1.9 / 3.4）。
+ *
+ * **洗い替えない。upsert だけである** — 約4,650行は1リクエスト（160行）に
+ * 収まらず、分割すると後の DELETE が前の INSERT を消す（基本設計 3.2）。
+ */
+const counts = {
+  fg2m: z.number().int().min(0),
+  fg2a: z.number().int().min(0),
+  fg3m: z.number().int().min(0),
+  fg3a: z.number().int().min(0),
+  ftm: z.number().int().min(0),
+  fta: z.number().int().min(0),
+  oreb: z.number().int().min(0),
+  dreb: z.number().int().min(0),
+  ast: z.number().int().min(0),
+  tov: z.number().int().min(0),
+  stl: z.number().int().min(0),
+  blk: z.number().int().min(0),
+  pf: z.number().int().min(0),
+  fd: z.number().int().min(0),
+};
+
+export const playerStatSchema = z
+  .object({
+    playerId: ID,
+    scope: z.enum(['SEASON', 'CAREER']),
+    scopeKey: z.string().max(64),
+    /** 季の行はクラブ別。**CAREER では空文字**（NULL にしない。詳細設計 1.9）。 */
+    clubId: z.string().max(128),
+    games: z.number().int().min(0),
+    gamesStarted: z.number().int().min(0),
+    minutes: z.number().min(0),
+    ...counts,
+    pts: z.number().int().min(0),
+  })
+  .strict()
+  .refine(
+    (r) =>
+      r.scope === 'CAREER'
+        ? r.scopeKey === '' && r.clubId === ''
+        : r.scopeKey !== '' && r.clubId !== '',
+    { message: 'CAREER は scopeKey と clubId が空、SEASON はどちらも空でないこと' },
+  )
+  .refine((r) => r.gamesStarted <= r.games, { message: 'gamesStarted が games を超えている' })
+  .refine((r) => r.fg2m <= r.fg2a && r.fg3m <= r.fg3a && r.ftm <= r.fta, {
+    message: '成功数が試投数を超えている',
+  });
+
+export const teamStatSchema = z
+  .object({
+    clubId: ID,
+    scope: z.enum(['SEASON', 'CAREER']),
+    scopeKey: z.string().max(64),
+    games: z.number().int().min(0),
+    wins: z.number().int().min(0),
+    pointsFor: z.number().int().min(0),
+    pointsAgainst: z.number().int().min(0),
+    /** ボックススコアの母数。**`games` と別に持つ**（詳細設計 1.9）。 */
+    statGames: z.number().int().min(0),
+    ...counts,
+  })
+  .strict()
+  .refine((r) => (r.scope === 'CAREER' ? r.scopeKey === '' : r.scopeKey !== ''), {
+    message: 'CAREER は scopeKey が空、SEASON は空でないこと',
+  })
+  .refine((r) => r.wins <= r.games, { message: 'wins が games を超えている' })
+  .refine((r) => r.fg2m <= r.fg2a && r.fg3m <= r.fg3a && r.ftm <= r.fta, {
+    message: '成功数が試投数を超えている',
+  });
+
+/** どちらも省略可。**両方空のリクエストは拒否する**（詳細設計 3.4）。 */
+export const statSummaryBody = z
+  .object({
+    playerStats: z.array(playerStatSchema).optional(),
+    teamStats: z.array(teamStatSchema).optional(),
+  })
+  .strict()
+  .refine((b) => (b.playerStats?.length ?? 0) + (b.teamStats?.length ?? 0) > 0, {
+    message: '1行も書かないリクエストは受け付けない',
+  });

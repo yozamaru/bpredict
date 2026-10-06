@@ -50,6 +50,9 @@ TABLES: dict[str, str] = {
     # 評価
     "model_versions": "学習済みモデル。artifact をテキストで格納する（1.5MB 上限）。有効なものは種別ごとに常に1本",
     "prediction_results": "確定予測と実績の照合結果。**中止・延期は `VOID` として的中率の母数から外す**",
+    # 集計（実績の閲覧用。詳細設計 1.9）。**洗い替えず upsert だけで更新する**
+    "player_stat_summary": "選手の実績の集計。シーズン別（**クラブ別**）と通算。保存するのは合計で、1試合平均は API が導出する",
+    "team_stat_summary": "クラブの実績の集計。**母数を2つ持つ**（`games` は勝敗・得点、`stat_games` はボックススコア）",
     "accuracy_summary": "的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため）",
     # 運用
     "ingestion_logs": "ジョブの実行履歴。**例外オブジェクトをそのまま入れない**（型名と自前の短いメッセージに限る）",
@@ -108,6 +111,15 @@ SHARED: dict[str, str] = {
 
 #: 表ごとに意味が違う列、またはその表だけにある列
 SPECIFIC: dict[tuple[str, str], str] = {
+    # 集計（詳細設計 1.9）
+    ("player_stat_summary", "scope"): "`SEASON`（季の合計）か `CAREER`（通算）",
+    ("player_stat_summary", "club_id"): "季の行が指すクラブ。**`CAREER` では空文字**（NULL にしない）",
+    ("player_stat_summary", "games"): "出場した試合数。**1試合平均の母数である**（要件 8.3）",
+    ("player_stat_summary", "games_started"): "先発した試合数",
+    ("team_stat_summary", "scope"): "`SEASON`（季の合計）か `CAREER`（通算）",
+    ("team_stat_summary", "games"): "勝敗と得点の母数（`team_games` で結果が入っている試合数）",
+    ("team_stat_summary", "points_for"): "総得点（`games` のスコアから取る）",
+    ("team_stat_summary", "stat_games"): "ボックススコアの母数。**`games` と別に持つ**（スタッツが欠ける試合が実在する）",
     # マスタ
     ("clubs", "id"): "公式サイトのチームID。**シーズン・改称・リーグ再編をまたいで不変**",
     ("clubs", "name"): "現在の表示名。過去試合の表示には `club_seasons.name` を使う",

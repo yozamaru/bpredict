@@ -20,6 +20,7 @@ import { predictions } from './routes/internal/predictions';
 import { rosters } from './routes/internal/rosters';
 import { accuracy } from './routes/public/accuracy';
 import { games } from './routes/public/games';
+import { players } from './routes/public/players';
 import { schedule } from './routes/public/schedule';
 import { teams } from './routes/public/teams';
 
@@ -52,6 +53,7 @@ app.use('/internal/predictions', ingest);
 app.use('/internal/predictions/*', ingest);
 app.use('/internal/evaluate', ingest);
 app.use('/internal/summary', ingest);
+app.use('/internal/stat-summary', ingest);
 app.use('/internal/log', ingest);
 app.use('/internal/models', ingest);
 app.use('/internal/models/*', ingest);
@@ -66,7 +68,7 @@ app.route('/internal/predictions', predictions);   // POST / と GET /pending
 app.route('/internal/finalize', finalize);
 app.route('/internal/models', models);             // POST / と GET /active /:version/artifact
 app.route('/internal/metrics', metrics);           // GET /internal/metrics/active
-app.route('/internal', ops);                       // /evaluate /summary /log
+app.route('/internal', ops);                       // /evaluate /summary /log /stat-summary
                                                    // /games/ingested /venues
 
 // **公開エンドポイントに認証を付けない。** 誰でも読める事実データと予測であり、
@@ -79,6 +81,7 @@ app.route('/', accuracy);
 app.route('/', games);
 app.route('/', schedule);   // /games?date= と /results?date=
 app.route('/', teams);      // /teams と /teams/:slug
+app.route('/', players);    // /players/:playerId
 
 app.notFound((c) => fail(c, 'NOT_FOUND', '該当するエンドポイントがない'));
 

@@ -1343,6 +1343,7 @@ bpredict/
 ├── docs/
 ├── web/                   Next.js（静的出力）
 │   └── public/data/       バッチが書き出す予測JSON
+│   └── data/              集計ジョブが書く選手一覧（ビルド時にだけ読む）
 ├── api/                   Cloudflare Workers
 ├── batch/                 Python
 │   └── tests/fixtures/    合成データ（実サイト由来の文言を含まない）

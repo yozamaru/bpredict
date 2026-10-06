@@ -51,10 +51,12 @@ from batch.features.dataset import (
 from batch.features.prepared import prepare
 from batch.jobs import evaluate as evaluate_job
 from batch.jobs import recompute_ratings as ratings_job
+from batch.jobs import summarize_stats as summarize_job
 from batch.jobs.evaluate import EvaluateError
 from batch.jobs.game_ingest import ingest_game
 from batch.jobs.schedule_walk import walk_schedule
 from batch.jobs.seed_master import Season, load_club_source_ids, load_seasons
+from batch.jobs.summarize_stats import SummarizeError
 from batch.loader import exclusions
 from batch.loader.api import InternalApi, LoaderError, Poster, RejectedError
 from batch.loader.limits import max_rows_per_request
@@ -694,6 +696,19 @@ def run_settle(
             log(f"  - {note}")
     except (LoaderError, SnapshotError, ValueError) as error:
         log(f"  - Elo の再計算に失敗（{type(error).__name__}: {error}）")
+        status = "PARTIAL"
+
+    # **実績の集計は最後に置く**（詳細設計 4.2 のステップ6b）。推論はこの2表を
+    # 読まないため、失敗しても予測は出る
+    try:
+        stats = summarize_job.run(api=api, snapshot_dir=snapshot)
+        log(
+            f"daily_ingest: 実績を集計した（選手 {len(stats.players)}行"
+            f" / クラブ {len(stats.teams)}行"
+            f" / 静的生成する選手 {len(stats.recent_players)}人）"
+        )
+    except (SummarizeError, LoaderError, SnapshotError) as error:
+        log(f"  - 実績の集計に失敗（{type(error).__name__}: {error}）")
         status = "PARTIAL"
     return status, latest_result_date
 

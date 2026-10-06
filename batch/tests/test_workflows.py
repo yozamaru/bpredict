@@ -336,3 +336,19 @@ def test_train_does_not_register_by_default():
     body = (WORKFLOW_DIR / "train.yml").read_text(encoding="utf-8")
     block = body.split("register:", 1)[1].split("model_version:", 1)[0]
     assert "default: false" in block, "train.yml の register の既定が false でない"
+
+
+def test_daily_ingest_commits_the_player_index():
+    """**`web/data` をコミットする**（詳細設計 4.14）。
+
+    `web/data/players.csv` は `/players/[id]` の静的生成の出典であり、
+    **コミットされなければ次のビルドで選手ページが0件になる** — 画面は壊れず、
+    リンクも `canLink` で消えるため、**気づく手がかりが無い**。
+
+    実際に漏れていた（2026-10-06。集計ジョブを足したときに `git add` の一覧を
+    直し忘れた）。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    add = body.split("for path in", 1)[1].split(";", 1)[0]
+    for path in ("batch/snapshot", "web/public/data", "web/data", "batch/exclusions"):
+        assert path in add, f"daily-ingest.yml が {path} をコミットしない"

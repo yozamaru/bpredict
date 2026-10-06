@@ -45,6 +45,7 @@ CATEGORY = {
     "0005": "予測",
     "0006": "評価",
     "0007": "運用",
+    "0012": "集計",
 }
 
 #: **0行であることに理由がある表**だけを書く。理由は設計への参照に限る。
@@ -61,6 +62,8 @@ EMPTY_REASON = {
     "prediction_model_bundle": "親の `predictions` が空（工程9b）",
     "prediction_results": "照合は予測が入ってから（工程9b 以降）",
     "accuracy_summary": "`prediction_results` を畳んだ表。照合が始まってから（工程9b 以降）",
+    "player_stat_summary": "集計ジョブは工程16（詳細設計 4.14）。**スナップショット側では 4,587 行**",
+    "team_stat_summary": "同上。**スナップショット側では 268 行**",
     "model_versions": "学習済みモデルの登録は工程8",
     "team_ratings": "**スナップショット側には 12,532 行ある。** D1 への書き戻しが未実施（詳細設計 4.1 の `rebuild-derived`）",
     "venue_revisions": "**スナップショット側には 173 区間ある。** D1 への書き戻しが未実施（同上の `rebuild-derived`）",

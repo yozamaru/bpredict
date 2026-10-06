@@ -91,3 +91,15 @@ export async function latestSeasonId(db: D1Database): Promise<string | null> {
     .first<{ id: string }>();
   return row?.id ?? null;
 }
+
+/**
+ * 公式の選手ID（詳細設計 3.3）。数字列である。
+ *
+ * **URL 空間を有限に保つための関門である**（要件 4.2）。D1 に触れる前に弾く。
+ */
+const PLAYER_ID = /^\d{1,16}$/;
+
+export function parsePlayerId(value: string | undefined): string | null {
+  if (value === undefined || !PLAYER_ID.test(value)) return null;
+  return value;
+}

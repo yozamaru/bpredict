@@ -514,6 +514,23 @@ Elo には結果を渡せる**。しかし1試合ぶんの損失は小さく（5
 入らない）。それでも閉じるのは、`git push` のたびに「2 high」が出る状態を残すと、
 **本当に配信物に効く勧告が出たときに同じ行が読み飛ばされる**ためである。
 
+## 開いていた PR 13件を片づけた（2026-10-06）
+
+| 扱い | 件数 | 内容 |
+|---|---:|---|
+| マージした | **11** | `source-map-js` 1.2.2（web / api。勧告2件）/ `@cloudflare/workers-types` / `typescript-eslint` 8.71.0（api / web）/ `hono` 4.13.12 / `wrangler` 4.146.0（api / web）/ `@types/node` / `ruff` 0.16.9 / **`actions/upload-artifact` 4 → 7** / **`actions/cache` 4 → 6** |
+| 閉じた | 1 | `vitest` 5.0.3 — **peer が許さない**（`@cloudflare/vitest-pool-workers@0.22.0` が `vitest: ^4.1.0`。これが最新） |
+| 手で上げた | 1 | web の `typescript-eslint` — 先行マージと lock が衝突したため（`d407c2e`） |
+
+**`actions/upload-artifact` は版が混在していた** — `resolve-venue-geo.yml` だけ v7 で、
+残る5つが v4 だった。揃えた。
+
+**`actions/cache@v6` は次の `daily-ingest` のログを見に行く必要がある。**
+あれが運ぶのはスクレイパの状態ファイル（日次3,000件のカウンタと 429/503 後の
+停止フラグ。絶対ルール6）で、**復元の失敗はステップの失敗にならない**
+（「Cache not found」で続行する）。`restore-keys` の前方一致が変わっていれば、
+**カウンタが毎回 0 から始まり、上限が実行を跨いで効かなくなる。**
+
 ## ブランチを切ったら、マージまで見届ける（2026-10-03）
 
 **2026-09-28 のブランチ `fix/keep-exclusions` が `main` に入っていなかった。**

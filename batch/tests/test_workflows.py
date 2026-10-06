@@ -352,3 +352,54 @@ def test_daily_ingest_commits_the_player_index():
     add = body.split("for path in", 1)[1].split(";", 1)[0]
     for path in ("batch/snapshot", "web/public/data", "web/data", "batch/exclusions"):
         assert path in add, f"daily-ingest.yml が {path} をコミットしない"
+
+
+def test_the_deploy_is_gated_on_an_actual_commit():
+    """**コミットが行われた回だけ配る**（詳細設計 4.2 のステップ6）。
+
+    無条件にすると、試合の無い日も含めて1日4回同じものを配り直す。
+    `secrets` を `if:` に書かないことも併せて固定する — **文脈の可否に依存すると、
+    常に偽になっても「黙って配らないだけ」で気づけない**。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    assert "name: Pages へ配る" in body, "daily-ingest.yml が Pages へ配らない"
+
+    gate = "if: steps.commit.outputs.deploy == 'true'"
+    # setup-node と配る段の2つに掛かっている（トークンが無い回はビルドもしない）
+    assert body.count(gate) == 2, f"配る段の条件が {body.count(gate)} 箇所（2 のはず）"
+
+    # **`if:` に `secrets` を書かない。** 判定は commit 段の出力だけを見る
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("if:", "- if:")):
+            assert "secrets." not in stripped, f"if: に secrets を書いている: {stripped}"
+
+
+def test_the_commit_step_reports_both_outcomes():
+    """**コミット段は配るかどうかを必ず出力する。**
+
+    「変更なし」で `exit 0` する枝で出力を書き忘れると、`steps.commit.outputs.deploy`
+    が空になり **配る段が黙って飛ばされる**。失敗ではなく無反応になるため、
+    ログを見ない限り気づけない。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    step = body.split("name: スナップショットと静的JSON と選手一覧をコミット", 1)[1]
+    step = step.split("- uses: actions/setup-node", 1)[0]
+    assert step.count('deploy=false') == 2, "変更なしの枝とトークン未登録の枝の両方で false を書く"
+    assert step.count('deploy=true') == 1
+    # トークンの有無はここで見る（`-n` を見るだけで、値をログに出さない）
+    assert 'if [[ -n "$PAGES_TOKEN" ]]' in step
+    assert "PAGES_TOKEN: ${{ secrets.CF_PAGES_TOKEN }}" in body
+
+
+def test_the_deploy_passes_the_output_directory_explicitly():
+    """**`web/` で `wrangler pages` を引数なしに実行しない**（詳細設計 8.1）。
+
+    Next.js を検出して `opennextjs-cloudflare build` を走らせ、採用していない
+    構成（ISR が R2/KV を要求する）の生成物を作る。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    assert "wrangler pages deploy out --project-name bpredict --branch main" in body
+    # 認証は専用トークン。`CF_API_TOKEN`（D1 Edit）では配れない（基本設計 7.4）
+    assert "CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_TOKEN }}" in body
+    assert "CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}" in body

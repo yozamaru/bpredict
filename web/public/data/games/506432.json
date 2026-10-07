@@ -1,0 +1,57 @@
+{
+ "data": {
+  "evaluation": null,
+  "game": {
+   "away": {
+    "clubId": "721",
+    "name": "広島ドラゴンフライズ",
+    "shortName": "広島",
+    "slug": "hiroshima-dragonflies"
+   },
+   "awayScore": null,
+   "competition": "REGULAR",
+   "gameId": "506432",
+   "home": {
+    "clubId": "712",
+    "name": "茨城ロボッツ",
+    "shortName": "茨城",
+    "slug": "ibaraki-robots"
+   },
+   "homeScore": null,
+   "league": "PREMIER",
+   "status": "SCHEDULED",
+   "tipoffAt": "2026-10-07T10:05:00Z",
+   "venue": null
+  },
+  "modelAccuracy": null,
+  "playerPredictions": [],
+  "prediction": {
+   "homeWinProb": 0.2703195970479935,
+   "isFinal": false,
+   "isProvisional": true,
+   "modelVersion": "winner-v1.1.0",
+   "predAwayScore": 83.42861819564769,
+   "predHomeScore": 75.50746576088494,
+   "reasons": [
+    {
+     "favors": "AWAY",
+     "group": "TEAM_STRENGTH",
+     "label": "今季の平均得点差の開き",
+     "strength": 4,
+     "value": "24.8点"
+    },
+    {
+     "favors": "HOME",
+     "group": "SCHEDULE",
+     "label": "前戦の勝敗",
+     "strength": 1,
+     "value": "勝敗が分かれた"
+    }
+   ]
+  },
+  "recentForm": null
+ },
+ "meta": {
+  "generatedAt": "2026-10-07T00:15:31Z"
+ }
+}

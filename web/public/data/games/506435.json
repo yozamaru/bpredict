@@ -1,0 +1,57 @@
+{
+ "data": {
+  "evaluation": null,
+  "game": {
+   "away": {
+    "clubId": "694",
+    "name": "横浜ビー・コルセアーズ",
+    "shortName": "横浜BC",
+    "slug": "yokohama-b-corsairs"
+   },
+   "awayScore": null,
+   "competition": "REGULAR",
+   "gameId": "506435",
+   "home": {
+    "clubId": "700",
+    "name": "大阪エヴェッサ",
+    "shortName": "大阪",
+    "slug": "osaka-evessa"
+   },
+   "homeScore": null,
+   "league": "PREMIER",
+   "status": "SCHEDULED",
+   "tipoffAt": "2026-10-07T10:05:00Z",
+   "venue": null
+  },
+  "modelAccuracy": null,
+  "playerPredictions": [],
+  "prediction": {
+   "homeWinProb": 0.30949290655937134,
+   "isFinal": false,
+   "isProvisional": true,
+   "modelVersion": "winner-v1.1.0",
+   "predAwayScore": 82.81924255577962,
+   "predHomeScore": 76.38119868389927,
+   "reasons": [
+    {
+     "favors": "AWAY",
+     "group": "TEAM_STRENGTH",
+     "label": "今季の平均得点差の開き",
+     "strength": 4,
+     "value": "13.5点"
+    },
+    {
+     "favors": "AWAY",
+     "group": "SCHEDULE",
+     "label": "前戦の得点差の開き",
+     "strength": 2,
+     "value": "39点"
+    }
+   ]
+  },
+  "recentForm": null
+ },
+ "meta": {
+  "generatedAt": "2026-10-07T00:15:31Z"
+ }
+}

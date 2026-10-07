@@ -1,0 +1,57 @@
+{
+ "data": {
+  "evaluation": null,
+  "game": {
+   "away": {
+    "clubId": "726",
+    "name": "東京サンロッカーズ",
+    "shortName": "東京SR",
+    "slug": "tokyo-sunrockers"
+   },
+   "awayScore": null,
+   "competition": "REGULAR",
+   "gameId": "506434",
+   "home": {
+    "clubId": "698",
+    "name": "滋賀レイクス",
+    "shortName": "滋賀",
+    "slug": "shiga-lakes"
+   },
+   "homeScore": null,
+   "league": "PREMIER",
+   "status": "SCHEDULED",
+   "tipoffAt": "2026-10-07T10:05:00Z",
+   "venue": null
+  },
+  "modelAccuracy": null,
+  "playerPredictions": [],
+  "prediction": {
+   "homeWinProb": 0.44525377267380783,
+   "isFinal": false,
+   "isProvisional": true,
+   "modelVersion": "winner-v1.1.0",
+   "predAwayScore": 80.09270410043145,
+   "predHomeScore": 78.31049006274937,
+   "reasons": [
+    {
+     "favors": "AWAY",
+     "group": "TEAM_STRENGTH",
+     "label": "今季の平均得点差の開き",
+     "strength": 4,
+     "value": "6.5点"
+    },
+    {
+     "favors": "HOME",
+     "group": "SCHEDULE",
+     "label": "前戦の得点差の開き",
+     "strength": 2,
+     "value": "16点"
+    }
+   ]
+  },
+  "recentForm": null
+ },
+ "meta": {
+  "generatedAt": "2026-10-07T00:15:31Z"
+ }
+}

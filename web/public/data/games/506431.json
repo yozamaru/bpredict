@@ -1,0 +1,57 @@
+{
+ "data": {
+  "evaluation": null,
+  "game": {
+   "away": {
+    "clubId": "2486",
+    "name": "アルティーリ千葉",
+    "shortName": "A千葉",
+    "slug": "altiri-chiba"
+   },
+   "awayScore": null,
+   "competition": "REGULAR",
+   "gameId": "506431",
+   "home": {
+    "clubId": "692",
+    "name": "仙台89ERS",
+    "shortName": "仙台",
+    "slug": "sendai-89ers"
+   },
+   "homeScore": null,
+   "league": "PREMIER",
+   "status": "SCHEDULED",
+   "tipoffAt": "2026-10-07T10:05:00Z",
+   "venue": null
+  },
+  "modelAccuracy": null,
+  "playerPredictions": [],
+  "prediction": {
+   "homeWinProb": 0.7394248966755319,
+   "isFinal": false,
+   "isProvisional": true,
+   "modelVersion": "winner-v1.1.0",
+   "predAwayScore": 75.07547275109066,
+   "predHomeScore": 83.38147618664625,
+   "reasons": [
+    {
+     "favors": "HOME",
+     "group": "TEAM_STRENGTH",
+     "label": "今季の平均得点差の開き",
+     "strength": 4,
+     "value": "10.8点"
+    },
+    {
+     "favors": "AWAY",
+     "group": "SCHEDULE",
+     "label": "同一カードの連戦",
+     "strength": 1,
+     "value": "1戦目"
+    }
+   ]
+  },
+  "recentForm": null
+ },
+ "meta": {
+  "generatedAt": "2026-10-07T00:15:31Z"
+ }
+}

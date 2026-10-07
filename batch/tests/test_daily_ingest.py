@@ -354,6 +354,19 @@ def test_a_game_without_features_is_skipped(monkeypatch: pytest.MonkeyPatch) -> 
     assert api.posted == []
 
 
+class _FrozenDatetime(datetime):
+    """`datetime.now()` だけを固定する。**テストを実行日に依存させない。**
+
+    `daily_ingest` は `from datetime import datetime` で名前を取り込んでいるため、
+    モジュール属性を差し替えれば `datetime.now(UTC)` の呼び出しがすべてここを通る。
+    継承しているので `fromisoformat` などはそのまま動く。
+    """
+
+    @classmethod
+    def now(cls, tz: object = None) -> datetime:  # type: ignore[override]
+        return datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
+
+
 def test_the_run_id_is_shared_with_the_log(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
@@ -370,6 +383,11 @@ def test_the_run_id_is_shared_with_the_log(
     monkeypatch.setattr(daily_ingest, "load_active_rates", lambda *a, **k: None)
     monkeypatch.setattr(daily_ingest, "new_run_id", lambda: "daily-fixed")
     monkeypatch.setattr(daily_ingest, "jst_today", lambda now=None: "2026-10-05")
+    # **時計を止める。** 窓の日付だけを固定して `tipoff_at > now` の比較を実時刻に
+    # 任せていたため、**2026-10-07 に実行したら対象0試合になって落ちた**
+    # （フィクスチャの試合が過去になった）。`main` は `now` を受け取らないので、
+    # モジュールが見ている `datetime` を差し替える
+    monkeypatch.setattr(daily_ingest, "datetime", _FrozenDatetime)
     monkeypatch.setattr(
         daily_ingest, "InternalApi", lambda *a, **k: FakeApi(posted=[]))
 

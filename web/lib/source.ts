@@ -70,6 +70,13 @@ export const fetchAccuracy = () => load<AccuracySummary>('/api/v1/accuracy');
 
 export const fetchTeam = (slug: string) => load<Team>(`/api/v1/teams/${slug}`);
 
+/**
+ * 当季のクラブ一覧（要件 8.2 / 詳細設計 3.3）。**並びは API が返す順をそのまま使う**
+ * （`clubs.slug` 昇順）。画面で並べ替えない — API と食い違ったときにどちらが正かが
+ * 決まらなくなる。
+ */
+export const fetchTeams = () => load<TeamList>('/api/v1/teams');
+
 /** 選手別（要件 F-15 / 詳細設計 3.3）。**集計値だけが返る。** */
 export const fetchPlayer = (playerId: string) =>
   load<Player>(`/api/v1/players/${playerId}`);
@@ -204,6 +211,11 @@ export type AccuracySummary = {
     provisional: { accuracy: number; n: number } | null;
     confirmed: { accuracy: number; n: number } | null;
   };
+};
+
+export type TeamList = {
+  seasonId: string;
+  teams: { clubId: string; slug: string; name: string | null; shortName: string | null }[];
 };
 
 export type Team = {

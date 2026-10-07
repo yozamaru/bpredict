@@ -10,13 +10,35 @@
 //
 // 依存を増やさない（Node の標準モジュールだけ）。
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const OUT = resolve(import.meta.dirname, '..', 'out');
 
-/** タブの定義（`components/ui/Tabs.tsx` と対応させる） */
-const TABS = ['/', '/results/', '/accuracy/'];
+/**
+ * タブの定義を**`components/ui/Tabs.tsx` から読む**。
+ *
+ * **書き写さない。** 旧版はここに配列を持ち「対応させる」と注意書きしていたが、
+ * **タブを足しても検査が追随しない**（2026-10-07 に「チーム」を足して気づいた）。
+ * 増えたタブは検査されず、`aria-current` が誤っていても通る。
+ */
+function tabs() {
+  const file = resolve(import.meta.dirname, '..', 'components', 'ui', 'Tabs.tsx');
+  const source = readFileSync(file, 'utf8');
+  const block = /const TABS = \[([\s\S]*?)\] as const;/.exec(source);
+  if (block === null) {
+    console.error('Tabs.tsx から TABS を読めない');
+    process.exit(1);
+  }
+  const found = [...block[1].matchAll(/href:\s*'([^']+)'/g)].map((m) => m[1]);
+  if (found.length === 0) {
+    console.error('Tabs.tsx の TABS に href が無い');
+    process.exit(1);
+  }
+  return found;
+}
+
+const TABS = tabs();
 
 function pageOf(href) {
   return href === '/' ? join(OUT, 'index.html') : join(OUT, href, 'index.html');

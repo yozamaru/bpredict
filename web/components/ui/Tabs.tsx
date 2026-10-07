@@ -4,10 +4,15 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 // タブは nav + a で実装し、最低高さ44px、現在地に aria-current を付ける（詳細設計 5.2）
+// **`scripts/check-nav.mjs` がこの配列を読む。** 書き写さない（タブを足したときに
+// 検査が追随しないため。詳細設計 5.6）
 const TABS = [
   { href: '/', label: '今日の予測' },
   { href: '/results/', label: '結果' },
   { href: '/accuracy/', label: '的中率' },
+  // **これが無いと、チーム別と選手別へたどり着けない**（要件 8.2 / 基本設計 5.1）。
+  // 試合詳細からだけでは、試合が無い日に30クラブと557人のどれにも行けない
+  { href: '/teams/', label: 'チーム' },
 ] as const;
 
 /**

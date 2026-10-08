@@ -1,0 +1,92 @@
+{
+ "data": {
+  "accuracy": null,
+  "gameDate": "2026-10-16",
+  "games": [
+   {
+    "away": {
+     "clubId": "712",
+     "name": "茨城ロボッツ",
+     "shortName": "茨城",
+     "slug": "ibaraki-robots"
+    },
+    "competition": "REGULAR",
+    "gameId": "506464",
+    "home": {
+     "clubId": "727",
+     "name": "川崎ブレイブサンダース",
+     "shortName": "川崎",
+     "slug": "kawasaki-brave-thunders"
+    },
+    "prediction": {
+     "homeWinProb": 0.39992191801596855,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.1.0",
+     "predAwayScore": 81.00906206856514,
+     "predHomeScore": 77.7265372144622
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-16T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "701",
+     "name": "琉球ゴールデンキングス",
+     "shortName": "琉球",
+     "slug": "ryukyu-golden-kings"
+    },
+    "competition": "REGULAR",
+    "gameId": "506465",
+    "home": {
+     "clubId": "694",
+     "name": "横浜ビー・コルセアーズ",
+     "shortName": "横浜BC",
+     "slug": "yokohama-b-corsairs"
+    },
+    "prediction": {
+     "homeWinProb": 0.3896289981996799,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.1.0",
+     "predAwayScore": 81.1847484054523,
+     "predHomeScore": 77.55607943277445
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-16T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "702",
+     "name": "レバンガ北海道",
+     "shortName": "北海道",
+     "slug": "levanga-hokkaido"
+    },
+    "competition": "REGULAR",
+    "gameId": "506466",
+    "home": {
+     "clubId": "1638",
+     "name": "佐賀バルーナーズ",
+     "shortName": "佐賀",
+     "slug": "saga-ballooners"
+    },
+    "prediction": {
+     "homeWinProb": 0.27407463411258653,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.1.0",
+     "predAwayScore": 83.3554005097073,
+     "predHomeScore": 75.58068344682533
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-16T10:05:00Z"
+   }
+  ]
+ },
+ "meta": {
+  "generatedAt": "2026-10-08T15:46:49Z"
+ }
+}

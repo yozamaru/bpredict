@@ -3,45 +3,45 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "713",
-    "name": "群馬クレインサンダーズ",
-    "shortName": "群馬",
-    "slug": "gunma-crane-thunders"
+    "clubId": "696",
+    "name": "富山グラウジーズ",
+    "shortName": "富山",
+    "slug": "toyama-grouses"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506441",
+   "gameId": "506445",
    "home": {
-    "clubId": "701",
-    "name": "琉球ゴールデンキングス",
-    "shortName": "琉球",
-    "slug": "ryukyu-golden-kings"
+    "clubId": "726",
+    "name": "東京サンロッカーズ",
+    "shortName": "東京SR",
+    "slug": "tokyo-sunrockers"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-08T10:35:00Z",
+   "tipoffAt": "2026-10-09T10:05:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.421416664833271,
+   "homeWinProb": 0.7294930277314108,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 80.80980934683194,
-   "predHomeScore": 78.24293777340219,
+   "predAwayScore": 75.45474232437793,
+   "predHomeScore": 83.36856376137963,
    "reasons": [
     {
-     "favors": "AWAY",
+     "favors": "HOME",
      "group": "TEAM_STRENGTH",
      "label": "今季の平均得点差の開き",
      "strength": 4,
-     "value": "15.8点"
+     "value": "15.0点"
     },
     {
-     "favors": "HOME",
+     "favors": "AWAY",
      "group": "SCHEDULE",
      "label": "前戦の勝敗",
      "strength": 1,
@@ -52,6 +52,6 @@
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-08T08:13:14Z"
+  "generatedAt": "2026-10-08T15:46:49Z"
  }
 }

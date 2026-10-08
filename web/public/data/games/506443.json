@@ -3,48 +3,48 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "727",
-    "name": "川崎ブレイブサンダース",
-    "shortName": "川崎",
-    "slug": "kawasaki-brave-thunders"
+    "clubId": "703",
+    "name": "宇都宮ブレックス",
+    "shortName": "宇都宮",
+    "slug": "utsunomiya-brex"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506437",
+   "gameId": "506443",
    "home": {
-    "clubId": "693",
-    "name": "秋田ノーザンハピネッツ",
-    "shortName": "秋田",
-    "slug": "akita-northern-happinets"
+    "clubId": "712",
+    "name": "茨城ロボッツ",
+    "shortName": "茨城",
+    "slug": "ibaraki-robots"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-08T10:30:00Z",
+   "tipoffAt": "2026-10-09T10:05:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.5014680309045982,
+   "homeWinProb": 0.31321012806262627,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 79.17777707530901,
-   "predHomeScore": 79.2254170878718,
+   "predAwayScore": 82.73230484813446,
+   "predHomeScore": 76.43041345720299,
    "reasons": [
     {
      "favors": "AWAY",
      "group": "TEAM_STRENGTH",
-     "label": "ホームのチーム力",
+     "label": "今季の勝率の差",
      "strength": 4,
-     "value": "1256ポイント"
+     "value": "35ポイント"
     },
     {
      "favors": "HOME",
      "group": "SCHEDULE",
      "label": "前戦の勝敗",
-     "strength": 3,
+     "strength": 1,
      "value": "勝敗が分かれた"
     }
    ]
@@ -52,6 +52,6 @@
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-08T08:13:14Z"
+  "generatedAt": "2026-10-08T15:46:49Z"
  }
 }

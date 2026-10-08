@@ -3,55 +3,55 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "704",
-    "name": "千葉ジェッツ",
-    "shortName": "千葉J",
-    "slug": "chiba-jets"
+    "clubId": "694",
+    "name": "横浜ビー・コルセアーズ",
+    "shortName": "横浜BC",
+    "slug": "yokohama-b-corsairs"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506439",
+   "gameId": "506446",
    "home": {
-    "clubId": "718",
-    "name": "神戸ストークス",
-    "shortName": "神戸",
-    "slug": "kobe-storks"
+    "clubId": "699",
+    "name": "京都ハンナリーズ",
+    "shortName": "京都",
+    "slug": "kyoto-hannaryz"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-08T10:05:00Z",
+   "tipoffAt": "2026-10-09T10:15:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.36866506389092024,
+   "homeWinProb": 0.6032768423065578,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 81.54145085506235,
-   "predHomeScore": 77.1993769831644,
+   "predAwayScore": 77.67549671005084,
+   "predHomeScore": 81.06533112817591,
    "reasons": [
     {
-     "favors": "AWAY",
+     "favors": "HOME",
      "group": "TEAM_STRENGTH",
-     "label": "対戦してきた相手の強さの差",
+     "label": "今季の平均得点差の開き",
      "strength": 4,
-     "value": "131ポイント"
+     "value": "6.0点"
     },
     {
-     "favors": "HOME",
+     "favors": "AWAY",
      "group": "SCHEDULE",
      "label": "前戦の得点差の開き",
      "strength": 1,
-     "value": "14点"
+     "value": "5点"
     }
    ]
   },
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-08T08:13:14Z"
+  "generatedAt": "2026-10-08T15:46:49Z"
  }
 }

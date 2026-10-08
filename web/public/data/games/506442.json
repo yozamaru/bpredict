@@ -3,55 +3,55 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "1638",
-    "name": "佐賀バルーナーズ",
-    "shortName": "佐賀",
-    "slug": "saga-ballooners"
+    "clubId": "728",
+    "name": "シーホース三河",
+    "shortName": "三河",
+    "slug": "seahorses-mikawa"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506438",
+   "gameId": "506442",
    "home": {
-    "clubId": "706",
-    "name": "アルバルク東京",
-    "shortName": "A東京",
-    "slug": "alvark-tokyo"
+    "clubId": "692",
+    "name": "仙台89ERS",
+    "shortName": "仙台",
+    "slug": "sendai-89ers"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-08T10:05:00Z",
+   "tipoffAt": "2026-10-09T10:05:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.8385428944909733,
+   "homeWinProb": 0.2256404848722589,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 72.9280012058168,
-   "predHomeScore": 85.72525270892359,
+   "predAwayScore": 84.47632363544936,
+   "predHomeScore": 74.72411760422953,
    "reasons": [
     {
-     "favors": "HOME",
+     "favors": "AWAY",
      "group": "TEAM_STRENGTH",
      "label": "今季の平均得点差の開き",
      "strength": 4,
-     "value": "28.2点"
+     "value": "10.3点"
     },
     {
      "favors": "AWAY",
      "group": "SCHEDULE",
-     "label": "前戦の勝敗",
-     "strength": 1,
-     "value": "勝敗が分かれた"
+     "label": "前戦の得点差の開き",
+     "strength": 2,
+     "value": "37点"
     }
    ]
   },
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-08T08:13:14Z"
+  "generatedAt": "2026-10-08T15:46:49Z"
  }
 }

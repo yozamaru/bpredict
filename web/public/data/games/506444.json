@@ -3,55 +3,55 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "716",
-    "name": "信州ブレイブウォリアーズ",
-    "shortName": "信州",
-    "slug": "shinshu-brave-warriors"
+    "clubId": "700",
+    "name": "大阪エヴェッサ",
+    "shortName": "大阪",
+    "slug": "osaka-evessa"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506440",
+   "gameId": "506444",
    "home": {
-    "clubId": "2488",
-    "name": "長崎ヴェルカ",
-    "shortName": "長崎",
-    "slug": "nagasaki-velca"
+    "clubId": "2486",
+    "name": "アルティーリ千葉",
+    "shortName": "A千葉",
+    "slug": "altiri-chiba"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-08T10:05:00Z",
+   "tipoffAt": "2026-10-09T10:05:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.46208431153601187,
+   "homeWinProb": 0.5027791465668114,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 79.79429520889792,
-   "predHomeScore": 78.56201343726028,
+   "predAwayScore": 79.32857399020301,
+   "predHomeScore": 79.41876238407207,
    "reasons": [
     {
      "favors": "AWAY",
      "group": "TEAM_STRENGTH",
-     "label": "今季の平均得点差の開き",
+     "label": "攻撃効率の差",
      "strength": 4,
-     "value": "16.8点"
+     "value": "15.1点（100回の攻撃あたり）"
     },
     {
      "favors": "HOME",
      "group": "SCHEDULE",
-     "label": "前戦の勝敗",
+     "label": "アウェイの連続アウェイ",
      "strength": 1,
-     "value": "勝敗が分かれた"
+     "value": "0試合"
     }
    ]
   },
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-08T08:13:14Z"
+  "generatedAt": "2026-10-08T15:46:49Z"
  }
 }

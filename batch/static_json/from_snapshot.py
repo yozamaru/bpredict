@@ -144,21 +144,28 @@ def _actuals_by_game(
         return {}
     players = ds.table("players")
     names = {str(r.id): str(r.name) for r in players.itertuples()}
-    positions: dict[tuple[str, str], str | None] = {}
+
+    # **ポジションは季まで含めた鍵で引く。** `(選手, クラブ)` だけで引くと、同じ
+    # クラブに複数シーズン在籍した選手でどの季の値を拾うかが走査の順序で決まる
+    # （API 側では同じ欠落が行の重複として出た。詳細設計 3.3）
+    seasons = {str(r.id): str(r.season_id) for r in ds.table("games").itertuples()}
+    positions: dict[tuple[str, str, str], str | None] = {}
     if "player_seasons" in ds.tables:
         for row in ds.tables["player_seasons"].itertuples():
-            positions[(str(row.player_id), str(row.club_id))] = _text(row.position)
+            key = (str(row.player_id), str(row.club_id), str(row.season_id))
+            positions[key] = _text(row.position)
 
     out: dict[str, list[ActualInput]] = {}
     for row in picked.itertuples():
         player_id = str(row.player_id)
         club_id = str(row.club_id)
+        season_id = seasons.get(str(row.game_id), "")
         started = _count(row.started)
         out.setdefault(str(row.game_id), []).append(ActualInput(
             player_id=player_id,
             name=names.get(player_id, player_id),
             club_id=club_id,
-            position=positions.get((player_id, club_id)),
+            position=positions.get((player_id, club_id, season_id)),
             started=None if started is None else started == 1,
             minutes=_minutes(row.minutes),
             **{column: _count(getattr(row, column)) for column in _ACTUAL_COUNTS},

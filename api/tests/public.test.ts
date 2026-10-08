@@ -233,6 +233,38 @@ describe('GET /games/:gameId（予測あり）', () => {
     expect(p.box.ft.pct).toBeNull();
   });
 
+  /**
+   * **予測側も季で絞る**（実績側と同じ欠落。詳細設計 3.3）。
+   *
+   * `player_predictions` が本番で0行だったため表に出ていなかったが、33本の
+   * モデルを登録した時点（2026-10-09）から同じ重複が起きる状態にあった。
+   */
+  it('同じクラブの別シーズンの登録で予測の行が重複しない', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    const predictionId = await seedPrediction(s);
+    await env.DB.prepare(
+      `INSERT INTO player_predictions (id, prediction_id, game_id, player_id, club_id,
+         model_version, revision, predicted_at, avail_prob, pred_minutes,
+         pred_fg2a, pred_fg3a, pred_fta, pred_fg2_pct, pred_fg3_pct, pred_ft_pct,
+         pred_oreb, pred_dreb, pred_ast, pred_tov, pred_stl, pred_blk, pred_pf, pred_fd)
+       VALUES ('pp-dup',?,?,?,?,?,1,'2026-09-22T00:00:00Z',0.9,31.2,
+               8,4,2, 0.5,0.25,0.5, 0.6,2.5,6.1,2.2,1.1,0.3,2.4,3.1)`,
+    ).bind(predictionId, s.gameId, s.playerId, s.homeId, s.modelVersion).run();
+    await env.DB.prepare(
+      'INSERT INTO seasons (id,label,league,start_date,end_date) VALUES (?,?,?,?,?)',
+    ).bind(`${s.seasonId}-prev`, '2025-26', 'PREMIER', '2025-09-01', '2026-06-30').run();
+    await env.DB.prepare(
+      `INSERT INTO player_seasons (player_id,season_id,club_id,position)
+       VALUES (?,?,?,'PG'),(?,?,?,'SG')`,
+    ).bind(s.playerId, s.seasonId, s.homeId, s.playerId, `${s.seasonId}-prev`, s.homeId).run();
+
+    const players = (await body(await get(`/games/${s.gameId}`))).playerPredictions as {
+      position: string | null;
+    }[];
+    expect(players).toHaveLength(1);
+    expect(players[0]!.position).toBe('PG');
+  });
+
   it('外した試合でも bucketContext を返す', async () => {
     const s = await seedGame({ tipoffAt: '2020-01-01T10:05:00Z', status: 'FINISHED' });
     const predictionId = await seedPrediction(s, { isFinal: true });
@@ -357,6 +389,33 @@ describe('GET /games/:gameId（実績スタッツ）', () => {
       playerId: string; summary: { min: number | null };
     }[];
     expect(rows.map((r) => r.summary.min)).toEqual([28.5, 12.0, null]);
+  });
+
+  /**
+   * **同じクラブに複数シーズン在籍した選手が重複しないこと。**
+   *
+   * `player_seasons` への LEFT JOIN に季の条件が無いと、在籍年数ぶん行が増える。
+   * 本番で 23人が53行になった（2026-10-09）。`seedGame` は1季しか作らないため、
+   * **この検査は2季目を自分で作る** — 作らないと空振りする。
+   */
+  it('同じクラブの別シーズンの登録で行が重複しない', async () => {
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await insertActual(s, s.playerId);
+    await env.DB.prepare(
+      'INSERT INTO seasons (id,label,league,start_date,end_date) VALUES (?,?,?,?,?)',
+    ).bind(`${s.seasonId}-prev`, '2025-26', 'PREMIER', '2025-09-01', '2026-06-30').run();
+    // 同じ選手・同じクラブで2季ぶん登録する。**ポジションも季で違える**
+    await env.DB.prepare(
+      `INSERT INTO player_seasons (player_id,season_id,club_id,position)
+       VALUES (?,?,?,'PF'),(?,?,?,'C')`,
+    ).bind(s.playerId, s.seasonId, s.homeId, s.playerId, `${s.seasonId}-prev`, s.homeId).run();
+
+    const rows = (await body(await get(`/games/${s.gameId}`))).playerActuals as {
+      playerId: string; position: string | null;
+    }[];
+    expect(rows).toHaveLength(1);
+    // **その試合の季の登録を引く**（別の季の 'C' ではない）
+    expect(rows[0]!.position).toBe('PF');
   });
 });
 

@@ -731,3 +731,46 @@ class TestWriter:
         ことを、書き出し前のディレクトリが空であることで固定する。
         """
         assert count_data_files(tmp_path) == 0
+
+
+def test_actuals_pick_the_position_of_the_games_season() -> None:
+    """**ポジションは季まで含めた鍵で引く**（詳細設計 3.3 の v1.130）。
+
+    `(選手, クラブ)` だけで引くと、同じクラブに複数シーズン在籍した選手で
+    **どの季の値を拾うかが走査の順序で決まる**。API 側では同じ欠落が
+    行の重複として本番に出た（23人が53行。2026-10-09）。
+
+    **2季ぶん作らないと空振りする** — 1季しか無いデータでは、鍵を戻しても通る。
+    """
+    import pandas as pd
+
+    from batch.features.dataset import Dataset
+    from batch.static_json.from_snapshot import _actuals_by_game
+
+    ds = Dataset(tables={
+        "games": pd.DataFrame([
+            {"id": "g1", "season_id": "2026-27-PREMIER"},
+            {"id": "g0", "season_id": "2025-26-PREMIER"},
+        ]),
+        "players": pd.DataFrame([{"id": "p1", "name": "架空 選手"}]),
+        "player_seasons": pd.DataFrame([
+            # **対象の季を先に、別の季を後に置く。** 季を鍵に含めない実装は
+            # 「最後に書いた値」を返すため、この並びでないと検査が空振りする
+            # （実際に空振りして気づいた。2026-10-09）
+            {"player_id": "p1", "season_id": "2026-27-PREMIER",
+             "club_id": "703", "position": "PF"},
+            {"player_id": "p1", "season_id": "2025-26-PREMIER",
+             "club_id": "703", "position": "C"},
+        ]),
+        "player_game_stats": pd.DataFrame([{
+            "game_id": "g1", "player_id": "p1", "club_id": "703",
+            "started": 1, "minutes": 31.5,
+            "fg2m": 4, "fg2a": 8, "fg3m": 2, "fg3a": 5, "ftm": 4, "fta": 4,
+            "oreb": 0, "dreb": 3, "ast": 6, "tov": 2, "stl": 1, "blk": 0,
+            "pf": 2, "fd": 3, "plus_minus": 5, "pts": 18,
+        }]),
+    })
+
+    rows = _actuals_by_game(ds, ["g1"])["g1"]
+    assert len(rows) == 1
+    assert rows[0].position == "PF"

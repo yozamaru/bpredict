@@ -21,6 +21,12 @@
 #
 # **`--register` を既定にしない。** 登録は D1 の書き込み枠を使い、同じ版を2回
 # 送ると主キー違反で落ちる（詳細設計 4.5.1）。評価だけを何度でも回せるようにする。
+#
+# **`--initial` の口を手動実行にだけ置く**（詳細設計 4.6。2026-10-09）。33本の世代を
+# 初めて入れるときに要る — **勝敗モデルだけが先に本番にあり、中身が同じなので
+# 「現行より 0.003 以上良い」を満たせない**。1本でも落ちると33本とも登録しないため
+# （4.5.1）、選手の30本が永久に入らない状態になっていた。**定期実行では立てない** —
+# 月次が毎回これを立てると、現行モデルとの比較が永久に行われない。
 name: train
 
 on:
@@ -30,7 +36,12 @@ on:
   workflow_dispatch:
     inputs:
       register:
-        description: '採用判定を通ったら登録して有効化する（D1 に3行書く）'
+        description: '採用判定を通ったら登録して有効化する（D1 に33行書く）'
+        required: false
+        type: boolean
+        default: false
+      initial:
+        description: '現行モデルと比較しない（初回登録。残りの関門は課す）'
         required: false
         type: boolean
         default: false
@@ -99,11 +110,15 @@ jobs:
         env:
           SCHEDULED: ${{ github.event_name == 'schedule' }}
           REGISTER: ${{ github.event_name == 'schedule' || inputs.register }}
+          # **定期実行では立てない。** 月次が毎回これを立てると、現行モデルとの
+          # 比較が永久に行われない（v1.97 まで黙って起きていた状態に戻る）
+          INITIAL: ${{ github.event_name != 'schedule' && inputs.initial }}
           MODEL_VERSION: ${{ inputs.model_version }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=(--json train-report.json)
           [[ "$REGISTER" == 'true' ]] && args+=(--register)
+          [[ "$INITIAL" == 'true' ]] && args+=(--initial)
           if [[ "$SCHEDULED" == 'true' && -z "$MODEL_VERSION" ]]; then
             # **同じ版を2回登録すると主キー違反で落ちる**（詳細設計 4.5.1）。
             # 月次では日付から版を作る（例: 1.2026.1005）

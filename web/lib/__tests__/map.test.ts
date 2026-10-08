@@ -529,3 +529,29 @@ test('古い配信物にキーが無くても落ちない', () => {
   assert.equal(game.isCorrect, null);
   assert.equal(resultLine(game), null);
 });
+
+/**
+ * **試合詳細も、古い配信物でキーが無い状態を通す**（詳細設計 5.6）。
+ *
+ * 2026-10-09 に本番で落ちた。`toActuals` が `for (const item of list)` で回して
+ * おり、**キーが無い配信物で `TypeError: list is not iterable` になった** —
+ * 今日の試合詳細が5件すべて開けなかった（Safari は「This page couldn't load」）。
+ *
+ * **一覧（`toGame`）には同じ検査を足してあったのに、詳細には足していなかった。**
+ * 静的JSON は**前回の `daily_ingest` が書いたもの**であり、画面を配った直後は
+ * 新しいキーが入っていない。**配る順序の問題であって、いつか必ず通る道である。**
+ */
+test('詳細: playerActuals のキーが無くても落ちない', () => {
+  assert.deepEqual(toActuals(undefined), []);
+});
+
+test('詳細: playerPredictions のキーが無くても落ちない', () => {
+  // 古い配信物にもこのキーはあるが、**同じ形の入力を2通りに扱わない**
+  assert.deepEqual(toPlayers(undefined), []);
+});
+
+test('詳細: 配列でない値を渡されても落ちない', () => {
+  // 配信物は外から来る。**型が合っている保証はない**
+  assert.deepEqual(toActuals(null as unknown as undefined), []);
+  assert.deepEqual(toPlayers('' as unknown as undefined), []);
+});

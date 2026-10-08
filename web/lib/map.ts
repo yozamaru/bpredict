@@ -304,7 +304,10 @@ export function toPlayer(raw: RawPlayer): PlayerView {
  * 形が合わない行は落とす。**件数は呼び出し側が見る** — 画面は
  * 「0人なら出さない」だけで、何人落ちたかを主張しない。
  */
-export function toPlayers(list: unknown[]): PlayerView[] {
+export function toPlayers(list: unknown[] | undefined): PlayerView[] {
+  // `toActuals` と同じ理由で守る（こちらは古い配信物にもキーがあるが、
+  // **同じ形の入力を2通りに扱わない**）
+  if (!Array.isArray(list)) return [];
   const out: PlayerView[] = [];
   for (const item of list) {
     const raw = item as Partial<RawPlayer>;
@@ -430,7 +433,10 @@ export function toActual(raw: RawActual): ActualView {
 }
 
 /** 形が合わない行は落とす（`toPlayers` と同じ作法）。 */
-export function toActuals(list: unknown[]): ActualView[] {
+export function toActuals(list: unknown[] | undefined): ActualView[] {
+  // **配信物にキーが無いことがある**（詳細設計 5.6）。画面を配った直後、次の
+  // `daily_ingest` が書くまでは入っていない。**空として扱い、画面を落とさない**
+  if (!Array.isArray(list)) return [];
   const out: ActualView[] = [];
   for (const item of list) {
     const raw = item as Partial<RawActual>;

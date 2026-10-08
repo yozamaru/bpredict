@@ -181,8 +181,14 @@ export type GameDetail = {
     bucketContext: { bucket: string; n: number; correct: number; rate: number } | null;
   } | null;
   playerPredictions: unknown[];
-  /** その試合の実績（詳細設計 3.3）。**予測の有無に依存しない** */
-  playerActuals: unknown[];
+  /**
+   * その試合の実績（詳細設計 3.3）。**予測の有無に依存しない**
+   *
+   * **古い配信物にはキーが無い**（`factors` と同じ。5.6）。静的JSON は前回の
+   * `daily_ingest` が書いたものであり、**画面を配った直後は、次のバッチが走るまで
+   * 新しいキーが入っていない**。省略可で受ける
+   */
+  playerActuals?: unknown[];
   recentForm: unknown;
   modelAccuracy: AccuracyShape;
 };

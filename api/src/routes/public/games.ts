@@ -250,11 +250,14 @@ games.get('/games/:gameId', async (c) => {
                 ps.position AS position
            FROM player_game_stats pgs
            JOIN players p ON p.id = pgs.player_id
+           -- **季で絞る。** 絞らないと、同じクラブで複数シーズン在籍した選手が
+           -- 在籍年数ぶん重複する（本番で23人が53行になった。2026-10-09）
            LEFT JOIN player_seasons ps
              ON ps.player_id = pgs.player_id AND ps.club_id = pgs.club_id
+            AND ps.season_id = ?
           WHERE pgs.game_id = ?
           ORDER BY pgs.minutes IS NULL, pgs.minutes DESC, pgs.player_id`,
-    ).bind(gameId).all<ActualRow>()
+    ).bind(game.season_id, gameId).all<ActualRow>()
     : null;
 
   const body: Record<string, unknown> = {
@@ -314,11 +317,13 @@ games.get('/games/:gameId', async (c) => {
               ps.position AS position
          FROM player_predictions pp
          JOIN players p ON p.id = pp.player_id
+         -- 実績側と同じ理由で季を絞る（上記）
          LEFT JOIN player_seasons ps
            ON ps.player_id = pp.player_id AND ps.club_id = pp.club_id
+          AND ps.season_id = ?
         WHERE pp.prediction_id = ? AND pp.avail_prob >= 0.5
         ORDER BY pp.pred_minutes DESC`,
-    ).bind(prediction.id).all<PlayerRow>(),
+    ).bind(game.season_id, prediction.id).all<PlayerRow>(),
     c.env.DB.prepare(
       `SELECT is_correct, score_mae, prob_bucket, outcome
          FROM prediction_results WHERE prediction_id = ?`,

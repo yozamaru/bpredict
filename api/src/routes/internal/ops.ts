@@ -27,6 +27,48 @@ const RESULT_COLS = [
   'was_provisional',
 ] as const;
 
+/**
+ * `GET /internal/results` — 照合済みの全結果（詳細設計 3.4 / 4.12）。
+ *
+ * **的中率の集計を「全件に対する洗い替え」として成立させるために要る。**
+ * `accuracy_summary` は `DELETE` → `INSERT` で全スコープを作り直す設計だが
+ * （1.6 / 4.12）、バッチが持っているのは**その回に照合した分だけ**である。
+ * それを集計して送ると、**通算が最新の回の分で上書きされる** — 2026-10-08 に
+ * 本番で n=6（10/07 の6試合）となっており、翌朝 10/08 の試合が照合されれば
+ * 10/07 が通算から消える状態だった。
+ *
+ * **入力データの読み取りではない。** 既に自分が書いた記録を読み直すだけで、
+ * 特徴量・学習・推論はこの口を使わない（絶対ルール3 の射程外。基本設計 1.2）。
+ *
+ * **カーソルで辿る。** `after` に前回の最後の `predictionId` を渡す。
+ * `offset` を使わない — 主キーの順に進めば、途中で行が増えても飛ばさない。
+ */
+ops.get('/results', async (c) => {
+  const raw = Number(c.req.query('limit') ?? '1000');
+  const limit = Number.isFinite(raw) ? Math.min(Math.max(Math.trunc(raw), 1), 2000) : 1000;
+  const after = c.req.query('after') ?? '';
+  const rows = await c.env.DB.prepare(
+    `SELECT prediction_id AS predictionId, game_id AS gameId, season_id AS seasonId,
+            model_version AS modelVersion, home_win_prob AS homeWinProb,
+            prob_bucket AS probBucket, outcome,
+            predicted_home_win AS predictedHomeWin, actual_home_win AS actualHomeWin,
+            is_correct AS isCorrect, brier, score_mae AS scoreMae,
+            was_provisional AS wasProvisional
+       FROM prediction_results
+      WHERE prediction_id > ?
+      ORDER BY prediction_id
+      LIMIT ?`,
+  )
+    .bind(after, limit)
+    .all();
+  const results = rows.results as { predictionId: string }[];
+  // **`next` は「続きがある」ことだけを述べる。** 件数が limit に達したかで判断し、
+  // 総数を数えない（COUNT(*) を足すとクエリが1つ増え、値はすぐ古くなる）
+  const last = results[results.length - 1];
+  const next = results.length === limit && last ? last.predictionId : null;
+  return ok(c, { count: results.length, next, results });
+});
+
 ops.post('/evaluate', async (c) => {
   const json = await readJson(c);
   if (!json.ok) return fail(c, 'BAD_REQUEST', 'JSON として解釈できない');

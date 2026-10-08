@@ -51,6 +51,7 @@ app.use('/internal/venues', ingest);
 app.use('/internal/rosters', ingest);
 app.use('/internal/predictions', ingest);
 app.use('/internal/predictions/*', ingest);
+app.use('/internal/results', ingest);
 app.use('/internal/evaluate', ingest);
 app.use('/internal/summary', ingest);
 app.use('/internal/stat-summary', ingest);

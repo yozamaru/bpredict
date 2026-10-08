@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { TeamView } from '@/components/prediction/TeamView';
 import { staticSlugs } from '@/lib/clubs';
 import { staticPlayerIds } from '@/lib/players';
+import { staticGameIds } from '@/lib/routes';
 
 export const dynamic = 'force-static';
 
@@ -21,5 +22,11 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   if (!staticSlugs().includes(slug)) notFound();
   // **静的生成した選手だけにリンクを張る**（要件 8.2。開けないリンクを置かない）。
   // ビルド時に読み、クライアントへ渡す
-  return <TeamView slug={slug} linkablePlayerIds={staticPlayerIds()} />;
+  return (
+    <TeamView
+      slug={slug}
+      linkablePlayerIds={staticPlayerIds()}
+      linkableGameIds={staticGameIds()}
+    />
+  );
 }

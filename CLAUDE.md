@@ -405,7 +405,7 @@ max_rows_per_request = floor(100 / 列数) × 40
 
 | 生成物 | 生成元 |
 |---|---|
-| `web/public/data/*.json` | `batch.jobs.*` の書き出し |
+| `web/public/data/**/*.json` | `batch.jobs.*` の書き出し。**`games/index.json` は溜まる索引**（試合詳細ページの出典。窓から出ても消さない） |
 | `batch/snapshot/*.parquet` / `MANIFEST.json` | `daily_ingest` |
 | `web/data/players.csv` | `batch.jobs.summarize_stats`（**ビルド時にだけ読む**。`/players/[id]` の静的生成の出典） |
 | `web/out/` | `next build` |

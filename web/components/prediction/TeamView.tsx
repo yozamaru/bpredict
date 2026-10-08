@@ -50,10 +50,12 @@ function Big({ children }: { children: React.ReactNode }) {
   return <span className="num text-[26px] leading-none text-ink">{children}</span>;
 }
 
-export function TeamView({ slug, linkablePlayerIds }: {
+export function TeamView({ slug, linkablePlayerIds, linkableGameIds }: {
   slug: string;
   /** 静的生成した選手ID。**範囲外にはリンクを張らない**（要件 8.2） */
   linkablePlayerIds: readonly string[];
+  /** 詳細ページがある試合ID（`public/data/games/index.json`。詳細設計 3.7） */
+  linkableGameIds: readonly string[];
 }) {
   const [team, setTeam] = useState<Team | null>(null);
   const [failed, setFailed] = useState(false);
@@ -117,6 +119,7 @@ export function TeamView({ slug, linkablePlayerIds }: {
     );
   }
   const linkable = new Set(linkablePlayerIds);
+  const linkableGames = new Set(linkableGameIds);
 
   return (
     <>
@@ -173,11 +176,13 @@ export function TeamView({ slug, linkablePlayerIds }: {
         ) : (
           <ul className="mt-3 flex list-none flex-col gap-0.5 p-0">
             {history.map((item, at) => (
-              // **リンクを出さない。** 過去の試合には詳細ページが無い（`lib/routes.ts`）
+              // **索引にある試合だけリンクする**（`lib/routes.ts`）。予測を
+              // 出した試合には詳細ページがあるが、予測を始める前（2026-10-05 より
+              // 前）の試合には無い。**開けないリンクを置かない**
               <HistoryRow
                 key={item.gameId}
                 item={item}
-                linked={false}
+                linked={linkableGames.has(item.gameId)}
                 alt={at % 2 === 0}
               />
             ))}

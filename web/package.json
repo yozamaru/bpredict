@@ -13,6 +13,7 @@
     "test:tokens": "node scripts/check-contrast.mjs",
     "test:budget": "node scripts/check-js-budget.mjs",
     "test:links": "node scripts/check-links.mjs",
+    "test:games": "node scripts/check-games.mjs",
     "test:nav": "node scripts/check-nav.mjs",
     "test:bar": "node scripts/check-bar.mjs",
     "test:notes": "node scripts/check-notes.mjs",

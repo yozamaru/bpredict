@@ -14,13 +14,9 @@ export function Header() {
       <div className="flex items-center justify-between">
         <Link
           href="/"
-          className="flex min-h-11 items-center gap-2 text-[15px] font-bold tracking-[0.18em] text-ink-2"
+          className="flex min-h-11 items-center text-[15px] font-bold tracking-[0.18em] text-ink-2"
         >
           B.PREDICT
-          {/* 名称は未決（未決事項 U-01）。**確定するまで隠さない** */}
-          <span className="rounded-xs bg-strip px-1.5 py-0.5 text-[12px] font-bold tracking-normal text-ink-3">
-            仮称
-          </span>
         </Link>
         <ThemeToggle />
       </div>

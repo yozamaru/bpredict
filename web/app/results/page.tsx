@@ -1,7 +1,7 @@
 import { ResultsView } from '@/components/prediction/ResultsView';
 
 export const dynamic = 'force-static';
-export const metadata = { title: '結果 | B.PREDICT（仮称）' };
+export const metadata = { title: '結果 | B.PREDICT' };
 
 /**
  * 結果（要件 F-09）。

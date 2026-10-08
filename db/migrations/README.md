@@ -14,8 +14,11 @@
 | `0008_freeze_triggers.sql` | 確定予測の凍結トリガ | 12トリガ |
 | `0009_venue_name_at_game.sql` | `games` に当時の会場名を追加 | 1列 |
 | `0010_games_drop_natural_key_unique.sql` | `games` の自然キー UNIQUE を外す（テーブル再作成） | 1テーブル + 4インデックス |
+| `0011_accuracy_summary_score_mae.sql` | 的中率の集計に予想スコアの誤差を追加 | 1列 |
+| `0012_stat_summary.sql` | 実績の集計（選手・クラブ） | 2テーブル + 1インデックス |
 
-合計 24テーブル / 18インデックス / 13トリガ。`games` は25列。
+合計 **26テーブル / 19インデックス / 13トリガ**。`games` は25列。
+0010 の `games_rebuild` は再作成の作業名であり、最終の表名は `games` である（数に含めない）。**この合計は `docs/db-schema.md` が生成する表と突き合わせる** —あちらは D1 の実データから作る。
 
 ## 規約
 
@@ -44,16 +47,15 @@ pytest batch/tests -v
 ## 適用
 
 ```bash
-wrangler d1 migrations apply <DB名> --local     # まずローカルで検証する
-wrangler d1 migrations apply <DB名> --remote    # 本番適用は手動承認を経る
+wrangler d1 migrations apply bpredict --local     # まずローカルで検証する
+wrangler d1 migrations apply bpredict --remote    # 本番適用は運営者の承認を経る
 ```
 
-**まだ実行していない。** 理由は2つ。
+**データベース名は `bpredict`。** `api/wrangler.toml` の `d1_databases` が
+`migrations_dir = "../db/migrations"` を指しているため、`api/` から実行する。
 
-1. **データベース名が決まっていない。** プロダクト名は仮称で（未決事項 U-01）、
-   `wrangler d1 create` で付けた名前は後から変えると `wrangler.toml` と CI が連動する
-2. **`wrangler.toml` がまだない**（工程4）。`migrations apply` は既定で
-   プロジェクト直下の `migrations/` を見るため、`wrangler.toml` に
-   `migrations_dir = "../db/migrations"` を設定する必要がある
+**本番は 0012 まで適用済み**（2026-10-07）。**`--remote` は運営者の承認を経て実行する** —
+`CF_API_TOKEN` は Edit スコープであり、取り消せない操作を含む。
+適用の状態は `wrangler d1 migrations list bpredict --remote` で確認する。
 
 スキーマ自体の妥当性は、in-memory SQLite への適用で検証済みである（`pytest batch/tests`）。

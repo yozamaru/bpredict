@@ -4,7 +4,7 @@ import { Footer } from '@/components/ui/Footer';
 import { Header } from '@/components/ui/Header';
 
 export const metadata: Metadata = {
-  title: 'B.PREDICT（仮称）',
+  title: 'B.PREDICT',
   description:
     'B.LEAGUE PREMIER の試合の勝敗確率・予想スコア・個人スタッツを、判断根拠と的中率とともに公開する非公式ツール。',
 };

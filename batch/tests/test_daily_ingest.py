@@ -50,6 +50,7 @@ from batch.model.explain import Explainer
 from batch.model.predict import Prediction
 from batch.parser.schedule_parser import ScheduleGame
 from batch.static_json.from_snapshot import PredictedGame
+from batch.static_json.writer import read_game_index
 
 
 class FakeModels:
@@ -421,8 +422,8 @@ def test_static_json_is_written_for_the_whole_window(tmp_path: Path) -> None:
     written = daily_ingest.write_json(
         snapshot_dataset(game_date="2026-10-05"), result,
         today="2026-10-05", status="SUCCESS", root=tmp_path, log=lambda _m: None)
-    # today.json ＋ schedule 7日 ＋ 当日の詳細1件 ＋ meta.json
-    assert written == 1 + 7 + 1 + 1
+    # today.json ＋ schedule 7日 ＋ 当日の詳細1件 ＋ games/index.json ＋ meta.json
+    assert written == 1 + 7 + 1 + 1 + 1
     today = json.loads((tmp_path / "today.json").read_text(encoding="utf-8"))
     game = today["data"]["games"][0]
     assert game["prediction"]["homeWinProb"] == pytest.approx(0.68)
@@ -440,10 +441,48 @@ def test_static_json_is_written_even_with_no_games(tmp_path: Path) -> None:
     written = daily_ingest.write_json(
         snapshot_dataset(game_date="2026-12-01"), result,
         today="2026-10-05", status="SUCCESS", root=tmp_path, log=lambda _m: None)
-    assert written == 1 + 7 + 1          # 詳細は0件
+    assert written == 1 + 7 + 1 + 1      # 詳細は0件。索引は毎回書く（3.7）
     today = json.loads((tmp_path / "today.json").read_text(encoding="utf-8"))
     assert today["data"]["games"] == []
     assert today["data"]["gameDate"] == "2026-10-05"
+
+
+def test_the_game_index_accumulates_through_the_job(tmp_path: Path) -> None:
+    """**窓から出た試合のIDが索引に残ること**（詳細設計 3.7 / 5.6）。
+
+    これが無いと、昨日の試合を押したときに 404 になる（2026-10-08 に運営者が
+    実際に踏んだ）。`write_static_json` 単体では検査済みだが、**ジョブが
+    `prediction` を渡している経路**をここで固定する。
+    """
+    def run(game_date: str, today: str) -> None:
+        daily_ingest.write_json(
+            snapshot_dataset(game_date=game_date),
+            daily_ingest.InferenceResult(
+                predicted=1, data_as_of="2026-10-01T12:05:00Z",
+                model_versions={"WINNER": "winner-v1.0.0"},
+                rows=[PredictedGame("g1", 0.68, 84.6, 77.4, "winner-v1.0.0")],
+            ),
+            today=today, status="SUCCESS", root=tmp_path, log=lambda _m: None)
+
+    run("2026-10-05", "2026-10-05")
+    assert read_game_index(tmp_path) == ["g1"]
+    # 窓が進んで g1 が外に出ても、索引からは消えない
+    run("2026-12-01", "2026-11-20")
+    assert read_game_index(tmp_path) == ["g1"]
+    assert not (tmp_path / "games" / "g1.json").exists()
+
+
+def test_a_game_without_a_prediction_is_not_indexed(tmp_path: Path) -> None:
+    """**予測の無い試合を索引に入れない**（詳細設計 3.7）。
+
+    入れても「この試合の予測はまだありません」と出るだけで、**この画面の用途
+    （予想と実際の対比）が成立しない**。
+    """
+    result = daily_ingest.InferenceResult(data_as_of="2026-10-01T12:05:00Z")
+    daily_ingest.write_json(
+        snapshot_dataset(game_date="2026-10-05"), result,
+        today="2026-10-05", status="SUCCESS", root=tmp_path, log=lambda _m: None)
+    assert read_game_index(tmp_path) == []
 
 
 def test_a_game_without_a_prediction_keeps_the_key(tmp_path: Path) -> None:
@@ -462,7 +501,9 @@ def test_details_cover_only_today(tmp_path: Path) -> None:
     daily_ingest.write_json(
         snapshot_dataset(game_date="2026-10-08"), result,
         today="2026-10-05", status="SUCCESS", root=tmp_path, log=lambda _m: None)
-    assert not list((tmp_path / "games").glob("*.json"))
+    # **索引（`index.json`）は窓の対象外である**（詳細設計 3.7）。溜まるファイルで
+    # あり、「当日の詳細だけ」という規則の外にある
+    assert [p.name for p in (tmp_path / "games").glob("*.json")] == ["index.json"]
     schedule = json.loads(
         (tmp_path / "schedule" / "2026-10-08.json").read_text(encoding="utf-8"))
     assert [g["gameId"] for g in schedule["data"]["games"]] == ["g1"]

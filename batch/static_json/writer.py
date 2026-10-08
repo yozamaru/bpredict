@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -41,9 +42,14 @@ class WriteResult:
 
     written: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
+    #: 索引に入っている試合の総数（**この回に書いた数ではない**。溜まった数）
+    indexed: int = 0
 
     def summary(self) -> str:
-        return f"静的JSON: 書き出し={len(self.written)} 削除={len(self.removed)}"
+        return (
+            f"静的JSON: 書き出し={len(self.written)} 削除={len(self.removed)} "
+            f"索引={self.indexed}件"
+        )
 
 
 def _dump(path: Path, payload: dict[str, Any]) -> None:
@@ -55,6 +61,62 @@ def _dump(path: Path, payload: dict[str, Any]) -> None:
         json.dumps(payload, ensure_ascii=False, indent=1, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+#: 予測を出した試合IDの索引。**窓から出ても消さない**（下記 `merge_game_index`）
+GAME_INDEX = "index.json"
+
+
+def read_game_index(root: Path = DATA_DIR) -> list[str]:
+    """索引を読む。無ければ空（初回のビルドを落とさない）。"""
+    path = root / "games" / GAME_INDEX
+    if not path.is_file():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    ids = payload.get("gameIds") if isinstance(payload, dict) else None
+    if not isinstance(ids, list):
+        return []
+    return sorted({str(x) for x in ids if isinstance(x, str)})
+
+
+def merge_game_index(root: Path, game_ids: Iterable[str]) -> list[str]:
+    """**索引は溜める。** 窓から出た詳細ファイルと違い、消さない。
+
+    試合詳細ページ（`/games/[id]`）はこの索引から静的生成される（詳細設計 5.6）。
+    **窓（当日＋7日）だけを出典にすると、昨日の試合を押したときに 404 になる** —
+    2026-10-08 に運営者が実際に踏んだ。「予想と結果の対比が確認できるページが
+    無いとこのサービスの意味が無い」という指摘のとおり、過去の試合こそ対比の
+    置き場である。
+
+    **出典は「予測を出した試合」である。** 予測の無い試合のページを作らない
+    （`prediction: null` の画面が増えるだけで、対比するものが無い）。
+    """
+    merged = sorted(set(read_game_index(root)) | {str(x) for x in game_ids})
+    path = root / "games" / GAME_INDEX
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _dump(path, {"gameIds": merged})
+    return merged
+
+
+def _predicted_game_ids(
+    today: GameListInput, upcoming: Iterable[GameListInput]
+) -> list[str]:
+    """索引に入れる試合IDを一覧から拾う。
+
+    **「予測を出した試合」だけを入れる。** 予測の無い試合のページを作っても
+    「この試合の予測はまだありません」と出るだけで、対比するものが無い
+    （要件 8.5）。`GameBoardList` がリンクを張る条件と**同じ定義**にしてあり、
+    画面が索引を読まずに判断できる。
+    """
+    found: list[str] = []
+    for day in (today, *upcoming):
+        for game, prediction in day.games:
+            if prediction is not None:
+                found.append(game.game_id)
+    return found
 
 
 def _read_previous_meta(root: Path) -> dict[str, Any] | None:
@@ -153,6 +215,12 @@ def write_static_json(
         result.written.append(name)
         keep_games.add(f"{detail.game.game_id}.json")
 
+    # **予測を出した試合の索引を溜める**（詳細設計 5.6）。窓から出た詳細ファイルは
+    # 上で消えるが、索引は残る — 過去の試合の詳細ページがここから生成される
+    merged = merge_game_index(root, _predicted_game_ids(today, upcoming))
+    result.written.append(f"games/{GAME_INDEX}")
+    result.indexed = len(merged)
+
     _dump(
         root / "meta.json",
         build_meta(
@@ -179,6 +247,10 @@ def write_static_json(
         if not target.is_dir():
             continue
         for path in sorted(target.glob("*.json")):
+            # **索引は窓の対象外である**（`merge_game_index`）。ここで消すと
+            # 次のビルドで過去の試合のページが1枚も作られなくなる
+            if directory == "games" and path.name == GAME_INDEX:
+                continue
             if path.name not in keep:
                 path.unlink()
                 result.removed.append(f"{directory}/{path.name}")

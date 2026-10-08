@@ -29,11 +29,13 @@ from batch.static_json.builder import (
     build_meta,
 )
 from batch.static_json.writer import (
+    GAME_INDEX,
     MAX_DATA_FILES,
     SCHEDULE_WINDOW_DAYS,
     carry_forward_last_success,
     carry_forward_latest_result,
     count_data_files,
+    read_game_index,
     write_static_json,
 )
 
@@ -345,6 +347,7 @@ class TestWriter:
         result = self._write(tmp_path)
         assert sorted(result.written) == [
             "games/g1.json",
+            f"games/{GAME_INDEX}",
             "meta.json",
             "schedule/2026-09-27.json",
             "today.json",
@@ -425,6 +428,104 @@ class TestWriter:
         tmp_path.mkdir(exist_ok=True)
         (tmp_path / "meta.json").write_text("{ not json", encoding="utf-8")
         assert carry_forward_last_success(tmp_path, GENERATED_AT, "PARTIAL") is None
+
+    # ── 予測を出した試合の索引（詳細設計 5.6） ────────────────────
+
+    def test_the_index_accumulates_across_runs(self, tmp_path: Path) -> None:
+        """**索引は溜まる。** 窓から出た試合のIDが消えないこと。
+
+        これが無いと、昨日の試合を押したときに 404 になる（2026-10-08 に
+        運営者が実際に踏んだ）。過去の試合こそ予想と結果の対比の置き場である。
+        """
+        self._write(
+            tmp_path,
+            today=GameListInput(
+                game_date="2026-10-07", games=[(a_game(game_id="old"), a_prediction())]
+            ),
+            details=[GameDetailInput(game=a_game(game_id="old"), prediction=a_prediction())],
+        )
+        assert read_game_index(tmp_path) == ["old"]
+
+        result = self._write(tmp_path)  # 翌日。窓は g1 だけになる
+        assert read_game_index(tmp_path) == ["g1", "old"]
+        assert result.indexed == 2
+        # 詳細ファイルのほうは窓から出たので消える
+        assert not (tmp_path / "games" / "old.json").exists()
+
+    def test_the_index_survives_the_prune(self, tmp_path: Path) -> None:
+        """削除が索引そのものを消さないこと。
+
+        消すと次のビルドで過去の試合のページが1枚も作られなくなる。
+        **`games/` の中にあるため、素朴な `*.json` の走査に当たる。**
+        """
+        self._write(tmp_path)
+        assert (tmp_path / "games" / GAME_INDEX).exists()
+        self._write(tmp_path, details=[])
+        assert (tmp_path / "games" / GAME_INDEX).exists()
+        assert read_game_index(tmp_path) == ["g1"]
+
+    def test_only_predicted_games_enter_the_index(self, tmp_path: Path) -> None:
+        """**予測の無い試合を索引に入れない。**
+
+        入れても「この試合の予測はまだありません」と出るだけで、対比するものが
+        無い（要件 8.5）。`GameBoardList` がリンクを張る条件と同じ定義である。
+        """
+        self._write(
+            tmp_path,
+            today=GameListInput(
+                game_date="2026-09-26",
+                games=[(a_game(game_id="yes"), a_prediction()), (a_game(game_id="no"), None)],
+            ),
+            details=[],
+        )
+        assert read_game_index(tmp_path) == ["yes"]
+
+    def test_upcoming_games_enter_the_index(self, tmp_path: Path) -> None:
+        """**窓の7日ぶんも索引に入れる。** 詳細ファイルは当日だけだが（3.7）、
+        ページは `/api/v1/games/:id` から取れる（詳細設計 5.6）。"""
+        self._write(
+            tmp_path,
+            upcoming=[
+                GameListInput(
+                    game_date="2026-09-27",
+                    games=[(a_game(game_id="tomorrow"), a_prediction())],
+                )
+            ],
+        )
+        assert read_game_index(tmp_path) == ["g1", "tomorrow"]
+
+    def test_the_index_order_is_stable(self, tmp_path: Path) -> None:
+        """**並びが実行ごとに動かないこと。** 動くと差分が無意味に膨らむ
+        （リポジトリにコミットするファイルである）。"""
+        self._write(
+            tmp_path,
+            today=GameListInput(
+                game_date="2026-09-26",
+                games=[(a_game(game_id="b"), a_prediction()), (a_game(game_id="a"), a_prediction())],
+            ),
+            details=[],
+        )
+        first = (tmp_path / "games" / GAME_INDEX).read_text(encoding="utf-8")
+        self._write(
+            tmp_path,
+            today=GameListInput(
+                game_date="2026-09-26",
+                games=[(a_game(game_id="a"), a_prediction()), (a_game(game_id="b"), a_prediction())],
+            ),
+            details=[],
+        )
+        assert (tmp_path / "games" / GAME_INDEX).read_text(encoding="utf-8") == first
+
+    def test_a_broken_index_is_treated_as_empty(self, tmp_path: Path) -> None:
+        """**壊れていても書き出しを落とさない。** 初回と同じ扱いになり、
+        その回の試合から溜め直す（`meta.json` と同じ方針）。"""
+        (tmp_path / "games").mkdir()
+        (tmp_path / "games" / GAME_INDEX).write_text("壊れた", encoding="utf-8")
+        self._write(tmp_path)
+        assert read_game_index(tmp_path) == ["g1"]
+
+    def test_the_index_is_empty_before_the_first_run(self, tmp_path: Path) -> None:
+        assert read_game_index(tmp_path) == []
 
     def test_window_longer_than_seven_days_is_rejected(self, tmp_path: Path) -> None:
         """詳細を7日窓にしないのと同じ理由で、一覧の窓も広げない（詳細設計 3.7）。"""

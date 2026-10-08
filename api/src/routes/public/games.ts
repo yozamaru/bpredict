@@ -249,20 +249,27 @@ games.get('/games/:gameId', async (c) => {
   if (evaluation) {
     // **外れた試合でも `bucketContext` を返す。** その確率帯の通算的中率を併記して
     // 較正が取れていること自体を信頼の材料にする（基本設計 5.2）
+    //
+    // **出典は `hit_rate` であり `actual_rate` ではない**（詳細設計 1.6 / 3.3）。
+    // あれはホームが勝った割合で、50%未満の帯では的中率と符号が逆になる。
+    // **`/results` と同じ出典を使う** — 同じ「結果の対比」が2つの画面で
+    // 別の数字を出さない（v1.101 で帯のラベルだけを返していたのを直したのと同じ理由）
     const bucketKey = `${evaluation.prob_bucket * 10}-${evaluation.prob_bucket * 10 + 10}%`;
     const bucket = await c.env.DB.prepare(
-      `SELECT n, accuracy, actual_rate FROM accuracy_summary
+      `SELECT n, hit_rate FROM accuracy_summary
         WHERE scope = 'BUCKET' AND scope_key = ? AND model_version = ''`,
-    ).bind(bucketKey).first<{ n: number; accuracy: number; actual_rate: number | null }>();
+    ).bind(bucketKey).first<{ n: number; hit_rate: number | null }>();
     body.evaluation = {
       isCorrect: evaluation.is_correct === null ? null : evaluation.is_correct === 1,
       scoreError: evaluation.score_mae,
       outcome: evaluation.outcome,
-      bucketContext: bucket
+      // **`hit_rate` が NULL の帯は返さない**（詳細設計 3.3）。0 として出すと
+      // 「1件も当たっていない」という意味になる
+      bucketContext: bucket !== null && bucket.hit_rate !== null
         ? {
             bucket: bucketKey, n: bucket.n,
-            correct: Math.round((bucket.actual_rate ?? 0) * bucket.n),
-            rate: bucket.actual_rate,
+            correct: Math.round(bucket.hit_rate * bucket.n),
+            rate: bucket.hit_rate,
           }
         : null,
     };

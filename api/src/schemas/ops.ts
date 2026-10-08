@@ -49,6 +49,16 @@ export const summarySchema = z
      * null にする（4.12。母数の列を2つ持たない）。
      */
     scoreMae: z.number().min(0).nullable().optional(),
+    /**
+     * **その帯の的中率。`BUCKET` 行だけが持つ**（詳細設計 1.6 / 4.12）。
+     *
+     * 他のスコープでは `accuracy` がそのまま的中率であり、**同じ値を2列に
+     * 持たない**。したがってここは null で届く。
+     *
+     * **`actualRate` で代用できない** — あれはホームが勝った割合で、50%未満の
+     * 帯では的中率と符号が逆になる（本番で6試合中3試合が逆に出た。1.6）。
+     */
+    hitRate: z.number().min(0).max(1).nullable().optional(),
   })
   .strict();
 

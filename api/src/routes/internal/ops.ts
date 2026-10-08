@@ -59,7 +59,7 @@ ops.post('/evaluate', async (c) => {
 
 const SUMMARY_COLS = [
   'scope', 'scope_key', 'model_version', 'n', 'accuracy', 'brier', 'actual_rate',
-  'baseline_accuracy', 'score_mae',
+  'baseline_accuracy', 'score_mae', 'hit_rate',
 ] as const;
 
 ops.post('/summary', async (c) => {
@@ -76,6 +76,9 @@ ops.post('/summary', async (c) => {
   const rows: Row[] = input.map((s) => [
     s.scope, s.scopeKey, s.modelVersion ?? '', s.n, s.accuracy, s.brier,
     s.actualRate ?? null, s.baselineAccuracy ?? null, s.scoreMae ?? null,
+    // **BUCKET 行だけが値を持つ**（詳細設計 1.6）。他のスコープは `accuracy` が
+    // そのまま的中率であり、同じ値を2列に持たない
+    s.hitRate ?? null,
   ]);
 
   // **洗い替え。** DELETE と INSERT を単一 batch() に入れる（詳細設計 1.6）

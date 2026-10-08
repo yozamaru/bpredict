@@ -16,8 +16,9 @@
 | `0010_games_drop_natural_key_unique.sql` | `games` の自然キー UNIQUE を外す（テーブル再作成） | 1テーブル + 4インデックス |
 | `0011_accuracy_summary_score_mae.sql` | 的中率の集計に予想スコアの誤差を追加 | 1列 |
 | `0012_stat_summary.sql` | 実績の集計（選手・クラブ） | 2テーブル + 1インデックス |
+| `0013_accuracy_summary_hit_rate.sql` | 帯ごとの的中率を追加（`actual_rate` と別の量） | 1列 |
 
-合計 **26テーブル / 19インデックス / 13トリガ**。`games` は25列。
+合計 **26テーブル / 19インデックス / 13トリガ**。`games` は25列、`accuracy_summary` は11列。
 0010 の `games_rebuild` は再作成の作業名であり、最終の表名は `games` である（数に含めない）。**この合計は `docs/db-schema.md` が生成する表と突き合わせる** —あちらは D1 の実データから作る。
 
 ## 規約
@@ -54,7 +55,7 @@ wrangler d1 migrations apply bpredict --remote    # 本番適用は運営者の�
 **データベース名は `bpredict`。** `api/wrangler.toml` の `d1_databases` が
 `migrations_dir = "../db/migrations"` を指しているため、`api/` から実行する。
 
-**本番は 0012 まで適用済み**（2026-10-07）。**`--remote` は運営者の承認を経て実行する** —
+**本番は 0012 まで適用済み**（2026-10-07）。**0013 は未適用**（2026-10-08 に追加）。**`--remote` は運営者の承認を経て実行する** —
 `CF_API_TOKEN` は Edit スコープであり、取り消せない操作を含む。
 適用の状態は `wrangler d1 migrations list bpredict --remote` で確認する。
 

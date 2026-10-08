@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | 生成 | **`python3 scripts/describe_schema.py` が生成する。手で編集しない** |
-| 生成日 | 2026-10-06 |
+| 生成日 | 2026-10-08 |
 | 構造の出典 | `db/migrations/*.sql`（列の説明は DDL のコメント） |
 | 行数の出典 | 未測定（`--database` が渡されていない） |
 | 定義と設計の理由 | **`docs/design-detail.md` 1章**。この文書では繰り返さない |
@@ -15,7 +15,7 @@
 
 | 表 | 分類 | 列数 | 行数 | 役割 |
 |---|---|---:|---:|---|
-| [`accuracy_summary`](#accuracy_summary) | 評価 | 10 | — | 的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため） |
+| [`accuracy_summary`](#accuracy_summary) | 評価 | 11 | — | 的中率の集計層。日次で洗い替える（公開APIが3表の全件走査をしないため） |
 | [`club_seasons`](#club_seasons) | マスタ | 8 | — | シーズンごとのクラブ断面。名称・リーグ・本拠は年度で変わる。**backfill が試合データから作る** |
 | [`club_source_ids`](#club_source_ids) | マスタ | 5 | — | 公式サイトのチームIDを `club_id` に解決する対応表。旧B1と新リーグをまたいで名寄せする |
 | [`clubs`](#clubs) | マスタ | 5 | — | 恒久的なクラブ。改称・リーグ移動があっても不変。表示名は `club_seasons` が持つ |
@@ -137,12 +137,13 @@ erDiagram
 | `scope_key` 🔑 | TEXT | 不可 | — | — | その単位の中の鍵（シーズンID・確率帯など） |
 | `model_version` 🔑 | TEXT | 不可 | `''` | — | モデル横断の集計では空文字。NULL にしない |
 | `n` | INTEGER | 不可 | — | — | 母数（試合数） |
-| `accuracy` | REAL | 不可 | — | — | 的中率。**画面では必ず母数を併記する** |
+| `accuracy` | REAL | 不可 | — | — | 的中率。**画面では必ず母数を併記する**。ただし `BUCKET` 行だけは「予想した確率の平均」である（較正曲線の横軸。的中率は `hit_rate`） |
 | `brier` | REAL | 不可 | — | — | Brier Score。**主要な改善指標**（0に近いほど良い） |
 | `actual_rate` | REAL | 可 | — | — | calibration 用 |
 | `baseline_accuracy` | REAL | 可 | — | — | 比較対象（ホーム必勝）の的中率 |
 | `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 | `score_mae` | REAL | 可 | — | — | 予想スコアの誤差。**1チームあたりの平均絶対誤差**で、得点差の MAE とは別物である。母数は `n` と同じ（食い違う場合は NULL） |
+| `hit_rate` | REAL | 可 | — | — | その確率帯の的中率。**`BUCKET` 行だけが持つ**（他のスコープは `accuracy` がそのまま的中率）。**`actual_rate`（ホーム勝率）と別の量で、50%未満の帯では符号が逆になる** |
 
 ### club_seasons
 

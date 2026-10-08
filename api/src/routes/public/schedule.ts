@@ -93,6 +93,12 @@ function bucketLabel(bucket: number): string {
 /**
  * 確率帯の通算成績をまとめて引く（詳細設計 3.3 の `bucketContext`）。
  *
+ * **出典は `hit_rate`（その帯の的中率）である。`actual_rate` ではない。**
+ * あれはその帯で**ホームが実際に勝った割合**で、50%未満の帯では予測が
+ * 「アウェイ勝ち」なので符号が逆になる — 27%と予想してアウェイが勝てば
+ * 予測は当たっているのに「0.0%が的中」と出る（2026-10-08 の本番で6試合中
+ * 3試合が該当。運営者の指摘で見つかった。詳細設計 1.6）。
+ *
  * **1クエリで済ませる。** 行ごとに引くと1試合1クエリになり、13試合の日には
  * 14クエリを使う（1リクエスト50クエリの上限に対して無駄が大きい。絶対ルール3）。
  * 確率帯は最大10種類しかないため、必要な帯をまとめて `IN` で取る。
@@ -101,17 +107,21 @@ async function bucketContexts(db: D1Database, keys: string[]) {
   const found = new Map<string, { bucket: string; n: number; correct: number; rate: number | null }>();
   if (keys.length === 0) return found;
   const rows = await db.prepare(
-    `SELECT scope_key, n, actual_rate FROM accuracy_summary
+    `SELECT scope_key, n, hit_rate FROM accuracy_summary
       WHERE scope = 'BUCKET' AND model_version = ''
         AND scope_key IN (${keys.map(() => '?').join(',')})`,
-  ).bind(...keys).all<{ scope_key: string; n: number; actual_rate: number | null }>();
+  ).bind(...keys).all<{ scope_key: string; n: number; hit_rate: number | null }>();
   for (const row of rows.results) {
+    // **`hit_rate` が NULL の帯は返さない**（詳細設計 3.3）。集計が 0013 より前の
+    // 形で入っている場合に起きる。**0 として出さない** — 「0.0%が的中」は
+    // 「1件も当たっていない」という意味を持ってしまう
+    if (row.hit_rate === null) continue;
     found.set(row.scope_key, {
       bucket: row.scope_key, n: row.n,
-      // **`correct` は `actual_rate × n` から戻す。** 列として持っていない
+      // **`correct` は `hit_rate × n` から戻す。** 件数の列は持っていない
       // （`accuracy_summary` は率と母数だけを持つ。詳細設計 1.6）
-      correct: Math.round((row.actual_rate ?? 0) * row.n),
-      rate: row.actual_rate,
+      correct: Math.round(row.hit_rate * row.n),
+      rate: row.hit_rate,
     });
   }
   return found;

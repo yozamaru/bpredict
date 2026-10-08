@@ -243,6 +243,42 @@ def test_bucket_rows_carry_the_predicted_mean() -> None:
         assert row.brier is not None
 
 
+def test_bucket_rows_carry_the_hit_rate() -> None:
+    """**`hit_rate` は `actual_rate` と別の量である**（1.6 / 4.12）。
+
+    **50%未満の帯で符号が逆になることを実際に作る** — 同じ値になる標本で
+    検査しても空振りする（`actual_rate` をそのまま読んでいた実装が通ってしまう）。
+    """
+    # 27% と予想してアウェイが勝った試合 — **予測は当たっている**
+    hit = evaluate_one(
+        prediction(predictionId="p-low", gameId="g-low", homeWinProb=0.27),
+        game(id="g-low", home_score=86.0, away_score=90.0))
+    assert hit.is_correct == 1, "アウェイ勝ちを当てている"
+    assert hit.actual_home_win == 0
+
+    row = next(r for r in summarize([hit]) if r.scope == "BUCKET")
+    assert row.scope_key == "20-30%"
+    assert row.hit_rate == pytest.approx(1.0), "的中率は100%"
+    assert row.actual_rate == pytest.approx(0.0), "ホーム勝率は0%"
+    assert row.hit_rate != row.actual_rate, (
+        "**この2つが一致する標本では検査が空振りする。** "
+        "本番ではここが一致していると思い込んで actual_rate を表示していた"
+    )
+
+
+def test_hit_rate_only_on_bucket_rows() -> None:
+    """**`BUCKET` 以外のスコープでは None にする**（1.6）。
+
+    そちらは `accuracy` がそのまま的中率であり、**同じ値を2列に持たない**
+    （1.9 が `losses` を持たないのと同じ理由）。
+    """
+    for row in summarize(sample()):
+        if row.scope == "BUCKET":
+            assert row.hit_rate is not None, f"{row.scope_key} に的中率がない"
+        else:
+            assert row.hit_rate is None, f"{row.scope} が的中率を二重に持っている"
+
+
 def test_provisional_split() -> None:
     rows = {r.scope_key: r for r in summarize(sample()) if r.scope == "PROVISIONAL"}
     assert set(rows) == {"provisional", "confirmed"}

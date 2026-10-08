@@ -46,6 +46,14 @@ class Wording:
     render: Callable[[float], str]
     #: 代表に選んでよいか。**データの状態を表す列は選ばない**（下記 `entry_is_official`）。
     representative: bool = True
+    #: **値の符号が「どちらが大きいか」を表すか**（詳細設計 2.7.2）。
+    #:
+    #: `_amount`（差の列）は表す。`_level`（片側や両チーム共通の水準）と
+    #: `_choice`（選択肢）は表さない — `series_game_no` の「2戦目」は両チームに
+    #: 共通で、`away_streak_away` はアウェイ側だけの値である。
+    #:
+    #: **「有利な側」ではない。** 係数が負の列（`drtg_diff`）では両者が逆を向く。
+    directional: bool = True
 
 
 def _amount(unit: str, digits: int = 0, scale: float = 1.0) -> Callable[[float], str]:
@@ -84,8 +92,10 @@ def _choice(when_true: str, when_false: str) -> Callable[[float], str]:
 WORDING: dict[str, Wording] = {
     # --- チーム力 ---
     "elo_diff": Wording("TEAM_STRENGTH", "チーム力の差", _amount("ポイント")),
-    "elo_home": Wording("TEAM_STRENGTH", "ホームのチーム力", _level("ポイント")),
-    "elo_away": Wording("TEAM_STRENGTH", "アウェイのチーム力", _level("ポイント")),
+    "elo_home": Wording(
+        "TEAM_STRENGTH", "ホームのチーム力", _level("ポイント"), directional=False),
+    "elo_away": Wording(
+        "TEAM_STRENGTH", "アウェイのチーム力", _level("ポイント"), directional=False),
     "winrate_l5_diff": Wording(
         "TEAM_STRENGTH", "直近5試合の勝率の差", _amount("ポイント", scale=100.0)),
     "winrate_l10_diff": Wording(
@@ -108,12 +118,15 @@ WORDING: dict[str, Wording] = {
     "sos_diff": Wording(
         "TEAM_STRENGTH", "対戦してきた相手の強さの差", _amount("ポイント")),
     # --- 日程・疲労 ---
-    "series_game_no": Wording("SCHEDULE", "同一カードの連戦", _level("戦目")),
+    "series_game_no": Wording(
+        "SCHEDULE", "同一カードの連戦", _level("戦目"), directional=False),
     "prev_result_diff": Wording(
-        "SCHEDULE", "前戦の勝敗", _choice("勝敗が分かれた", "勝敗が同じ")),
+        "SCHEDULE", "前戦の勝敗", _choice("勝敗が分かれた", "勝敗が同じ"),
+        directional=False),
     "prev_margin_diff": Wording("SCHEDULE", "前戦の得点差の開き", _amount("点")),
     "rest_days_diff": Wording("SCHEDULE", "休養日数の差", _amount("日")),
-    "away_streak_away": Wording("SCHEDULE", "アウェイの連続アウェイ", _level("試合")),
+    "away_streak_away": Wording(
+        "SCHEDULE", "アウェイの連続アウェイ", _level("試合"), directional=False),
     # --- 選手 ---
     "minutes_lost_diff": Wording(
         "PLAYER", "欠場者の出場時間の差", _amount("分", digits=1)),
@@ -121,7 +134,8 @@ WORDING: dict[str, Wording] = {
     # **代表に選ばない。** 出場選手が発表されているかは「データの状態」であって、
     # どちらのチームに有利でもない。寄与はグループ合計に入れるが文言には出さない
     "entry_is_official": Wording(
-        "PLAYER", "出場選手の発表", _choice("発表済み", "未発表"), representative=False),
+        "PLAYER", "出場選手の発表", _choice("発表済み", "未発表"),
+        representative=False, directional=False),
 }
 
 
@@ -208,6 +222,70 @@ class Explainer:
             ))
         return reasons
 
+    def factors(self, features: Mapping[str, float]) -> list[Factor]:
+        """**この予測に使った項目を全部返す**（詳細設計 2.7.2）。
+
+        運営者の指摘「どの項目からこの予測を導き出したのかを詳しく知りたい」に
+        対するもので、`reasons()` とは別物である。
+
+        **並びは要因グループの順 → 列の順で固定する。** 寄与の大きさで並べると
+        「どれがどれだけ効いたか」を主張することになり、この表が避けている話に
+        戻る（2.7.2）。
+
+        **1件も落とさない。** 定数列（寄与が厳密に 0）も「見た項目」であり、
+        `entry_is_official` の「未発表」は読者にとって意味のある事実である。
+        """
+        missing = [k for k in self.features if k not in features]
+        if missing:
+            raise ExplainError(f"特徴量が足りない: {len(missing)}列")
+        rows: list[Factor] = []
+        for group in GROUP_ORDER:
+            for key in self.features:
+                wording = WORDING[key]
+                if wording.group != group:
+                    continue
+                value = float(features[key])
+                if not math.isfinite(value):
+                    raise ExplainError("特徴量に有限でない値がある")
+                rows.append(Factor(
+                    rank=len(rows) + 1,
+                    group_key=group,
+                    label_ja=wording.label,
+                    value_text=wording.render(value),
+                    larger=_larger(wording, value),
+                ))
+        return rows
+
+
+def _larger(wording: Wording, value: float) -> str | None:
+    """値が大きい側。**「有利な側」ではない**（詳細設計 2.7.2）。
+
+    向きを持たない列（片側の水準・両チーム共通・選択肢）と、差がちょうど 0 の
+    列は None を返す — **どちらが大きいとも言えない**のであって、
+    「同じだからホーム」のような既定値を置かない。
+    """
+    if not wording.directional or value == 0.0:
+        return None
+    return "HOME" if value > 0 else "AWAY"
+
+
+@dataclass(frozen=True)
+class Factor:
+    """この予測に使った項目1つ（`prediction_factors` の1行。詳細設計 2.7.2）。
+
+    **寄与ではない。** `Reason` が「なぜそうなったか」を要因グループに集約して
+    述べるのに対し、こちらは「**何を見たか**」を列挙する。有利不利を主張しない
+    ため打ち消しが起きず、**21列すべてを出せる**。
+    """
+
+    rank: int
+    group_key: str
+    label_ja: str
+    value_text: str
+    #: 値が大きい側。**「有利な側」ではない**（係数が負の列では逆を向く）。
+    #: 向きを持たない列・差が 0 の列は None
+    larger: str | None
+
 
 def _representative(
     features: Sequence[str],
@@ -250,6 +328,20 @@ def payload_of(reason: Reason) -> dict[str, Any]:
         "favors": reason.favors,
         "contribution": reason.contribution,
         "baseValue": reason.base_value,
+    }
+
+
+def factor_payload(factor: Factor) -> dict[str, Any]:
+    """`POST /internal/predictions` の `factors` の1要素（詳細設計 3.4）。
+
+    **`favors` ではなく `larger` を送る。** 値が大きい側であって有利な側ではない。
+    """
+    return {
+        "rank": factor.rank,
+        "groupKey": factor.group_key,
+        "labelJa": factor.label_ja,
+        "valueText": factor.value_text,
+        "larger": factor.larger,
     }
 
 

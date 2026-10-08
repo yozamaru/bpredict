@@ -58,6 +58,7 @@ EMPTY_REASON = {
     "predictions": "推論の結線は工程9b（詳細設計 9章）",
     "player_predictions": "親の `predictions` が空（工程9b）",
     "prediction_reasons": "親の `predictions` が空（工程9b）",
+    "prediction_factors": "親の `predictions` が空（工程9b）",
     "prediction_team_targets": "親の `predictions` が空（工程9b）",
     "prediction_model_bundle": "親の `predictions` が空（工程9b）",
     "prediction_results": "照合は予測が入ってから（工程9b 以降）",

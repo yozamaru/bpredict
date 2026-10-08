@@ -72,6 +72,17 @@ async function seedFullyPopulated(): Promise<Seed> {
       `INSERT INTO player_seasons (player_id,season_id,club_id,number,position,roster_type)
        VALUES (?,?,?,'0','PG','JP')`,
     ).bind(s.playerId, s.seasonId, s.homeId),
+    // **実績も入れる**（詳細設計 3.3 の `playerActuals`）。入れないと配列が空に
+    // なり、契約のキーが欠ける
+    env.DB.prepare(
+      `INSERT INTO player_game_stats
+         (game_id,player_id,club_id,game_date,started,minutes,
+          fg2m,fg2a,fg3m,fg3a,ftm,fta,oreb,dreb,ast,tov,stl,blk,pf,fd,
+          plus_minus,pts,fetched_at)
+       VALUES (?,?,?,'2026-09-26',1,31.5,
+               4,8,2,5,4,4,0,3,6,2,1,0,2,3,
+               5,18,'2026-09-27T00:00:00Z')`,
+    ).bind(s.gameId, s.playerId, s.homeId),
   ]);
   await env.DB.prepare(
     `INSERT INTO predictions
@@ -87,6 +98,14 @@ async function seedFullyPopulated(): Promise<Seed> {
          (prediction_id,rank,group_key,label_ja,value_text,favors,contribution,base_value)
        VALUES (?,1,'TEAM_STRENGTH','チーム力の差','＋82ポイント','HOME',0.42,0.1),
               (?,2,'SCHEDULE','アウェイの休養','中0日','HOME',0.11,0.1)`,
+    ).bind(predictionId, predictionId),
+    // **使った項目も入れる**（詳細設計 2.7.2）。入れないと配列が空になり、
+    // 契約のキーが欠ける。**向きを持つ行と持たない行の両方**を入れる
+    env.DB.prepare(
+      `INSERT INTO prediction_factors
+         (prediction_id,rank,group_key,label_ja,value_text,larger)
+       VALUES (?,1,'TEAM_STRENGTH','チーム力の差','82ポイント','HOME'),
+              (?,2,'SCHEDULE','同一カードの連戦','2戦目',NULL)`,
     ).bind(predictionId, predictionId),
     env.DB.prepare(
       `INSERT INTO player_predictions
@@ -296,15 +315,21 @@ describe('内部APIの要求ボディ（契約）', () => {
       'reasons[].labelJa': 'チーム力の差', 'reasons[].valueText': '82ポイント',
       'reasons[].favors': 'HOME', 'reasons[].contribution': 0.41,
       'reasons[].baseValue': 0.12,
+      // この予測に使った項目（詳細設計 2.7.2）。**`favors` ではなく `larger`**
+      'factors[].rank': 1, 'factors[].groupKey': 'TEAM_STRENGTH',
+      'factors[].labelJa': 'チーム力の差', 'factors[].valueText': '82ポイント',
+      'factors[].larger': 'HOME',
     }, s.awayId));
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { revision: number; applied: {
-      teamTargets: number; playerPredictions: number; reasons: number } } }>();
+      teamTargets: number; playerPredictions: number; reasons: number;
+      factors: number } } }>();
     expect(body.data.revision).toBe(1);
     // **`teamTargets` は2件。** 1件は `refine` が拒否する（3.4）
     expect(body.data.applied.teamTargets).toBe(2);
     expect(body.data.applied.playerPredictions).toBe(1);
     expect(body.data.applied.reasons).toBe(1);
+    expect(body.data.applied.factors).toBe(1);
   });
 
   it('models — 契約どおりの本文が 200 で通る', async () => {

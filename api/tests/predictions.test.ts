@@ -57,6 +57,61 @@ describe('tipoff ガード（受け入れ基準 A-03）', () => {
   });
 });
 
+describe('この予測に使った項目（prediction_factors。詳細設計 2.7.2）', () => {
+  it('21件を受け取り、親の確定で凍結される', async () => {
+    // **`reasons` の不足を埋めるものではない**（あちらは寄与の主張）。
+    // 寄与を主張しないため打ち消しが起きず、**全列を出せる**
+    const s = await seedGame({ tipoffAt: FUTURE });
+    const factors = Array.from({ length: 21 }, (_, i) => ({
+      rank: i + 1,
+      groupKey: 'TEAM_STRENGTH' as const,
+      labelJa: `項目${i + 1}`,
+      valueText: '82ポイント',
+      // **向きを持たない列がある**（`series_game_no` など）。null を受け取れること
+      larger: i === 0 ? null : (i % 2 === 0 ? 'HOME' as const : 'AWAY' as const),
+    }));
+    const res = await post('/internal/predictions',
+      predictionPayload(s, { factors }));
+    expect(res.status).toBe(200);
+    const body = await res.json<{ data: { applied: { factors: number } } }>();
+    expect(body.data.applied.factors).toBe(21);
+
+    const row = await env.DB.prepare(
+      'SELECT COUNT(*) AS n, SUM(larger IS NULL) AS nulls FROM prediction_factors',
+    ).first<{ n: number; nulls: number }>();
+    expect(row!.n).toBe(21);
+    expect(row!.nulls).toBe(1);
+  });
+
+  it('向きに HOME / AWAY 以外を受け付けない', async () => {
+    const s = await seedGame({ tipoffAt: FUTURE });
+    const res = await post('/internal/predictions', predictionPayload(s, {
+      factors: [{
+        rank: 1, groupKey: 'TEAM_STRENGTH', labelJa: 'チーム力の差',
+        valueText: '82ポイント', larger: 'DRAW',
+      }],
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it('親が確定済みなら UPDATE / DELETE が拒否される（絶対ルール2）', async () => {
+    const s = await seedGame({ tipoffAt: FUTURE });
+    await post('/internal/predictions', predictionPayload(s, {
+      factors: [{
+        rank: 1, groupKey: 'SCHEDULE', labelJa: '休養日数の差',
+        valueText: '2日', larger: 'HOME',
+      }],
+    }));
+    await env.DB.prepare('UPDATE predictions SET is_final = 1 WHERE game_id = ?')
+      .bind(s.gameId).run();
+
+    await expect(env.DB.prepare(
+      "UPDATE prediction_factors SET value_text = '0日'").run()).rejects.toThrow();
+    await expect(env.DB.prepare('DELETE FROM prediction_factors').run())
+      .rejects.toThrow();
+  });
+});
+
 describe('世代管理（詳細設計 1.5）', () => {
   it('再推論は上書きせず追記し、親子ともに旧行が is_active = 0 になる', async () => {
     const s = await seedGame({ tipoffAt: FUTURE });
@@ -94,7 +149,7 @@ describe('世代管理（詳細設計 1.5）', () => {
     expect(res.status).toBe(200);
     const body = await res.json<{ data: { applied: Record<string, number>; statements: number } }>();
     expect(body.data.applied).toEqual({
-      teamTargets: 2, playerPredictions: 1, reasons: 1, modelBundle: 1,
+      teamTargets: 2, playerPredictions: 1, reasons: 1, factors: 0, modelBundle: 1,
     });
     // 50クエリ上限に対して余裕があること（受け入れ基準 A-10）
     expect(body.data.statements).toBeLessThanOrEqual(40);

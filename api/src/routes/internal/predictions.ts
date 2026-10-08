@@ -53,6 +53,11 @@ const REASON_COLS = [
   'base_value',
 ] as const;
 
+/** この予測に使った項目（詳細設計 2.7.2）。**`REASON_COLS` と別に持つ。** */
+const FACTOR_COLS = [
+  'prediction_id', 'rank', 'group_key', 'label_ja', 'value_text', 'larger',
+] as const;
+
 const BUNDLE_COLS = ['prediction_id', 'model_type', 'target', 'model_version'] as const;
 
 export const predictions = new Hono<{ Bindings: Env }>();
@@ -68,6 +73,7 @@ predictions.post('/', async (c) => {
   const players = b.playerPredictions ?? [];
   const targets = b.teamTargets ?? [];
   const reasons = b.reasons ?? [];
+  const factors = b.factors ?? [];
   const bundle = b.modelBundle ?? [];
 
   const limit = maxRowsPerRequest('player_predictions');
@@ -121,6 +127,9 @@ predictions.post('/', async (c) => {
   const reasonRows: Row[] = reasons.map((r) => [
     predictionId, r.rank, r.groupKey, r.labelJa, r.valueText, r.favors, r.contribution, r.baseValue,
   ]);
+  const factorRows: Row[] = factors.map((f) => [
+    predictionId, f.rank, f.groupKey, f.labelJa, f.valueText, f.larger,
+  ]);
   const bundleRows: Row[] = bundle.map((m) => [
     predictionId, m.modelType, m.target ?? '', m.modelVersion,
   ]);
@@ -139,6 +148,7 @@ predictions.post('/', async (c) => {
     ...insertStatements(c.env.DB, 'prediction_team_targets', TARGET_COLS, targetRows),
     ...insertStatements(c.env.DB, 'player_predictions', PPRED_COLS, playerRows),
     ...insertStatements(c.env.DB, 'prediction_reasons', REASON_COLS, reasonRows),
+    ...insertStatements(c.env.DB, 'prediction_factors', FACTOR_COLS, factorRows),
     ...insertStatements(c.env.DB, 'prediction_model_bundle', BUNDLE_COLS, bundleRows),
   ];
   if (stmts.length > STATEMENTS_BUDGET) {
@@ -154,6 +164,7 @@ predictions.post('/', async (c) => {
       teamTargets: targets.length,
       playerPredictions: players.length,
       reasons: reasons.length,
+      factors: factors.length,
       modelBundle: bundle.length,
     },
     statements: stmts.length,

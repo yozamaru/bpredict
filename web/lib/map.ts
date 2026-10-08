@@ -6,6 +6,7 @@
 import type {
   AccuracyShape,
   ClubShape,
+  FactorShape,
   GameShape,
   GamesByDate,
   Meta,
@@ -13,7 +14,9 @@ import type {
   ResultsByDate,
 } from '@/lib/source';
 import type { ResultView } from '@/components/prediction/ResultComparison';
-import type { AccuracyView, Club, GameView, PlayerView, ReasonView } from '@/lib/view';
+import type {
+  AccuracyView, ActualView, Club, FactorView, GameView, PlayerView, ReasonView,
+} from '@/lib/view';
 
 /** 遅延と判定する間隔（時間。基本設計 4.5）。 */
 export const STALE_HOURS = 24;
@@ -90,6 +93,13 @@ export function toGame(shape: GameShape): GameView | null {
     isFinal: prediction.isFinal,
     // **null は false として扱う。** 「序盤である」と主張できないため出さない
     isEarlySeason: prediction.isEarlySeason === true,
+    // **実績はサーバが出した値をそのまま写す**（v1.131）。終了していなければ null で
+    // あり、**スコアから勝敗を計算し直さない**（`VOID` の扱いが画面側へ漏れる）
+    homeScore: shape.homeScore ?? null,
+    awayScore: shape.awayScore ?? null,
+    // **null は「まだ照合していない」であって「外した」ではない**（3.3）
+    isCorrect: shape.evaluation?.isCorrect ?? null,
+    scoreError: shape.evaluation?.scoreError ?? null,
   };
 }
 
@@ -350,4 +360,113 @@ export function toResults(source: ResultsByDate): ResultView[] {
     });
   }
   return out;
+}
+
+/** 試合詳細の `playerActuals[]`（詳細設計 3.3）。 */
+type RawActualShooting = { m: number | null; a: number | null; pct: number | null };
+type RawActual = {
+  playerId: string;
+  name: string;
+  position: string | null;
+  clubId: string;
+  started: boolean | null;
+  summary: {
+    min: number | null;
+    pts: number | null;
+    reb: number | null;
+    ast: number | null;
+  };
+  box: {
+    fg: RawActualShooting;
+    fg2: RawActualShooting;
+    fg3: RawActualShooting;
+    ft: RawActualShooting;
+    oreb: number | null;
+    dreb: number | null;
+    ast: number | null;
+    tov: number | null;
+    stl: number | null;
+    blk: number | null;
+    pf: number | null;
+    fd: number | null;
+    plusMinus: number | null;
+    efgPct: number | null;
+    tsPct: number | null;
+  };
+};
+
+/**
+ * 実績。**サーバが出した値をそのまま写す**（予測と同じ作法）。
+ *
+ * **率を計算し直さない。** `pct` が null なのは「試投数が0」であって、
+ * 予測側の閾値とは別の理由である（詳細設計 3.3）。
+ */
+export function toActual(raw: RawActual): ActualView {
+  const box = raw.box;
+  return {
+    playerId: raw.playerId,
+    name: raw.name,
+    clubId: raw.clubId,
+    position: asPosition(raw.position),
+    started: raw.started,
+    minutes: raw.summary.min,
+    pts: raw.summary.pts,
+    reb: raw.summary.reb,
+    ast: raw.summary.ast,
+    oreb: box.oreb,
+    dreb: box.dreb,
+    tov: box.tov,
+    stl: box.stl,
+    blk: box.blk,
+    pf: box.pf,
+    fd: box.fd,
+    plusMinus: box.plusMinus,
+    fg: box.fg,
+    fg2: box.fg2,
+    fg3: box.fg3,
+    ft: box.ft,
+    efgPct: box.efgPct,
+  };
+}
+
+/** 形が合わない行は落とす（`toPlayers` と同じ作法）。 */
+export function toActuals(list: unknown[]): ActualView[] {
+  const out: ActualView[] = [];
+  for (const item of list) {
+    const raw = item as Partial<RawActual>;
+    if (
+      typeof raw.playerId !== 'string'
+      || raw.summary === undefined
+      || raw.box === undefined
+    ) continue;
+    out.push(toActual(raw as RawActual));
+  }
+  return out;
+}
+
+
+/** 要因グループの識別子。**知らない値はそのまま通す**（画面が言い換えを持つ）。 */
+const GROUPS = ['TEAM_STRENGTH', 'SCHEDULE', 'PLAYER', 'VENUE'] as const;
+
+/**
+ * この予測に使った項目（詳細設計 2.7.2）。
+ *
+ * **並べ替えない。** サーバが `rank`（グループ順 → 列順）で固定している。
+ * 寄与の大きさで並べ替えると「どれがどれだけ効いたか」を主張することになる。
+ */
+export function toFactor(shape: FactorShape): FactorView {
+  return {
+    group: (GROUPS as readonly string[]).includes(shape.group) ? shape.group : 'TEAM_STRENGTH',
+    label: shape.label,
+    value: shape.value,
+    // **画面はサーバを信じきらない**（`asPosition` と同じ作法）
+    larger: shape.larger === 'HOME' || shape.larger === 'AWAY' ? shape.larger : null,
+  };
+}
+
+/** 形が合わない行は落とす。 */
+export function toFactors(list: readonly FactorShape[] | undefined): FactorView[] {
+  return (list ?? [])
+    .filter((f) => typeof f?.label === 'string' && typeof f.value === 'string')
+    .map(toFactor);
 }

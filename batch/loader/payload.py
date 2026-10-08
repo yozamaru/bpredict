@@ -296,6 +296,7 @@ def prediction_payload(
     features: Mapping[str, float],
     model_versions: Mapping[str, str],
     reasons: Sequence[Mapping[str, object]] = (),
+    factors: Sequence[Mapping[str, object]] = (),
     team_targets: Sequence[Mapping[str, object]] = (),
     player_predictions: Sequence[Mapping[str, object]] = (),
     rate_versions: Mapping[tuple[str, str], str] | None = None,
@@ -312,6 +313,10 @@ def prediction_payload(
     **`reasons` は現在の21列では2件である**（`VENUE` に該当列がなく、`PLAYER` の
     3列は定数で寄与が厳密に 0。2.7.1）。**したがって受け入れ基準 A-01 の
     「根拠3件以上」は依然として満たさない。** 満たさないことを承知のうえで通す。
+
+    **`factors` は21件である**（2.7.2）。`reasons` の不足を埋めるものではない —
+    あちらは寄与の主張、こちらは「使った項目の事実」であり、**A-01 の判定は
+    `reasons` に対して行う**。
 
     **`isProvisional` は常に 1。** エントリー情報を取得していない（`game_entries`
     は0行）。確定するのは `gameday_update` が入ってからである。
@@ -352,6 +357,9 @@ def prediction_payload(
                 (rate_versions or {}).items())
         ],
         **({"reasons": [dict(r) for r in reasons]} if reasons else {}),
+        # **使った項目の一覧**（詳細設計 2.7.2）。`reasons` とは別物で、
+        # 寄与ではなく「何を見たか」を21列すべて並べる
+        **({"factors": [dict(r) for r in factors]} if factors else {}),
         **({"teamTargets": [dict(r) for r in team_targets]} if team_targets else {}),
         **(
             {"playerPredictions": [dict(r) for r in player_predictions]}

@@ -8,6 +8,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { applyMigrations, get, seedGame } from './helpers';
+import type { Seed } from './helpers';
 
 beforeEach(applyMigrations);
 
@@ -35,11 +36,14 @@ describe('GET /games/:gameId', () => {
 
     // **試合前後でキーの位置は同じ。** 中身だけが変わる（詳細設計 3.3）
     expect(Object.keys(data).sort()).toEqual(
-      ['evaluation', 'game', 'modelAccuracy', 'playerPredictions', 'prediction', 'recentForm'],
+      ['evaluation', 'game', 'modelAccuracy', 'playerActuals', 'playerPredictions',
+        'prediction', 'recentForm'],
     );
     expect(data.prediction).toBeNull();
     expect(data.evaluation).toBeNull();
     expect(data.playerPredictions).toEqual([]);
+    // **試合前も実績のキーを落とさない**（詳細設計 3.3 / 3.1）
+    expect(data.playerActuals).toEqual([]);
   });
 
   it('未実施は、列に値があってもスコアを返さない', async () => {
@@ -256,6 +260,103 @@ describe('GET /games/:gameId（予測あり）', () => {
     expect(evaluation.bucketContext.bucket).toBe('60-70%');
     expect(evaluation.bucketContext.n).toBe(42);
     expect(evaluation.bucketContext.correct).toBe(29);
+  });
+});
+
+/**
+ * `playerActuals` — その試合の実績（詳細設計 3.3 の v1.130）。
+ *
+ * **予測とは別の配列である。** 母集団が違う（予測は `P(出場) >= 0.5`、実績は
+ * 実際に出場した全員）ため、1つの表に混ぜると**予測が1本も無い試合で行が1つも
+ * 作れない** — 2026-10-09 時点の本番11試合すべてがその状態である。
+ */
+describe('GET /games/:gameId（実績スタッツ）', () => {
+  /** その試合の実績1行。**欠損を 0 で埋めず、列ごとに渡せるようにする。** */
+  const insertActual = async (
+    s: Seed, playerId: string, over: Record<string, number | null> = {},
+  ) => {
+    const row: Record<string, number | null> = {
+      started: 1, minutes: 31.5,
+      fg2m: 4, fg2a: 8, fg3m: 2, fg3a: 5, ftm: 4, fta: 4,
+      oreb: 0, dreb: 3, ast: 6, tov: 2, stl: 1, blk: 0,
+      pf: 2, fd: 3, plus_minus: 5, pts: 18,
+      ...over,
+    };
+    const columns = Object.keys(row);
+    await env.DB.prepare(
+      `INSERT INTO player_game_stats (game_id, player_id, club_id, game_date, fetched_at,
+         ${columns.join(', ')})
+       VALUES (?,?,?,'2026-09-22','2026-09-23T00:00:00Z',${columns.map(() => '?').join(',')})`,
+    ).bind(s.gameId, playerId, s.homeId, ...columns.map((c) => row[c]!)).run();
+  };
+
+  it('予測が1本も無い終了試合でも実績を返す', async () => {
+    // **これが別配列にした理由である。** 予測に紐づけると行が1つも作れない
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await insertActual(s, s.playerId);
+
+    const data = await body(await get(`/games/${s.gameId}`));
+    expect(data.prediction).toBeNull();
+    const rows = data.playerActuals as { summary: { pts: number }; playerId: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.playerId).toBe(s.playerId);
+    // **`pts` は取得値をそのまま返す**（恒等式との一致は取り込みが検証している）
+    expect(rows[0]!.summary.pts).toBe(18);
+  });
+
+  it('未実施の試合では実績を返さない', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    // **行があっても `status` が FINISHED でなければ出さない**（スコアと同じ関門）
+    await insertActual(s, s.playerId);
+    const data = await body(await get(`/games/${s.gameId}`));
+    expect(data.playerActuals).toEqual([]);
+  });
+
+  it('実績の率に閾値を設けない（試投数0のときだけ出さない）', async () => {
+    // 予測側は `fg3.a >= 3` を課すが、実績の `1 / 2` は丸めのない事実である（要件 8.3）
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await insertActual(s, s.playerId, { fg3m: 1, fg3a: 2, ftm: 0, fta: 0 });
+
+    const rows = (await body(await get(`/games/${s.gameId}`))).playerActuals as {
+      box: { fg3: { pct: number | null }; ft: { pct: number | null } };
+    }[];
+    expect(rows[0]!.box.fg3.pct).toBeCloseTo(0.5, 6);
+    expect(rows[0]!.box.ft.pct).toBeNull();
+  });
+
+  it('欠損を 0 に置換しない', async () => {
+    // 旧年度のレスポンスは `PLUSMINUS` のキーを持たない（詳細設計 4.4）
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await insertActual(s, s.playerId, { plus_minus: null, oreb: null });
+
+    const rows = (await body(await get(`/games/${s.gameId}`))).playerActuals as {
+      summary: { reb: number | null }; box: { plusMinus: number | null };
+    }[];
+    expect(rows[0]!.box.plusMinus).toBeNull();
+    // 片方が NULL なら合計も NULL（0 として足さない）
+    expect(rows[0]!.summary.reb).toBeNull();
+  });
+
+  it('実績に誤差の列を持たない', async () => {
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await insertActual(s, s.playerId);
+    const rows = (await body(await get(`/games/${s.gameId}`))).playerActuals as object[];
+    expect(rows[0]!).not.toHaveProperty('error');
+  });
+
+  it('出場時間の降順で返し、NULL を末尾に送る', async () => {
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await env.DB.prepare('INSERT INTO players (id,name) VALUES (?,?),(?,?)')
+      .bind(`${s.playerId}-b`, '架空 控え', `${s.playerId}-c`, '架空 未出場').run();
+    // **わざと昇順に入れる。** 挿入順をそのまま返す実装では落ちる
+    await insertActual(s, s.playerId, { minutes: 12.0 });
+    await insertActual(s, `${s.playerId}-c`, { minutes: null });
+    await insertActual(s, `${s.playerId}-b`, { minutes: 28.5 });
+
+    const rows = (await body(await get(`/games/${s.gameId}`))).playerActuals as {
+      playerId: string; summary: { min: number | null };
+    }[];
+    expect(rows.map((r) => r.summary.min)).toEqual([28.5, 12.0, null]);
   });
 });
 

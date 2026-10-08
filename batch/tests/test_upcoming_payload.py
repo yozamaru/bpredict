@@ -231,6 +231,14 @@ def a_reason() -> dict[str, object]:
     }
 
 
+def a_factor() -> dict[str, object]:
+    """使った項目（詳細設計 2.7.2）。**`favors` ではなく `larger` を持つ。**"""
+    return {
+        "rank": 1, "groupKey": "TEAM_STRENGTH", "labelJa": "チーム力の差",
+        "valueText": "82ポイント", "larger": "HOME",
+    }
+
+
 def a_prediction(*, children: bool = True) -> dict[str, object]:
     return prediction_payload(
         game_id="g1", season_id="2026-27-PREMIER", run_id="daily-abc",
@@ -242,6 +250,7 @@ def a_prediction(*, children: bool = True) -> dict[str, object]:
         model_versions={"WINNER": "winner-v1.0.0", "MARGIN": "margin-v1.0.0",
                         "TOTAL": "total-v1.0.0"},
         reasons=[a_reason()] if children else (),
+        factors=[a_factor()] if children else (),
         team_targets=(
             [a_team_target(is_home=True), a_team_target(is_home=False)]
             if children else ()
@@ -272,7 +281,7 @@ def test_children_are_absent_when_they_cannot_be_made() -> None:
     30本が揃っていない回と、個人スタッツを破棄した試合がこれである。
     """
     body = a_prediction(children=False)
-    for key in ("teamTargets", "playerPredictions", "reasons"):
+    for key in ("teamTargets", "playerPredictions", "reasons", "factors"):
         assert key not in body
 
 

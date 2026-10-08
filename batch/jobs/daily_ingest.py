@@ -70,6 +70,7 @@ from batch.loader.payload import (
     upcoming_games_payload,
 )
 from batch.model.dataset import as_of
+from batch.model.explain import factor_payload
 from batch.model.explain import payload_of as reason_payload
 from batch.model.predict import (
     ActiveModels,
@@ -108,7 +109,12 @@ from batch.scraper.client import (
     TransportError,
 )
 from batch.scraper.schedule import schedule_html_url
-from batch.static_json.builder import PlayerInput, ReasonInput
+from batch.static_json.builder import (
+    EvaluationInput,
+    FactorInput,
+    PlayerInput,
+    ReasonInput,
+)
 from batch.static_json.from_snapshot import PredictedGame, build_inputs
 from batch.static_json.writer import (
     DATA_DIR,
@@ -644,10 +650,26 @@ def apply_to_snapshot(
 
 # --- ステップ3: 照合・集計・Elo 再計算（詳細設計 4.2 のステップ3） ---
 
+@dataclass
+class Settled:
+    """照合・集計・Elo の結果（ステップ3）。
+
+    **タプルで返さない。** 3つ目（`verdicts`）を足した時点で、呼び出し側が
+    位置で覚えることになる（`GameListRow` と同じ理由）。
+    """
+
+    status: str = "SUCCESS"
+    #: `/results`（引数なし）が既定で見る日（詳細設計 3.7）
+    latest_result_date: str | None = None
+    #: 試合ID → 照合の結果。**一覧の併記に使う**（詳細設計 3.3 の v1.131）。
+    #: **この回に照合した分だけ**である — 遅い時刻に終わった試合は次の回に付く
+    verdicts: dict[str, EvaluationInput] = field(default_factory=dict)
+
+
 def run_settle(
     api: InternalApi, *, snapshot: Path = DEFAULT_SNAPSHOT,
     log: Callable[[str], None] = print,
-) -> tuple[str, str | None]:
+) -> Settled:
     """照合（A-04）と Elo の再計算を回す。
 
     `("SUCCESS" | "PARTIAL", 照合した最も新しい試合日)` を返す。
@@ -666,12 +688,22 @@ def run_settle(
     直接効く**（`elo_diff` は寄与度が最大の列である）。どちらも冪等なので、
     失敗しても翌日やり直せる。
     """
+    settled = Settled()
     status = "SUCCESS"
-    latest_result_date: str | None = None
     try:
         outcome = evaluate_job.run(api=api, snapshot_dir=snapshot)
         counted = [r for r in outcome.results if r.counted]
-        latest_result_date = outcome.latest_result_date
+        settled.latest_result_date = outcome.latest_result_date
+        # **一覧の併記に渡す**（詳細設計 3.3 の v1.131）。`VOID` は入れない —
+        # 的中率の母数から除外される予測であり、対比の対象がない（1.6）
+        settled.verdicts = {
+            r.game_id: EvaluationInput(
+                is_correct=None if r.is_correct is None else bool(r.is_correct),
+                score_error=r.score_mae,
+                outcome=r.outcome,
+            )
+            for r in counted
+        }
         log(
             f"daily_ingest: 照合={len(outcome.results)}件"
             f"（母数に入る {len(counted)}件 / 飛ばした {len(outcome.skipped)}件）"
@@ -710,7 +742,8 @@ def run_settle(
     except (SummarizeError, LoaderError, SnapshotError) as error:
         log(f"  - 実績の集計に失敗（{type(error).__name__}: {error}）")
         status = "PARTIAL"
-    return status, latest_result_date
+    settled.status = status
+    return settled
 
 
 # --- ステップ4: 推論（詳細設計 4.2 の「推論（ステップ4）」） ---
@@ -928,6 +961,9 @@ def run_inference(
         # **根拠は寄与から機械的に出る**（詳細設計 2.7.1）。例外を投げる経路は
         # 「列が足りない」だけで、それは `models.predict` が先に落とす
         reasons = models.explainer.reasons(features)
+        # **使った項目は全列出る**（詳細設計 2.7.2）。`reasons` が2件しか出ない
+        # ことの埋め合わせではなく、別の問い（「何を見たか」）への答えである
+        factors = models.explainer.factors(features)
         try:
             api.post("predictions", prediction_payload(
                 game_id=game_id, season_id=season_id, run_id=run_id,
@@ -935,6 +971,7 @@ def run_inference(
                 prediction=prediction, features=features,
                 model_versions=models.versions,
                 reasons=[reason_payload(r) for r in reasons],
+                factors=[factor_payload(f) for f in factors],
                 team_targets=team_target_rows(box),
                 player_predictions=player_rows(box),
                 # **使ったモデルだけを並べる**（詳細設計 4.2 の `modelBundle`）。
@@ -966,6 +1003,13 @@ def run_inference(
                 )
                 for r in reasons
             ),
+            factors=tuple(
+                FactorInput(
+                    group_key=f.group_key, label_ja=f.label_ja,
+                    value_text=f.value_text, larger=f.larger,
+                )
+                for f in factors
+            ),
         ))
     return result
 
@@ -975,6 +1019,7 @@ def run_inference(
 def write_json(
     ds: Dataset, result: InferenceResult, *, today: str, status: str,
     latest_result_date: str | None = None,
+    verdicts: Mapping[str, EvaluationInput] | None = None,
     root: Path = DATA_DIR, log: Callable[[str], None] = print,
 ) -> int:
     """窓の全ファイルを書き直す。書いたファイル数を返す。
@@ -986,7 +1031,8 @@ def write_json(
     呼ぶかどうかの判断は呼び出し側にある。
     """
     today_list, upcoming, details = build_inputs(
-        ds, result.rows, today=today, days=SCHEDULE_WINDOW_DAYS)
+        ds, result.rows, today=today, days=SCHEDULE_WINDOW_DAYS,
+        verdicts=verdicts)
     written = write_static_json(
         today=today_list, upcoming=upcoming, details=details,
         generated_at=datetime.now(UTC).isoformat(timespec="seconds").replace(
@@ -1178,10 +1224,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # **推論より前に置く。** 推論はスナップショットの `team_ratings` を読むため、
     # 後に回すとその日の推論が古い Elo を使う（詳細設計 4.2 のステップ3）
-    latest_result_date: str | None = None
+    settled = Settled()
     if args.only_settle:
-        settled, latest_result_date = run_settle(api, snapshot=args.snapshot)
-        if settled != "SUCCESS":
+        settled = run_settle(api, snapshot=args.snapshot)
+        if settled.status != "SUCCESS":
             status = "PARTIAL"
 
     if args.only_inference:
@@ -1219,7 +1265,8 @@ def main(argv: list[str] | None = None) -> int:
         # --- ステップ5。**推論が通ったときだけ書く**（基本設計 4.3） ---
         inferred.written = write_json(
             ds, inferred, today=jst_today(), status=status,
-            latest_result_date=latest_result_date, root=args.data)
+            latest_result_date=settled.latest_result_date,
+            verdicts=settled.verdicts, root=args.data)
 
     if not args.dry_run:
         _log(api, status, rows, run_id)

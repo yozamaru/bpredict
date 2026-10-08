@@ -16,10 +16,14 @@ from datetime import UTC, datetime, timedelta
 
 from batch.features.dataset import Dataset
 from batch.static_json.builder import (
+    ActualInput,
     ClubInput,
+    EvaluationInput,
+    FactorInput,
     GameDetailInput,
     GameInput,
     GameListInput,
+    GameListRow,
     PlayerInput,
     PredictionInput,
     ReasonInput,
@@ -42,6 +46,9 @@ class PredictedGame:
     #: 根拠（詳細設計 2.7.1）。**現在の21列では2件**（`VENUE` に該当列がなく、
     #: `PLAYER` の3列は定数で寄与が厳密に 0）。空のこともある
     reasons: tuple[ReasonInput, ...] = ()
+    #: この予測に使った項目（詳細設計 2.7.2）。**21列すべて出る** — `reasons` が
+    #: 2件しか出ないことの埋め合わせではなく、別の問いへの答えである
+    factors: tuple[FactorInput, ...] = ()
     #: 整合化後の個人スタッツ（詳細設計 4.2）。**両チーム分か0件**である —
     #: 片側だけ出すと、画面の合計行が片方しか並べられない（5.3）
     players: tuple[PlayerInput, ...] = ()
@@ -102,6 +109,66 @@ def _score(value: object) -> int | None:
     return None if _missing(value) else int(float(str(value)))
 
 
+def _count(value: object) -> int | None:
+    """カウントは NULL か整数。**欠損を 0 に置換しない**（規約5）。"""
+    return None if _missing(value) else int(float(str(value)))
+
+
+def _minutes(value: object) -> float | None:
+    return None if _missing(value) else float(str(value))
+
+
+#: `player_game_stats` から `ActualInput` へ写すカウント列（1.3）。
+#: **列名を2箇所に書かない** — ここが唯一の対応表である。
+_ACTUAL_COUNTS = (
+    "fg2m", "fg2a", "fg3m", "fg3a", "ftm", "fta",
+    "oreb", "dreb", "ast", "tov", "stl", "blk", "pf", "fd",
+    "plus_minus", "pts",
+)
+
+
+def _actuals_by_game(
+    ds: Dataset, game_ids: Sequence[str],
+) -> dict[str, list[ActualInput]]:
+    """その試合の実績を `player_game_stats` から拾う（詳細設計 3.3）。
+
+    **予測を参照しない。** 予測が1本も無い試合でも「この試合の記録」は出す。
+
+    並びは**出場時間の降順**（`playerPredictions` と同じ）。NULL は末尾へ送る。
+    """
+    if not game_ids or "player_game_stats" not in ds.tables:
+        return {}
+    stats = ds.tables["player_game_stats"]
+    picked = stats[stats["game_id"].isin(list(game_ids))]
+    if picked.empty:
+        return {}
+    players = ds.table("players")
+    names = {str(r.id): str(r.name) for r in players.itertuples()}
+    positions: dict[tuple[str, str], str | None] = {}
+    if "player_seasons" in ds.tables:
+        for row in ds.tables["player_seasons"].itertuples():
+            positions[(str(row.player_id), str(row.club_id))] = _text(row.position)
+
+    out: dict[str, list[ActualInput]] = {}
+    for row in picked.itertuples():
+        player_id = str(row.player_id)
+        club_id = str(row.club_id)
+        started = _count(row.started)
+        out.setdefault(str(row.game_id), []).append(ActualInput(
+            player_id=player_id,
+            name=names.get(player_id, player_id),
+            club_id=club_id,
+            position=positions.get((player_id, club_id)),
+            started=None if started is None else started == 1,
+            minutes=_minutes(row.minutes),
+            **{column: _count(getattr(row, column)) for column in _ACTUAL_COUNTS},
+        ))
+    for rows in out.values():
+        # **出場時間の降順。NULL は末尾。** 同じ分数なら選手IDで安定させる
+        rows.sort(key=lambda r: (r.minutes is None, -(r.minutes or 0.0), r.player_id))
+    return out
+
+
 def _days(today: str, days: int) -> list[str]:
     """翌日から `days` 日ぶんの暦日（当日は含めない）。"""
     start = datetime.strptime(today, "%Y-%m-%d").replace(tzinfo=UTC)
@@ -110,6 +177,7 @@ def _days(today: str, days: int) -> list[str]:
 
 def build_inputs(
     ds: Dataset, predictions: Sequence[PredictedGame], *, today: str, days: int,
+    verdicts: Mapping[str, EvaluationInput] | None = None,
 ) -> tuple[GameListInput, list[GameListInput], list[GameDetailInput]]:
     """`today.json` / `schedule/<date>.json` / `games/<id>.json` の入力。
 
@@ -123,9 +191,18 @@ def build_inputs(
     wanted = [today, *_days(today, days)]
     picked = games[games["game_date"].isin(wanted)].sort_values(["tipoff_at", "id"])
 
-    rows: dict[str, list[tuple[GameInput, PredictionInput | None]]] = {
-        day: [] for day in wanted
-    }
+    rows: dict[str, list[GameListRow]] = {day: [] for day in wanted}
+    # **照合の結果はこの回の `evaluate` から受け取る**（詳細設計 3.3 の v1.131）。
+    # スナップショットに `prediction_results` は無く、**D1 から読み戻さない**。
+    # **遅い時刻に終わった試合には付かない** — スロットは 06/11/13/16 JST で、
+    # 19:05 開始の試合が終わる頃には次の回がない（その試合は翌日に窓から出て、
+    # `/schedule/<date>` が公開APIへ落ちる。あちらは照合済みの値を持つ）
+    found_verdicts = dict(verdicts or {})
+    # **当日の試合の実績だけを引く**（詳細は当日の試合だけである。詳細設計 3.7）。
+    # 終了した試合は 16:00 のスロットで実績が入っており、ここで静的JSON に乗る —
+    # **無料枠が枯れた日でも「この試合の記録」が見える**（要件 4.2）
+    today_ids = [str(r.id) for r in picked.itertuples() if str(r.game_date) == today]
+    actuals = _actuals_by_game(ds, today_ids)
     details: list[GameDetailInput] = []
     for row in picked.itertuples():
         season_id = str(row.season_id)
@@ -153,13 +230,19 @@ def build_inputs(
             # **推測で False を入れない。** 消化試合数の集計がない（builder の注記）
             is_early_season=None,
         )
-        rows[str(row.game_date)].append((game, prediction))
+        rows[str(row.game_date)].append(GameListRow(
+            game=game, prediction=prediction,
+            # **予測が無ければ照合も無い**（照合は予測に対する判定である）
+            evaluation=None if prediction is None else found_verdicts.get(game.game_id),
+        ))
         if str(row.game_date) == today:
             # **詳細は当日の試合だけ**（詳細設計 3.7。7日窓にすると年460MB 積む）
             details.append(GameDetailInput(
                 game=game, prediction=prediction,
                 reasons=[] if found is None else list(found.reasons),
+                factors=[] if found is None else list(found.factors),
                 players=[] if found is None else list(found.players),
+                actuals=actuals.get(game.game_id, []),
             ))
 
     # **的中率は渡さない（null）。** `accuracy_summary` は D1 にあり読む口が無く、

@@ -47,6 +47,8 @@ export const COLUMN_COUNTS = {
   prediction_team_targets: 17,
   player_predictions: 31,
   prediction_reasons: 8,
+  // この予測に使った項目（詳細設計 1.5 / 2.7.2）。6列 → floor(100/6)=16 × 40 = 640
+  prediction_factors: 6,
   model_versions: 25,
   prediction_model_bundle: 4,
   prediction_results: 14,

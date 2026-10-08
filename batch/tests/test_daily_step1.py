@@ -448,10 +448,10 @@ def test_settle_runs_the_match_and_then_the_elo(
     monkeypatch.setattr(
         daily_ingest.summarize_job, "run",
         lambda **_k: record("summarize", StatSummary()))
-    status, _date = daily_ingest.run_settle(
+    settled = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)
-    assert (called, status) == (["evaluate", "ratings", "summarize"], "SUCCESS")
+    assert (called, settled.status) == (["evaluate", "ratings", "summarize"], "SUCCESS")
 
 
 def test_the_elo_still_runs_when_the_match_fails(
@@ -474,13 +474,15 @@ def test_the_elo_still_runs_when_the_match_fails(
     monkeypatch.setattr(daily_ingest.ratings_job, "run", ran)
     monkeypatch.setattr(
         daily_ingest.summarize_job, "run", lambda **_k: StatSummary())
-    status, date = daily_ingest.run_settle(
+    settled = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)
     assert called == ["ratings"]
-    assert status == "PARTIAL"
+    assert settled.status == "PARTIAL"
     # **照合が落ちた回は日付を主張しない。** 書き出し側が前回の値を引き継ぐ（3.7）
-    assert date is None
+    assert settled.latest_result_date is None
+    # 判定も主張しない（一覧の併記はスコアだけになる。詳細設計 3.3）
+    assert settled.verdicts == {}
 
 
 def test_a_failed_elo_does_not_stop_the_job(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -493,10 +495,10 @@ def test_a_failed_elo_does_not_stop_the_job(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(daily_ingest.ratings_job, "run", boom)
     monkeypatch.setattr(
         daily_ingest.summarize_job, "run", lambda **_k: StatSummary())
-    status, _date = daily_ingest.run_settle(
+    settled = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)
-    assert status == "PARTIAL"
+    assert settled.status == "PARTIAL"
 
 
 def test_settle_comes_before_the_inference_in_main(
@@ -505,9 +507,9 @@ def test_settle_comes_before_the_inference_in_main(
     """**推論より前に回す。** 後に回すとその日の推論が古い Elo を使う。"""
     order: list[str] = []
 
-    def settled(*_a: object, **_k: object) -> tuple[str, str | None]:
+    def settled(*_a: object, **_k: object) -> daily_ingest.Settled:
         order.append("settle")
-        return "SUCCESS", None
+        return daily_ingest.Settled()
 
     def loaded(_p: object) -> Dataset:
         order.append("inference")
@@ -563,7 +565,7 @@ def test_settle_returns_the_latest_matched_date(
     monkeypatch.setattr(daily_ingest.ratings_job, "run", lambda **_k: Ratings())
     monkeypatch.setattr(
         daily_ingest.summarize_job, "run", lambda **_k: StatSummary())
-    status, date = daily_ingest.run_settle(
+    settled = daily_ingest.run_settle(
         None,  # type: ignore[arg-type]
         log=lambda _m: None)
-    assert (status, date) == ("SUCCESS", "2026-10-07")
+    assert (settled.status, settled.latest_result_date) == ("SUCCESS", "2026-10-07")

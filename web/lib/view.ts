@@ -40,6 +40,21 @@ export type GameView = {
   isFinal: boolean;
   /** 両チームとも消化5試合未満 */
   isEarlySeason: boolean;
+  /**
+   * 実際のスコア。**終了していなければ null**（v1.131）。
+   *
+   * 運営者の指摘「詳細画面じゃないと結果が分からない」に対して、**一覧でも
+   * 予測と実績を併記する**（要件 F-09 / 基本設計 5.2）。
+   */
+  homeScore: number | null;
+  awayScore: number | null;
+  /**
+   * 照合の結果。**終了してもすぐには付かない**（freeze は毎時、照合は日次。
+   * 基本設計 4.1）。**null は「まだ照合していない」であって「外した」ではない。**
+   */
+  isCorrect: boolean | null;
+  /** 得点の誤差（1チームあたり）。`null` は未照合か予想スコア未保存 */
+  scoreError: number | null;
 };
 
 export type AccuracyView = {
@@ -95,6 +110,25 @@ export type ReasonView = {
   favors: 'HOME' | 'AWAY';
   /** 1〜4 の段階値。SHAP の生値は返さない（詳細設計 3.3） */
   strength: 1 | 2 | 3 | 4;
+};
+
+/**
+ * この予測に使った項目（詳細設計 2.7.2 の `prediction_factors`）。
+ *
+ * **`ReasonView` とは別物である。** あちらは「なぜそうなったか」を要因グループに
+ * 集約して述べ、こちらは「**何を見たか**」を列ごとに並べる。
+ */
+export type FactorView = {
+  /** 要因グループの識別子。画面には言い換えを出す（`FactorList`） */
+  group: string;
+  /** 表示名。生の特徴量名は出さない（要件 6.9） */
+  label: string;
+  value: string;
+  /**
+   * 値が大きい側。**「有利な側」ではない** — 係数が負の列（守備効率）では
+   * 両者が逆を向く。向きを持たない列と差が 0 の列は null（2.7.2）。
+   */
+  larger: 'HOME' | 'AWAY' | null;
 };
 
 /** 個人スタッツ予測。成功数は率×試投数の導出値で、独立に持たない（要件 6.8.2） */
@@ -194,4 +228,74 @@ export function byTipoff(a: GameView, b: GameView): number {
   if (a.tipoffLabel === null) return 1;
   if (b.tipoffLabel === null) return -1;
   return a.tipoffLabel < b.tipoffLabel ? -1 : 1;
+}
+
+/**
+ * その試合の実績1人ぶん（詳細設計 3.3 の `playerActuals`）。
+ *
+ * **`PlayerView`（予測）とは別の型である。** 母集団が違い（予測は
+ * `P(出場) >= 0.5`、実績は実際に出場した全員）、持つものも違う。
+ *
+ * | 予測（`PlayerView`） | 実績（`ActualView`） |
+ * |---|---|
+ * | 期待値。小数第1位で出す | **整数**。公式記録そのもの |
+ * | `availProb` を持つ | 持たない。**出場したという事実**がある |
+ * | `err`（誤差の目安） | **持たない。** 実績に誤差はない |
+ * | `＋/－` を出さない（要件 6.8.3） | **`plusMinus` を出す**（実績のみ） |
+ *
+ * **すべて null を取りうる。** 旧年度は `plus_minus` のキーが無く（詳細設計 4.4）、
+ * **0 で埋めない** — 0 は「記録がない」ではなく「0回」を意味する。
+ */
+export type ActualView = {
+  playerId: string;
+  name: string;
+  clubId: string;
+  position: 'PG' | 'SG' | 'SF' | 'PF' | 'C' | null;
+  /** スターターか。NULL は「分からない」であって「控え」ではない */
+  started: boolean | null;
+  minutes: number | null;
+  pts: number | null;
+  reb: number | null;
+  ast: number | null;
+  oreb: number | null;
+  dreb: number | null;
+  tov: number | null;
+  stl: number | null;
+  blk: number | null;
+  pf: number | null;
+  fd: number | null;
+  plusMinus: number | null;
+  /**
+   * 成功数・試投数・率。**率は試投数0のときだけ null**（要件 8.3）。
+   * 予測側の閾値（`fg3.a >= 3` など）は**実績には及ばない** — 丸めのない事実である。
+   */
+  fg: { m: number | null; a: number | null; pct: number | null };
+  fg2: { m: number | null; a: number | null; pct: number | null };
+  fg3: { m: number | null; a: number | null; pct: number | null };
+  ft: { m: number | null; a: number | null; pct: number | null };
+  efgPct: number | null;
+};
+
+/**
+ * 一覧に出す「結果」の1行（詳細設計 5.3 の v1.131）。
+ *
+ * **実績が無ければ出さない。** スコアが揃っていない試合に空の行を足すと、
+ * **ボードの高さだけが増えて何も伝わらない。**
+ *
+ * **判定が無くてもスコアは出す。** 終了したのに照合が付いていない状態は実在し
+ * （freeze は毎時、照合は日次）、そのとき出せるのはスコアだけである。
+ */
+export function resultLine(
+  game: GameView,
+): { score: string; verdict: string | null } | null {
+  if (game.homeScore === null || game.awayScore === null) return null;
+  return {
+    score: `${game.homeScore} – ${game.awayScore}`,
+    verdict:
+      game.isCorrect === null
+        ? null
+        : game.isCorrect
+          ? '予測どおりでした'
+          : '予測を外しました',
+  };
 }

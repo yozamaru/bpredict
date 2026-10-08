@@ -45,6 +45,12 @@ TABLES: dict[str, str] = {
     "predictions": "試合単位の予測。**追記のみ**で、再推論は旧行を `is_active = 0` にして新しい行を足す",
     "player_predictions": "選手単位の予測。**チーム予測へ整合化した後の値**を入れる。成功数と得点は導出するため列を持たない",
     "prediction_reasons": "判断根拠。個別特徴ではなく**要因グループ**に集約した SHAP 値を持つ",
+    "prediction_factors": (
+        "**この予測に使った項目**（詳細設計 2.7.2）。`prediction_reasons` が"
+        "「なぜそうなったか」を要因グループに集約して述べるのに対し、こちらは"
+        "「**何を見たか**」を列ごとに並べる。**有利不利を主張しない**ため"
+        "打ち消しが起きず、21列すべてを出せる"
+    ),
     "prediction_team_targets": "整合化の目標値。**試投数と成功率の組**で持ち、`成功数 ≤ 試投数` を構造的に保証する",
     "prediction_model_bundle": "その予測に使ったモデル一式。1本の予測は最大33本のモデルの合成である",
     # 評価
@@ -201,6 +207,19 @@ SPECIFIC: dict[tuple[str, str], str] = {
     ("prediction_reasons", "label_ja"): "画面に出すラベル。**選手個人の能力・資質への評価を含む表現を使わない**",
     ("prediction_reasons", "value_text"): "画面に出す値の文言",
     ("prediction_reasons", "favors"): "有利な側",
+    # prediction_factors
+    ("prediction_factors", "rank"): (
+        "表示順。**寄与の大きさではない**（要因グループの順 → 列の順）"
+    ),
+    ("prediction_factors", "group_key"): "要因グループ。画面には言い換えを出す",
+    ("prediction_factors", "label_ja"): (
+        "画面に出すラベル。**生の特徴量名を出さない**（要件 6.9）"
+    ),
+    ("prediction_factors", "value_text"): "画面に出す値の文言。**符号を付けない**",
+    ("prediction_factors", "larger"): (
+        "**値が大きい側。「有利な側」ではない** — 係数が負の列（`drtg_diff`）では"
+        "両者が逆を向く。向きを持たない列（6本）と差が 0 の列は NULL"
+    ),
     # model_versions
     ("model_versions", "algo"): "アルゴリズム",
     ("model_versions", "trained_at"): "学習した時刻",

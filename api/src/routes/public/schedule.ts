@@ -176,6 +176,17 @@ schedule.get('/games', async (c) => {
       isEarlySeason: null,
       modelVersion: row.model_version,
     },
+    // **終了した試合は実績も返す**（v1.131。運営者の指摘「詳細画面じゃないと
+    // 結果が分からない」）。**`status` が FINISHED でなければ出さない** —
+    // 途中経過が列に入っていても出さないのは `/games/:gameId` と同じ関門である
+    homeScore: row.status === 'FINISHED' ? row.home_score : null,
+    awayScore: row.status === 'FINISHED' ? row.away_score : null,
+    // **照合していなければ null。** 終了してもすぐには判定が付かない
+    // （freeze は毎時、照合は日次。基本設計 4.1）。**0 や false で埋めない**
+    evaluation: row.is_correct === null ? null : {
+      isCorrect: row.is_correct === 1,
+      scoreError: row.score_mae,
+    },
   }));
 
   // 過去日は確定しており長く持たせてよい。当日・未来は予測が差し替わる

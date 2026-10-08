@@ -161,6 +161,72 @@ describe('GET /games?date=（today.json の正本）', () => {
   });
 });
 
+describe('GET /games?date=（一覧の実績の併記。v1.131）', () => {
+  /** 一覧の1件を取る。**終了した試合の実績が出ることを確かめる。** */
+  type ListBody = { data: { games: {
+    homeScore: number | null; awayScore: number | null;
+    evaluation: { isCorrect: boolean | null; scoreError: number | null } | null;
+  }[] } };
+
+  const first = async (date: string) => {
+    const res = await get(`/games?date=${date}`, { token: null });
+    expect(res.status).toBe(200);
+    return (await res.json<ListBody>()).data.games[0]!;
+  };
+
+  it('終了した試合は実績のスコアと判定を返す', async () => {
+    // 運営者の指摘「詳細画面じゃないと結果が分からない」（詳細設計 3.3 の v1.131）
+    const date = nextDate();
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await seedClubSeasons(s);
+    await moveTo(s, date);
+    await env.DB.prepare('UPDATE games SET home_score = 81, away_score = 87 WHERE id = ?')
+      .bind(s.gameId).run();
+    const predictionId = await seedPrediction(s, { isFinal: 1 });
+    await env.DB.prepare(
+      `INSERT INTO prediction_results
+         (prediction_id,game_id,season_id,model_version,home_win_prob,prob_bucket,outcome,
+          predicted_home_win,actual_home_win,is_correct,brier,score_mae,was_provisional)
+       VALUES (?,?,?,?,0.68,6,'LOSS',1,0,0,0.4624,5.5,0)`,
+    ).bind(predictionId, s.gameId, s.seasonId, s.modelVersion).run();
+
+    const game = await first(date);
+    expect([game.homeScore, game.awayScore]).toEqual([81, 87]);
+    expect(game.evaluation).toEqual({ isCorrect: false, scoreError: 5.5 });
+  });
+
+  it('未実施は、列に値があってもスコアを返さない', async () => {
+    // **`status` が FINISHED でなければ出さない。** `/games/:gameId` と同じ関門
+    const date = nextDate();
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await seedClubSeasons(s);
+    await moveTo(s, date);
+    await env.DB.prepare('UPDATE games SET home_score = 40, away_score = 38 WHERE id = ?')
+      .bind(s.gameId).run();
+    await seedPrediction(s);
+
+    const game = await first(date);
+    expect([game.homeScore, game.awayScore]).toEqual([null, null]);
+    expect(game.evaluation).toBeNull();
+  });
+
+  it('照合していなければ判定は null（false で埋めない）', async () => {
+    // 終了してもすぐには付かない（freeze は毎時、照合は日次。基本設計 4.1）。
+    // **null は「まだ照合していない」であって「外した」ではない**
+    const date = nextDate();
+    const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
+    await seedClubSeasons(s);
+    await moveTo(s, date);
+    await env.DB.prepare('UPDATE games SET home_score = 81, away_score = 87 WHERE id = ?')
+      .bind(s.gameId).run();
+    await seedPrediction(s, { isFinal: 1 });
+
+    const game = await first(date);
+    expect([game.homeScore, game.awayScore]).toEqual([81, 87]);
+    expect(game.evaluation).toBeNull();
+  });
+});
+
 describe('日付の検証（URL 空間の有限化。要件 4.2）', () => {
   it.each(['', 'not-a-date', '2026-9-22', '2026-09-32', '2026-02-30', '1999-09-22', '2200-01-01'])(
     'date=%s は 400（D1 に触れる前に弾く）',

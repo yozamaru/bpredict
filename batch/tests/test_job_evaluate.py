@@ -22,12 +22,15 @@ from batch.jobs.evaluate import (
     ACROSS_MODELS,
     BUCKETS,
     EvaluateError,
+    _result_of,
     _result_payload,
     _summary_payload,
     bucket_label,
     bucket_of,
     evaluate,
     evaluate_one,
+    fetch_stored,
+    merge,
     summarize,
 )
 from batch.model.metrics import accuracy as metrics_accuracy
@@ -462,3 +465,124 @@ def test_void_games_do_not_set_the_latest_result_date() -> None:
 def test_no_match_leaves_the_latest_result_date_unset() -> None:
     """照合が0件なら None。書き出し側が前回の値を引き継ぐ（3.7）。"""
     assert evaluate([], games([])).latest_result_date is None
+
+
+# ── 通算の集計は全件に対して行う（4.12。2026-10-08 に見つけた） ──────────
+
+class _Api:
+    """`GET /internal/results` だけを返す偽物。**書き込みは記録するだけ。**"""
+
+    def __init__(self, stored: list[dict[str, object]], page: int = 1000) -> None:
+        self._stored = stored
+        self._page = page
+        self.posted: list[tuple[str, object]] = []
+        self.gets = 0
+
+    def get(self, path: str, query: dict[str, str] | None = None) -> object:
+        self.gets += 1
+        after = (query or {}).get("after", "")
+        rows = [r for r in self._stored if str(r["predictionId"]) > after]
+        rows.sort(key=lambda r: str(r["predictionId"]))
+        page = rows[: self._page]
+        nxt = str(page[-1]["predictionId"]) if len(page) == self._page else None
+        return {"count": len(page), "next": nxt, "results": page}
+
+    def post(self, path: str, payload: object) -> object:
+        self.posted.append((path, payload))
+        return None
+
+
+def stored_row(**over: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "predictionId": "pred-0", "gameId": "g0", "seasonId": "s1",
+        "modelVersion": "winner-v1.0.0", "homeWinProb": 0.7,
+        "probBucket": 7, "outcome": "WIN", "predictedHomeWin": 1,
+        "actualHomeWin": 1, "isCorrect": 1, "brier": 0.09,
+        "scoreMae": 3.0, "wasProvisional": 1,
+    }
+    base.update(over)
+    return base
+
+
+def test_stored_results_are_read_in_full() -> None:
+    """**カーソルで最後まで辿る。** 1ページに収まらなくても取りこぼさない。"""
+    api = _Api([stored_row(predictionId=f"p{i:03d}") for i in range(25)], page=10)
+    stored = fetch_stored(api)  # type: ignore[arg-type]
+    assert [r.prediction_id for r in stored] == [f"p{i:03d}" for i in range(25)]
+    assert api.gets == 3                      # 10 + 10 + 5
+
+
+def test_the_cursor_must_advance() -> None:
+    """**止まらない取得を作らない。** 同じカーソルが返ったら落とす。"""
+
+    class _Stuck(_Api):
+        def get(self, path: str, query: dict[str, str] | None = None) -> object:
+            return {"count": 1, "next": "same", "results": [stored_row()]}
+
+    with pytest.raises(EvaluateError):
+        fetch_stored(_Stuck([]))  # type: ignore[arg-type]
+
+
+def test_a_non_numeric_field_is_rejected() -> None:
+    """**応答の型を推測しない。** 数値でない値を黙って 0 にしない。"""
+    api = _Api([stored_row(brier="わからない")])
+    with pytest.raises(EvaluateError):
+        fetch_stored(api)  # type: ignore[arg-type]
+
+
+def test_merge_keeps_both_the_old_and_the_new() -> None:
+    """**通算が上書きされない。** 前日までの記録が残る（4.12 の本命）。"""
+    old = [_result_of(stored_row(predictionId="p1"))]
+    new = [_result_of(stored_row(predictionId="p2"))]
+    assert [r.prediction_id for r in merge(old, new)] == ["p1", "p2"]
+
+
+def test_merge_prefers_the_fresh_row() -> None:
+    """同じ予測を再評価したら、**この回の結果を正とする**（スコア訂正のため）。"""
+    old = [_result_of(stored_row(predictionId="p1", isCorrect=0, brier=0.49))]
+    new = [_result_of(stored_row(predictionId="p1", isCorrect=1, brier=0.09))]
+    merged = merge(old, new)
+    assert len(merged) == 1
+    assert merged[0].is_correct == 1
+
+
+def test_merge_is_ordered_by_prediction_id() -> None:
+    """並びを実行ごとに動かさない（集計は順序に依らないが、出力が動かない方がよい）。"""
+    rows = [_result_of(stored_row(predictionId=x)) for x in ("p3", "p1", "p2")]
+    assert [r.prediction_id for r in merge(rows, [])] == ["p1", "p2", "p3"]
+
+
+def test_the_summary_covers_every_stored_result(tmp_path, monkeypatch) -> None:
+    """**ジョブが送る集計の母数が、照合した数ではなく全件になっていること。**
+
+    これが 2026-10-08 に壊れていた形である — `summarize(outcome.results)` と
+    書かれており、**その回に照合した分だけ**で `accuracy_summary` を洗い替えて
+    いた。実装を戻すとこのテストが落ちる。
+    """
+    from batch.jobs import evaluate as job
+
+    api = _JobApi([stored_row(predictionId="p0", gameId="g0")])
+    monkeypatch.setattr(job, "load_snapshot", lambda _d: _Snapshot())
+    out = job.run(api=api, snapshot_dir=tmp_path)  # type: ignore[arg-type]
+    assert len(out.results) == 1          # この回に照合したのは1件
+    assert out.summarized == 2            # **集計は2件（前日の分を含む）**
+    rows = dict(api.posted)["summary"]["rows"]  # type: ignore[index]
+    overall = next(r for r in rows if r["scope"] == "OVERALL")
+    assert overall["n"] == 2
+
+
+class _JobApi(_Api):
+    """`run()` が叩く2つの GET を分ける（`pending` と `results`）。"""
+
+    def get(self, path: str, query: dict[str, str] | None = None) -> object:
+        if path == "results":
+            return super().get(path, query)
+        assert path == "predictions/pending"
+        return {"count": 1,
+                "predictions": [prediction(predictionId="p1", gameId="g1")]}
+
+
+class _Snapshot:
+    def table(self, name: str) -> pd.DataFrame:
+        assert name == "games"
+        return games([game(id="g1")])

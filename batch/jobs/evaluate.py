@@ -19,7 +19,7 @@ import math
 import os
 import sys
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,6 +75,8 @@ class Result:
 @dataclass
 class Outcome:
     results: list[Result] = field(default_factory=list)
+    #: 的中率の集計に使った**全件**の数（この回に照合した数ではない。4.12）
+    summarized: int = 0
     #: スナップショットに実績が無く飛ばした予測（試合IDと理由）
     skipped: list[tuple[str, str]] = field(default_factory=list)
     #: **この回で照合した、母数に入る試合の最も新しい `game_date`**（詳細設計 3.7）。
@@ -357,6 +359,95 @@ def _summary_payload(rows: Sequence[Summary]) -> dict[str, object]:
     ]}
 
 
+#: `GET /internal/results` が1回に返す上限（api 側も 2000 で切る）
+STORED_RESULTS_PER_REQUEST = 1000
+
+
+def _result_of(row: Mapping[str, object]) -> Result:
+    """`GET /internal/results` の1行を `Result` に戻す。
+
+    **送るときと同じキー名で読む**（`_result_payload` と対になっている）。
+    片方だけ直すと、集計が静かに古い値を使う。
+    """
+    def num(key: str) -> float | None:
+        value = row.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, (int, float)):
+            raise EvaluateError(f"照合済みの結果の {key} が数値でない")
+        return float(value)
+
+    def flag(key: str) -> int | None:
+        value = num(key)
+        return None if value is None else int(value)
+
+    home_win_prob = num("homeWinProb")
+    bucket = flag("probBucket")
+    outcome = row.get("outcome")
+    was_provisional = flag("wasProvisional")
+    if (home_win_prob is None or bucket is None
+            or not isinstance(outcome, str) or was_provisional is None):
+        raise EvaluateError("照合済みの結果の応答が不正")
+    return Result(
+        prediction_id=str(row["predictionId"]),
+        game_id=str(row["gameId"]),
+        season_id=str(row["seasonId"]),
+        model_version=str(row["modelVersion"]),
+        home_win_prob=home_win_prob,
+        prob_bucket=bucket,
+        outcome=outcome,
+        was_provisional=was_provisional,
+        predicted_home_win=flag("predictedHomeWin"),
+        actual_home_win=flag("actualHomeWin"),
+        is_correct=flag("isCorrect"),
+        brier=num("brier"),
+        score_mae=num("scoreMae"),
+    )
+
+
+def fetch_stored(api: InternalApi) -> list[Result]:
+    """照合済みの**全**結果を読む（詳細設計 4.12）。
+
+    **これが無いと通算が毎回上書きされる。** `accuracy_summary` は全スコープを
+    洗い替える設計（1.6）だが、バッチが持っているのは「その回に照合した分」
+    だけである。それだけを集計して送ると、**前日までの記録が消える** —
+    2026-10-08 に本番で n=6 となっており、翌朝には 10/07 の6試合が
+    通算から消えるところだった。
+
+    **運用上の読み取りである**（絶対ルール3 の射程外）。自分が書いた記録を
+    読み直すだけで、特徴量・学習・推論はこの経路を使わない。
+    """
+    stored: list[Result] = []
+    after = ""
+    while True:
+        payload = api.get("results", {
+            "limit": str(STORED_RESULTS_PER_REQUEST), "after": after})
+        if not isinstance(payload, dict):
+            raise EvaluateError("照合済みの結果の応答が不正")
+        rows = payload.get("results")
+        if not isinstance(rows, list):
+            raise EvaluateError("照合済みの結果の応答が不正")
+        stored.extend(_result_of(r) for r in rows if isinstance(r, Mapping))
+        nxt = payload.get("next")
+        if not isinstance(nxt, str) or not nxt:
+            return stored
+        if nxt == after:
+            # **止まらない取得を作らない。** カーソルが進まなければ落とす
+            raise EvaluateError("照合済みの結果のカーソルが進まない")
+        after = nxt
+
+
+def merge(stored: Sequence[Result], fresh: Sequence[Result]) -> list[Result]:
+    """通算の集計に使う全件を作る。**この回の結果を正とする**（再評価のため）。
+
+    `prediction_id` で重ねる。並びは `prediction_id` 昇順に固定する
+    （集計は順序に依らないが、出力と検査が実行ごとに動かない方がよい）。
+    """
+    merged = {r.prediction_id: r for r in stored}
+    merged.update({r.prediction_id: r for r in fresh})
+    return [merged[key] for key in sorted(merged)]
+
+
 def send(api: InternalApi, results: Sequence[Result],
          summaries: Sequence[Summary]) -> None:
     """照合結果と集計を送る。**行数上限はテーブルごとに守る**（3.4）。"""
@@ -402,7 +493,11 @@ def run(*, api: InternalApi, snapshot_dir: Path = DEFAULT_SNAPSHOT,
     dataset = load_snapshot(snapshot_dir)
     outcome = evaluate(predictions, dataset.table("games"))
     if outcome.results:
-        send(api, outcome.results, summarize(outcome.results))
+        # **集計は全件に対して行う。** この回の分だけを集計して送ると、
+        # `accuracy_summary` の洗い替えで通算が上書きされる（4.12）
+        everything = merge(fetch_stored(api), outcome.results)
+        outcome.summarized = len(everything)
+        send(api, outcome.results, summarize(everything))
     return outcome
 
 
@@ -411,6 +506,10 @@ def _report(outcome: Outcome) -> None:
     void = [r for r in outcome.results if not r.counted]
     print(f"照合: {len(outcome.results)}件"
           f"（母数に入る {len(counted)} / VOID {len(void)}）")
+    # **集計の母数を別に出す。** この回の照合数と通算の件数は違う（4.12）。
+    # 同じ数が並んでいたら、全件を読めていない疑いがある
+    if outcome.summarized:
+        print(f"  集計に使った全件 {outcome.summarized}件")
     if counted:
         print(f"  的中率 {_mean([float(r.is_correct or 0) for r in counted]):.3f}"
               f" / Brier {_mean([float(r.brier or 0.0) for r in counted]):.4f}")

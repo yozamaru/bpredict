@@ -19,13 +19,13 @@
      "slug": "levanga-hokkaido"
     },
     "prediction": {
-     "homeWinProb": 0.6547350240209492,
+     "homeWinProb": 0.6466323996618558,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 76.7932194613069,
-     "predHomeScore": 81.94760837691985
+     "predAwayScore": 76.9349269071642,
+     "predHomeScore": 81.80590093106255
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-10T05:05:00Z"
@@ -46,13 +46,13 @@
      "slug": "shinshu-brave-warriors"
     },
     "prediction": {
-     "homeWinProb": 0.24497579429334576,
+     "homeWinProb": 0.24725981820208587,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 83.99199947964097,
-     "predHomeScore": 75.05405566199498
+     "predAwayScore": 83.94508330590156,
+     "predHomeScore": 75.10097183573438
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-10T05:05:00Z"
@@ -73,13 +73,13 @@
      "slug": "kobe-storks"
     },
     "prediction": {
-     "homeWinProb": 0.5082067308523602,
+     "homeWinProb": 0.5042026036173096,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 79.19345692121227,
-     "predHomeScore": 79.45979699352812
+     "predAwayScore": 79.25843515711412,
+     "predHomeScore": 79.39481875762627
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-10T05:05:00Z"
@@ -100,13 +100,13 @@
      "slug": "hiroshima-dragonflies"
     },
     "prediction": {
-     "homeWinProb": 0.6336011047777352,
+     "homeWinProb": 0.6181929326784847,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 77.16043977371328,
-     "predHomeScore": 81.58038806451347
+     "predAwayScore": 77.42369002426196,
+     "predHomeScore": 81.31713781396479
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-10T05:05:00Z"
@@ -127,13 +127,13 @@
      "slug": "nagasaki-velca"
     },
     "prediction": {
-     "homeWinProb": 0.21598194479318297,
+     "homeWinProb": 0.22620822240404892,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 84.28935501206317,
-     "predHomeScore": 74.11569133692595
+     "predAwayScore": 84.06640084858756,
+     "predHomeScore": 74.33864550040155
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-10T06:05:00Z"
@@ -154,13 +154,13 @@
      "slug": "kawasaki-brave-thunders"
     },
     "prediction": {
-     "homeWinProb": 0.10243722745365749,
+     "homeWinProb": 0.10159398336173638,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 87.7518043373646,
-     "predHomeScore": 71.33866571721097
+     "predAwayScore": 87.78245784856273,
+     "predHomeScore": 71.30801220601285
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-10T09:05:00Z"
@@ -181,13 +181,13 @@
      "slug": "ryukyu-golden-kings"
     },
     "prediction": {
-     "homeWinProb": 0.5994225675308557,
+     "homeWinProb": 0.5926651614583792,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 77.892432238018,
-     "predHomeScore": 81.15299445162593
+     "predAwayScore": 78.0129141084825,
+     "predHomeScore": 81.04760718997181
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-10T09:05:00Z"
@@ -195,6 +195,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-07T07:58:51Z"
+  "generatedAt": "2026-10-08T00:34:22Z"
  }
 }

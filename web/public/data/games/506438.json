@@ -3,55 +3,55 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "2486",
-    "name": "アルティーリ千葉",
-    "shortName": "A千葉",
-    "slug": "altiri-chiba"
+    "clubId": "1638",
+    "name": "佐賀バルーナーズ",
+    "shortName": "佐賀",
+    "slug": "saga-ballooners"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506431",
+   "gameId": "506438",
    "home": {
-    "clubId": "692",
-    "name": "仙台89ERS",
-    "shortName": "仙台",
-    "slug": "sendai-89ers"
+    "clubId": "706",
+    "name": "アルバルク東京",
+    "shortName": "A東京",
+    "slug": "alvark-tokyo"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-07T10:05:00Z",
+   "tipoffAt": "2026-10-08T10:05:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.7394248966755319,
+   "homeWinProb": 0.8385428944909734,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 75.07547275109066,
-   "predHomeScore": 83.38147618664625,
+   "predAwayScore": 72.9280012058168,
+   "predHomeScore": 85.72525270892359,
    "reasons": [
     {
      "favors": "HOME",
      "group": "TEAM_STRENGTH",
      "label": "今季の平均得点差の開き",
      "strength": 4,
-     "value": "10.8点"
+     "value": "28.2点"
     },
     {
      "favors": "AWAY",
      "group": "SCHEDULE",
-     "label": "同一カードの連戦",
+     "label": "前戦の勝敗",
      "strength": 1,
-     "value": "1戦目"
+     "value": "勝敗が分かれた"
     }
    ]
   },
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-07T07:58:51Z"
+  "generatedAt": "2026-10-08T00:34:22Z"
  }
 }

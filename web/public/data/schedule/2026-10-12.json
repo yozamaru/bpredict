@@ -19,13 +19,13 @@
      "slug": "shiga-lakes"
     },
     "prediction": {
-     "homeWinProb": 0.627116265450773,
+     "homeWinProb": 0.6201251226697543,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 77.10283765457285,
-     "predHomeScore": 81.30035650860796
+     "predAwayScore": 77.22204642352366,
+     "predHomeScore": 81.18114773965715
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-12T05:05:00Z"
@@ -46,13 +46,13 @@
      "slug": "osaka-evessa"
     },
     "prediction": {
-     "homeWinProb": 0.1288429416835252,
+     "homeWinProb": 0.15398546667034338,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 86.87205021483531,
-     "predHomeScore": 72.21841983974026
+     "predAwayScore": 86.0055516157721,
+     "predHomeScore": 72.80694014913567
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-12T05:05:00Z"
@@ -73,13 +73,13 @@
      "slug": "saga-ballooners"
     },
     "prediction": {
-     "homeWinProb": 0.22708534206348774,
+     "homeWinProb": 0.23177521807572005,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 84.31306627444366,
-     "predHomeScore": 74.62301768208897
+     "predAwayScore": 84.2129467256114,
+     "predHomeScore": 74.72313723092122
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-12T05:05:00Z"
@@ -100,13 +100,13 @@
      "slug": "yokohama-b-corsairs"
     },
     "prediction": {
-     "homeWinProb": 0.5230503758972889,
+     "homeWinProb": 0.4824047326432919,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 78.95240819271503,
-     "predHomeScore": 79.70084572202536
+     "predAwayScore": 79.6122165896096,
+     "predHomeScore": 79.04103732513079
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-12T06:05:00Z"
@@ -127,13 +127,13 @@
      "slug": "nagasaki-velca"
     },
     "prediction": {
-     "homeWinProb": 0.5201073635135895,
+     "homeWinProb": 0.5322934514387081,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 78.90207847282402,
-     "predHomeScore": 79.5548704649129
+     "predAwayScore": 78.67703695498776,
+     "predHomeScore": 79.72615720819306
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-12T06:05:00Z"
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-07T07:58:51Z"
+  "generatedAt": "2026-10-08T00:34:22Z"
  }
 }

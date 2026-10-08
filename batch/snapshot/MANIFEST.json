@@ -2,7 +2,7 @@
   "files": {
     "club_seasons": {
       "rows": 238,
-      "sha256": "180a31fe17731749104a597918942f4eba5ceb36ee377898e1c7ef9c0709cef0"
+      "sha256": "a3f164464b8c8d371b459e9039f0cead17a1642f0724ea13ea640ed72202818f"
     },
     "clubs": {
       "rows": 30,
@@ -14,35 +14,35 @@
     },
     "games": {
       "rows": 6329,
-      "sha256": "f51697479f76f64674bc5461718e2bd3b5cfd62cf6420bae68d2234d3fc63e24"
+      "sha256": "a2193f28b451cff761e3e4eedd75f21e4aa261427ea1105f703b8fafeb7aab51"
     },
     "player_game_stats": {
-      "rows": 147082,
-      "sha256": "21f38974abcce8141bcf7a554f29c4ee40c82d67077e9a6f49ad5632940425af"
+      "rows": 147224,
+      "sha256": "80f597839a1aae9247839ca687e8e113200e022017ec2bc2fba30d7d5e7be93c"
     },
     "player_seasons": {
       "rows": 3495,
       "sha256": "d4cd33198b749219625a16ce882bb57dd771587a9503c0182d55e4d9ed16680b"
     },
     "players": {
-      "rows": 1047,
-      "sha256": "f51c06f30776f1babd311406e465dff9370debb434909169c604993b0d9e2c99"
+      "rows": 1048,
+      "sha256": "db859f9bbe0f4a38e569cdde12ae7eb8430b3e76b95c547962e05cdf9f3bd36b"
     },
     "seasons": {
       "rows": 11,
       "sha256": "5dae518f7338af4406c45c9a2e3b322f825a43cdb0aa4885b4418618c8567a1d"
     },
     "team_game_stats": {
-      "rows": 12592,
-      "sha256": "80ab8d5a5cf6e968788a16beed7b894c41a182f168c9c3171ef44db0a7cf7e6b"
+      "rows": 12604,
+      "sha256": "2f190ea57a987174bdcfd5c764a0d53f025e07e9eb8977999e5f56641a1a0e0b"
     },
     "team_games": {
       "rows": 12658,
-      "sha256": "f0d07156edf29a868bd5bd5bac96aa98e374a17b8efd584a895964c07389ccf2"
+      "sha256": "ebdac079e90e7c26aac02b78a81e803d017f1bfbf21b87574d73734eef476954"
     },
     "team_ratings": {
-      "rows": 12584,
-      "sha256": "47ff2e6a10f48eab2c103c9c5c0cc1de74ba76e69f43431debb83ba681c5fb3f"
+      "rows": 12596,
+      "sha256": "2aae4695510ab43ea301a00bdfd821d901326f1dbefcbe9f2316d12e2fbec0ba"
     },
     "venue_revisions": {
       "rows": 177,
@@ -50,10 +50,10 @@
     },
     "venues": {
       "rows": 152,
-      "sha256": "e78ddb99bace09d3527a493ca3743272979f812394bd94ee70beb605a47fa98a"
+      "sha256": "2ad33be941d2c69778d532cb1f66b9ce1337858ef67b05097bf5433198bebf61"
     }
   },
-  "generated_at": "2026-10-07T00:14:48Z",
-  "max_finished_at": "2026-10-04T08:05:00Z",
+  "generated_at": "2026-10-08T00:33:57Z",
+  "max_finished_at": "2026-10-07T12:05:00Z",
   "version": 1
 }

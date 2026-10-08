@@ -19,13 +19,13 @@
      "slug": "altiri-chiba"
     },
     "prediction": {
-     "homeWinProb": 0.46192708478804295,
+     "homeWinProb": 0.41641064031956104,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 80.06956488043124,
-     "predHomeScore": 78.83215759188678
+     "predAwayScore": 80.81724359517494,
+     "predHomeScore": 78.08447887714308
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-11T05:05:00Z"
@@ -46,13 +46,13 @@
      "slug": "kyoto-hannaryz"
     },
     "prediction": {
-     "homeWinProb": 0.29539614002925907,
+     "homeWinProb": 0.2669616999141547,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 82.85095143812607,
-     "predHomeScore": 75.88987640010068
+     "predAwayScore": 83.4627747311589,
+     "predHomeScore": 75.40981087957974
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-11T05:35:00Z"
@@ -73,13 +73,13 @@
      "slug": "ibaraki-robots"
     },
     "prediction": {
-     "homeWinProb": 0.19148538241205415,
+     "homeWinProb": 0.19233189110070417,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 85.11544988542961,
-     "predHomeScore": 73.82063407110302
+     "predAwayScore": 85.09538065925902,
+     "predHomeScore": 73.8407032972736
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-11T06:05:00Z"
@@ -100,13 +100,13 @@
      "slug": "utsunomiya-brex"
     },
     "prediction": {
-     "homeWinProb": 0.8248548679217159,
+     "homeWinProb": 0.8214553968655837,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 73.28053260135407,
-     "predHomeScore": 85.37272131338632
+     "predAwayScore": 73.36533538511496,
+     "predHomeScore": 85.28791852962543
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-11T06:05:00Z"
@@ -127,13 +127,13 @@
      "slug": "tokyo-sunrockers"
     },
     "prediction": {
-     "homeWinProb": 0.5997381738198168,
+     "homeWinProb": 0.6604398784162494,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 77.73484629494197,
-     "predHomeScore": 81.00598154328478
+     "predAwayScore": 76.69270467653537,
+     "predHomeScore": 82.04812316169138
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-11T08:05:00Z"
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-07T07:58:51Z"
+  "generatedAt": "2026-10-08T00:34:22Z"
  }
 }

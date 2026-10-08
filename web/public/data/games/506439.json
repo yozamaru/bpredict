@@ -3,55 +3,55 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "721",
-    "name": "広島ドラゴンフライズ",
-    "shortName": "広島",
-    "slug": "hiroshima-dragonflies"
+    "clubId": "704",
+    "name": "千葉ジェッツ",
+    "shortName": "千葉J",
+    "slug": "chiba-jets"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506432",
+   "gameId": "506439",
    "home": {
-    "clubId": "712",
-    "name": "茨城ロボッツ",
-    "shortName": "茨城",
-    "slug": "ibaraki-robots"
+    "clubId": "718",
+    "name": "神戸ストークス",
+    "shortName": "神戸",
+    "slug": "kobe-storks"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-07T10:05:00Z",
+   "tipoffAt": "2026-10-08T10:05:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.2703195970479935,
+   "homeWinProb": 0.36866506389092024,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 83.42861819564769,
-   "predHomeScore": 75.50746576088494,
+   "predAwayScore": 81.54145085506235,
+   "predHomeScore": 77.1993769831644,
    "reasons": [
     {
      "favors": "AWAY",
      "group": "TEAM_STRENGTH",
-     "label": "今季の平均得点差の開き",
+     "label": "対戦してきた相手の強さの差",
      "strength": 4,
-     "value": "24.8点"
+     "value": "131ポイント"
     },
     {
      "favors": "HOME",
      "group": "SCHEDULE",
-     "label": "前戦の勝敗",
+     "label": "前戦の得点差の開き",
      "strength": 1,
-     "value": "勝敗が分かれた"
+     "value": "14点"
     }
    ]
   },
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-07T07:58:51Z"
+  "generatedAt": "2026-10-08T00:34:22Z"
  }
 }

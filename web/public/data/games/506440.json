@@ -3,55 +3,55 @@
   "evaluation": null,
   "game": {
    "away": {
-    "clubId": "694",
-    "name": "横浜ビー・コルセアーズ",
-    "shortName": "横浜BC",
-    "slug": "yokohama-b-corsairs"
+    "clubId": "716",
+    "name": "信州ブレイブウォリアーズ",
+    "shortName": "信州",
+    "slug": "shinshu-brave-warriors"
    },
    "awayScore": null,
    "competition": "REGULAR",
-   "gameId": "506435",
+   "gameId": "506440",
    "home": {
-    "clubId": "700",
-    "name": "大阪エヴェッサ",
-    "shortName": "大阪",
-    "slug": "osaka-evessa"
+    "clubId": "2488",
+    "name": "長崎ヴェルカ",
+    "shortName": "長崎",
+    "slug": "nagasaki-velca"
    },
    "homeScore": null,
    "league": "PREMIER",
    "status": "SCHEDULED",
-   "tipoffAt": "2026-10-07T10:05:00Z",
+   "tipoffAt": "2026-10-08T10:05:00Z",
    "venue": null
   },
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.30949290655937134,
+   "homeWinProb": 0.4620843115360119,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 82.81924255577962,
-   "predHomeScore": 76.38119868389927,
+   "predAwayScore": 79.7942952088979,
+   "predHomeScore": 78.56201343726029,
    "reasons": [
     {
      "favors": "AWAY",
      "group": "TEAM_STRENGTH",
      "label": "今季の平均得点差の開き",
      "strength": 4,
-     "value": "13.5点"
+     "value": "16.8点"
     },
     {
-     "favors": "AWAY",
+     "favors": "HOME",
      "group": "SCHEDULE",
-     "label": "前戦の得点差の開き",
-     "strength": 2,
-     "value": "39点"
+     "label": "前戦の勝敗",
+     "strength": 1,
+     "value": "勝敗が分かれた"
     }
    ]
   },
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-07T07:58:51Z"
+  "generatedAt": "2026-10-08T00:34:22Z"
  }
 }

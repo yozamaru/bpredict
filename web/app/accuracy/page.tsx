@@ -1,7 +1,7 @@
 import { AccuracyView } from '@/components/prediction/AccuracyView';
 
 export const dynamic = 'force-static';
-export const metadata = { title: '的中率 | B.PREDICT（仮称）' };
+export const metadata = { title: '的中率 | B.PREDICT' };
 
 /**
  * 的中率（要件 F-07）。**`accuracy_summary` から表示する**（工程14）。

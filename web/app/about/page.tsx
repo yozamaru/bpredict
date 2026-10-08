@@ -2,7 +2,7 @@
 // 責任限定条項は全部免除にしない。消費者契約法8条1項により条項ごと無効になる。
 export const dynamic = 'force-static';
 
-export const metadata = { title: 'このサイトについて | B.PREDICT（仮称）' };
+export const metadata = { title: 'このサイトについて | B.PREDICT' };
 
 // 節見出しは明朝16px・`--ink-2`、本文は 15px（基本設計 6.1 / 6.2。スコアボード型）。
 // **`--ink` は主数値と画面見出し（h2）だけに予約する**ため、h3 には使わない。

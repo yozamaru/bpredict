@@ -10,7 +10,7 @@ import { ACTIONS, NOT_FOUND } from '@/lib/messages';
  * **ここでデータを読まない。** 404 はクローラの総当たりが着地する場所であり
  * （シーズン範囲外の日付は D1 到達前に打ち切る。要件 4.2）、軽いままにする。
  */
-export const metadata = { title: 'ページが見つかりません | B.PREDICT（仮称）' };
+export const metadata = { title: 'ページが見つかりません | B.PREDICT' };
 
 export default function NotFound() {
   return (

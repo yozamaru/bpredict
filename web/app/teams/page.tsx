@@ -1,7 +1,7 @@
 import { TeamList } from '@/components/stats/TeamList';
 
 export const dynamic = 'force-static';
-export const metadata = { title: 'チーム | B.PREDICT（仮称）' };
+export const metadata = { title: 'チーム | B.PREDICT' };
 
 /**
  * クラブ一覧（要件 8.2 / 基本設計 5.1）。**チーム別と選手別への導線である。**

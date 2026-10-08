@@ -1,4 +1,7 @@
-// 生成した HTML で、**タブの現在地が自分のページを指している**ことを検査する。
+// 生成した HTML で、**ヘッダーの操作が名前と状態を持っている**ことを検査する。
+//
+// 見るのは2つ。**タブの現在地**（下記）と、**テーマ切替のアイコンの名前**
+// （末尾）。どちらも**消えても画面は壊れず、読み上げだけが静かに失われる。**
 //
 // `layout.tsx` が `<Header />` を引数なしで描いており、既定値 `'/'` のまま
 // 全ページが「今日の予測」を現在地として出していた（2026-09-26 に実機で発覚）。
@@ -72,13 +75,48 @@ for (const href of TABS) {
   }
 }
 
-console.log(`タブの現在地を ${TABS.length} ページで検査した`);
+// ── テーマ切替のアイコン ──────────────────────────────────────────
+//
+// **文字をやめたので、名前は `aria-label` しか持っていない**（詳細設計 5.3）。
+// これが落ちると**ボタンに名前が無くなり、読み上げでは何も読まれない。**
+// 画面は何も変わらないため、目で見ても気づけない。
+//
+// `aria-pressed` も見る。アイコンは形で状態を示すが、**支援技術には
+// `aria-pressed` しか届かない。**
+const home = await readFile(pageOf('/'), 'utf8');
+const toggle = /<button\b[^>]*aria-pressed[^>]*>([\s\S]*?)<\/button>/.exec(home);
+
+if (toggle === null) {
+  problems.push('テーマ切替: aria-pressed を持つ <button> が無い（詳細設計 5.2）');
+} else {
+  const [tag] = /<button\b[^>]*>/.exec(toggle[0]);
+  const label = /aria-label="([^"]*)"/.exec(tag);
+  if (label === null || label[1].trim() === '') {
+    problems.push(
+      'テーマ切替: aria-label が無い。'
+      + 'アイコンだけのボタンには名前が残らず、読み上げで何も読まれない（要件 8.6）',
+    );
+  }
+  // 中身はアイコンだけで、**読み上げ対象を二重に持たない**
+  if (!/<svg\b[^>]*aria-hidden="true"/.test(toggle[1])) {
+    problems.push(
+      'テーマ切替: アイコンに aria-hidden="true" が無い。'
+      + 'ボタンの名前と二重に読まれる（詳細設計 5.2 の確率ブロックと同じ理由）',
+    );
+  }
+  // 44×44px（要件 8.6）。**アイコンを小さくしてもタップ対象は縮めない**
+  if (!/min-h-11/.test(tag) || !/min-w-11/.test(tag)) {
+    problems.push('テーマ切替: タップ対象が 44×44px を保っていない（要件 8.6）');
+  }
+}
+
+console.log(`タブの現在地を ${TABS.length} ページ、テーマ切替の名前と状態を検査した`);
 
 if (problems.length > 0) {
   for (const problem of problems) console.error(`NG ${problem}`);
-  console.error('\nタブの現在地が自分のページを指していない。');
-  console.error('下線だけでなく aria-current も誤るため、読み上げで現在地が伝わらない。');
+  console.error('\nヘッダーの操作が名前または状態を失っている。');
+  console.error('いずれも画面は変わらず、読み上げだけが静かに落ちる（要件 8.6）。');
   process.exit(1);
 }
 
-console.log('OK  どのページもタブの現在地が自分を指している。');
+console.log('OK  どのページもタブの現在地が自分を指し、テーマ切替は名前と状態を持っている。');

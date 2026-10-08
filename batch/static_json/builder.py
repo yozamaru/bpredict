@@ -90,6 +90,44 @@ class PlayerInput:
 
 
 @dataclass(frozen=True)
+class ActualInput:
+    """その試合の実績1人ぶん（詳細設計 3.3 の `playerActuals`）。
+
+    **予測とは別の配列である**（v1.130。母集団が違う — 予測は `P(出場) >= 0.5`、
+    実績は実際に出場した全員）。
+
+    **成功数を持つ。** 予測側（`PlayerInput`）は率 × 試投数の導出値にするが、
+    こちらは `player_game_stats` の取得値そのものである。
+
+    **すべて NULL を取りうる。** 旧年度は `plus_minus` のキーが無く（4.4）、
+    欠損を 0 に置換しない（規約5）。
+    """
+
+    player_id: str
+    name: str
+    club_id: str
+    position: str | None = None
+    started: bool | None = None
+    minutes: float | None = None
+    fg2m: int | None = None
+    fg2a: int | None = None
+    fg3m: int | None = None
+    fg3a: int | None = None
+    ftm: int | None = None
+    fta: int | None = None
+    oreb: int | None = None
+    dreb: int | None = None
+    ast: int | None = None
+    tov: int | None = None
+    stl: int | None = None
+    blk: int | None = None
+    pf: int | None = None
+    fd: int | None = None
+    plus_minus: int | None = None
+    pts: int | None = None
+
+
+@dataclass(frozen=True)
 class EvaluationInput:
     is_correct: bool | None
     score_error: float | None
@@ -140,6 +178,9 @@ class GameDetailInput:
     prediction: PredictionInput | None = None
     reasons: list[ReasonInput] = field(default_factory=list)
     players: list[PlayerInput] = field(default_factory=list)
+    #: その試合の実績（詳細設計 3.3）。**予測の有無に依存しない** — 予測が1本も
+    #: 無い試合でも「この試合の記録」は出す
+    actuals: list[ActualInput] = field(default_factory=list)
     evaluation: EvaluationInput | None = None
     model_accuracy: AccuracyInput | None = None
 
@@ -188,6 +229,73 @@ def _strength(contribution: float, largest: float) -> int:
         return 1
     ratio = abs(contribution) / largest
     return max(1, math.ceil(ratio * STRENGTH_STEPS))
+
+
+def _actual_pct(made: int | None, attempted: int | None) -> float | None:
+    """実績の率。**閾値を設けない**（要件 8.3 / 詳細設計 3.3）。
+
+    `_pct` が閾値を課すのは**予測値**に対してであり、実績の `6 / 13` は丸めのない
+    事実である。**試投数が0のときだけ None**（分母0の率は定義されない）。
+    """
+    if made is None or attempted is None or attempted <= 0:
+        return None
+    return made / attempted
+
+
+def _sum(a: int | None, b: int | None) -> int | None:
+    """片方が None なら合計も None。**0 として足さない**（規約5）。"""
+    return None if a is None or b is None else a + b
+
+
+def _actual(row: ActualInput) -> dict[str, Any]:
+    """`playerActuals` の1人ぶん（詳細設計 3.3）。
+
+    **`pts` は取得値をそのまま出す。** 恒等式との一致は取り込みが検証している（1.3）。
+    **`plusMinus` は実績のみ**（要件 6.8.3）。
+    """
+    fgm = _sum(row.fg2m, row.fg3m)
+    fga = _sum(row.fg2a, row.fg3a)
+    ts_denominator = (
+        None if fga is None or row.fta is None
+        else 2 * (fga + TS_FTA_COEFFICIENT * row.fta)
+    )
+    return {
+        "playerId": row.player_id,
+        "name": row.name,
+        "position": row.position,
+        "clubId": row.club_id,
+        "started": row.started,
+        "summary": {
+            "min": row.minutes,
+            "pts": row.pts,
+            "reb": _sum(row.oreb, row.dreb),
+            "ast": row.ast,
+        },
+        "box": {
+            "fg": {"m": fgm, "a": fga, "pct": _actual_pct(fgm, fga)},
+            "fg2": {"m": row.fg2m, "a": row.fg2a, "pct": _actual_pct(row.fg2m, row.fg2a)},
+            "fg3": {"m": row.fg3m, "a": row.fg3a, "pct": _actual_pct(row.fg3m, row.fg3a)},
+            "ft": {"m": row.ftm, "a": row.fta, "pct": _actual_pct(row.ftm, row.fta)},
+            "oreb": row.oreb,
+            "dreb": row.dreb,
+            "ast": row.ast,
+            "tov": row.tov,
+            "stl": row.stl,
+            "blk": row.blk,
+            "pf": row.pf,
+            "fd": row.fd,
+            "plusMinus": row.plus_minus,
+            "efgPct": (
+                None
+                if fgm is None or row.fg3m is None or fga is None or fga <= 0
+                else (fgm + 0.5 * row.fg3m) / fga
+            ),
+            "tsPct": (
+                None if ts_denominator is None or ts_denominator <= 0 or row.pts is None
+                else row.pts / ts_denominator
+            ),
+        },
+    }
 
 
 def _box(player: PlayerInput) -> dict[str, Any]:
@@ -320,6 +428,9 @@ def build_game_detail(source: GameDetailInput, generated_at: str) -> dict[str, A
         "prediction": None,
         "evaluation": None,
         "playerPredictions": [],
+        # **実績は予測の有無に依存しない**（詳細設計 3.3）。予測が1本も無い試合でも
+        # 「この試合の記録」は出す — 依存させると画面に何も出ない
+        "playerActuals": [_actual(row) for row in source.actuals],
         # 直近成績は未実装（公開API 側も null を返す）。**キーは落とさない**
         "recentForm": None,
         "modelAccuracy": None,

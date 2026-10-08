@@ -64,6 +64,18 @@ function pct(made: number, attempted: number, threshold: number): number | null 
   return attempted >= threshold ? made / attempted : null;
 }
 
+/**
+ * 実績の率。**閾値を設けない**（要件 8.3 / 詳細設計 3.3）。
+ *
+ * 3.3 が `pct` に閾値を課すのは**予測値**に対してであり、実績の `6 / 13` は
+ * 丸めのない事実である。**試投数が0のときだけ `null`**（分母0の率は定義されない）。
+ * **ここで新しい定数を発明しない。**
+ */
+function actualPct(made: number | null, attempted: number | null): number | null {
+  if (made === null || attempted === null || attempted <= 0) return null;
+  return made / attempted;
+}
+
 function box(row: PlayerRow) {
   // 成功数は「率 × 試投数」の導出値。独立に持たない（詳細設計 1.5）
   const fg2m = row.pred_fg2_pct * row.pred_fg2a;
@@ -91,6 +103,69 @@ function box(row: PlayerRow) {
       // EFG% / TS% も導出値。試投数が閾値未満なら出さない
       efgPct: pct(fgm + 0.5 * fg3m, fga, PCT_THRESHOLD.fg),
       tsPct: tsDenominator > 0 && fga >= PCT_THRESHOLD.fg ? pts / tsDenominator : null,
+    },
+  };
+}
+
+type ActualRow = {
+  player_id: string; name: string; club_id: string;
+  started: number | null; minutes: number | null;
+  fg2m: number | null; fg2a: number | null;
+  fg3m: number | null; fg3a: number | null;
+  ftm: number | null; fta: number | null;
+  oreb: number | null; dreb: number | null;
+  ast: number | null; tov: number | null; stl: number | null; blk: number | null;
+  pf: number | null; fd: number | null;
+  plus_minus: number | null; pts: number | null;
+  position: string | null;
+};
+
+/** 片方が NULL なら合計も NULL。**0 として足さない**（「記録なし」を「0回」にしない）。 */
+function add(a: number | null, b: number | null): number | null {
+  return a === null || b === null ? null : a + b;
+}
+
+/**
+ * その試合の実績1人ぶん（詳細設計 3.3 の `playerActuals`）。
+ *
+ * **予測を参照しない。** 予測が1本も無い試合でも返す — 2026-10-09 時点の本番
+ * 11試合すべてがその状態である。
+ *
+ * **`pts` は取得値をそのまま返す。** 恒等式との一致は取り込みが検証している（1.3）。
+ * **`plusMinus` は実績のみ**（要件 6.8.3）。旧年度は NULL になりうる（4.4）。
+ */
+function actualBox(row: ActualRow) {
+  const fgm = add(row.fg2m, row.fg3m);
+  const fga = add(row.fg2a, row.fg3a);
+  const tsDenominator =
+    fga === null || row.fta === null ? null : 2 * (fga + 0.44 * row.fta);
+  return {
+    playerId: row.player_id,
+    name: row.name,
+    position: row.position,
+    clubId: row.club_id,
+    started: row.started === null ? null : row.started === 1,
+    summary: {
+      min: row.minutes,
+      pts: row.pts,
+      reb: add(row.oreb, row.dreb),
+      ast: row.ast,
+    },
+    box: {
+      fg: { m: fgm, a: fga, pct: actualPct(fgm, fga) },
+      fg2: { m: row.fg2m, a: row.fg2a, pct: actualPct(row.fg2m, row.fg2a) },
+      fg3: { m: row.fg3m, a: row.fg3a, pct: actualPct(row.fg3m, row.fg3a) },
+      ft: { m: row.ftm, a: row.fta, pct: actualPct(row.ftm, row.fta) },
+      oreb: row.oreb, dreb: row.dreb,
+      ast: row.ast, tov: row.tov, stl: row.stl, blk: row.blk,
+      pf: row.pf, fd: row.fd,
+      plusMinus: row.plus_minus,
+      efgPct: fgm === null || row.fg3m === null
+        ? null
+        : actualPct(fgm + 0.5 * row.fg3m, fga),
+      tsPct: tsDenominator !== null && tsDenominator > 0 && row.pts !== null
+        ? row.pts / tsDenominator
+        : null,
     },
   };
 }
@@ -157,6 +232,26 @@ games.get('/games/:gameId', async (c) => {
   ).bind(gameId).first<PredictionRow>();
 
   const finished = game.status === 'FINISHED';
+
+  // **実績は予測の有無に依存しない**（詳細設計 3.3 の `playerActuals`）。
+  // 予測が1本も無い試合でも「この試合の記録」は出す — 2026-10-09 時点の本番
+  // 11試合すべてがその状態であり、依存させると画面に何も出ない
+  const actuals = finished
+    ? await c.env.DB.prepare(
+      `SELECT pgs.player_id, p.name, pgs.club_id, pgs.started, pgs.minutes,
+                pgs.fg2m, pgs.fg2a, pgs.fg3m, pgs.fg3a, pgs.ftm, pgs.fta,
+                pgs.oreb, pgs.dreb, pgs.ast, pgs.tov, pgs.stl, pgs.blk,
+                pgs.pf, pgs.fd, pgs.plus_minus, pgs.pts,
+                ps.position AS position
+           FROM player_game_stats pgs
+           JOIN players p ON p.id = pgs.player_id
+           LEFT JOIN player_seasons ps
+             ON ps.player_id = pgs.player_id AND ps.club_id = pgs.club_id
+          WHERE pgs.game_id = ?
+          ORDER BY pgs.minutes IS NULL, pgs.minutes DESC, pgs.player_id`,
+    ).bind(gameId).all<ActualRow>()
+    : null;
+
   const body: Record<string, unknown> = {
     game: {
       gameId: game.id,
@@ -182,6 +277,8 @@ games.get('/games/:gameId', async (c) => {
     prediction: null,
     evaluation: null,
     playerPredictions: [],
+    // **キーは常に存在する**（試合前は空配列。3.1 / 3.7 の契約）
+    playerActuals: (actuals?.results ?? []).map(actualBox),
     recentForm: null,
     modelAccuracy: null,
   };

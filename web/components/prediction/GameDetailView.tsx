@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { PlayerActualTable } from '@/components/prediction/PlayerActualTable';
 import { PlayerStatTable } from '@/components/prediction/PlayerStatTable';
 import { ProbabilityBar } from '@/components/prediction/ProbabilityBar';
 import { ReasonList } from '@/components/prediction/ReasonList';
@@ -18,7 +19,7 @@ import { ResultComparison } from '@/components/prediction/ResultComparison';
 import { StatusBadge } from '@/components/prediction/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ACTIONS, LOADING, LOAD_ERROR, NO_PREDICTION } from '@/lib/messages';
-import { toClub, toGame, toPlayers, toReason } from '@/lib/map';
+import { toActuals, toClub, toGame, toPlayers, toReason } from '@/lib/map';
 import { fetchGameDetail, fetchGameFromApi, type GameDetail } from '@/lib/source';
 import {
   favoredSide,
@@ -67,6 +68,13 @@ export function GameDetailView({ gameId }: { gameId: string }) {
   const reasons: ReasonView[] = (detail.prediction?.reasons ?? []).map(toReason);
   // **導出はサーバが済ませている。** 画面は写すだけ（ui-implementation スキル）
   const players = toPlayers(detail.playerPredictions);
+  // **予測の有無に依存しない**（詳細設計 3.3）。予測が1本も無い試合でも
+  // 「この試合の記録」は出す — 2026-10-09 時点の本番11試合すべてがその状態である
+  const actuals = toActuals(detail.playerActuals);
+  const clubs = [
+    { clubId: home.clubId, label: home.name },
+    { clubId: away.clubId, label: away.name },
+  ];
 
   return (
     <>
@@ -92,19 +100,15 @@ export function GameDetailView({ gameId }: { gameId: string }) {
           <Scoreboard view={view} />
           {detail.evaluation !== null && <Finished detail={detail} view={view} />}
           {reasons.length > 0 && <Reasons reasons={reasons} view={view} />}
-          {players.length > 0 && (
-            <PlayerStatTable
-              players={players}
-              /* **ホーム・アウェイの順。** 合計はクラブ別に出す（詳細設計 5.3） */
-              clubs={[
-                { clubId: home.clubId, label: home.name },
-                { clubId: away.clubId, label: away.name },
-              ]}
-            />
-          )}
+          {/* **ホーム・アウェイの順。** 合計はクラブ別に出す（詳細設計 5.3） */}
+          {players.length > 0 && <PlayerStatTable players={players} clubs={clubs} />}
           <Notes detail={detail} players={players.length} />
         </>
       )}
+
+      {/* **予測のブロックの外に置く。** 予測が無くても実績は出す（詳細設計 3.3）。
+          予測の下に並べるのは、**予想してから結果を見るという読む順序**に合わせるため */}
+      {actuals.length > 0 && <PlayerActualTable actuals={actuals} clubs={clubs} />}
     </>
   );
 }

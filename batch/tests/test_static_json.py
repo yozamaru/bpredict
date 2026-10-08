@@ -15,6 +15,7 @@ import pytest
 
 from batch.static_json.builder import (
     AccuracyInput,
+    ActualInput,
     ClubInput,
     EvaluationInput,
     GameDetailInput,
@@ -139,6 +140,28 @@ def a_player(**over: Any) -> PlayerInput:
     return PlayerInput(**defaults)
 
 
+def an_actual(**over: Any) -> ActualInput:
+    """実績1人ぶん。**すべてのキーが埋まった標本**（契約の照合に使う）。"""
+    defaults: dict[str, Any] = {
+        "player_id": "p1",
+        "name": "架空選手",
+        "club_id": "ch",
+        "position": "PG",
+        "started": True,
+        "minutes": 31.5,
+        "fg2m": 4, "fg2a": 8,
+        "fg3m": 2, "fg3a": 5,
+        "ftm": 4, "fta": 4,
+        "oreb": 0, "dreb": 3,
+        "ast": 6, "tov": 2, "stl": 1, "blk": 0,
+        "pf": 2, "fd": 3,
+        "plus_minus": 5,
+        "pts": 18,
+    }
+    defaults.update(over)
+    return ActualInput(**defaults)
+
+
 def a_full_detail() -> GameDetailInput:
     """すべてのキーが埋まった標本。**契約との完全一致はこれで見る。**"""
     return GameDetailInput(
@@ -149,6 +172,7 @@ def a_full_detail() -> GameDetailInput:
             ReasonInput("SCHEDULE", "アウェイの休養", "中0日", "HOME", 0.11),
         ],
         players=[a_player()],
+        actuals=[an_actual()],
         evaluation=EvaluationInput(
             is_correct=True,
             score_error=3.0,
@@ -214,10 +238,77 @@ class TestShape:
             GENERATED_AT,
         )
         after = build_game_detail(a_full_detail(), GENERATED_AT)
-        # 試合前は evaluation が null なのでその下だけが減る。それ以外は同じ
+        # 試合前は evaluation が null、実績が空配列なので**その下だけ**が減る。
+        # それ以外のキーは1つも動かない（動いたらここで落ちる）
         assert key_paths(before) | {
-            path for path in key_paths(after) if path.startswith("data.evaluation.")
-        } == key_paths(after) | {"data.evaluation"}
+            path for path in key_paths(after)
+            if path.startswith(("data.evaluation.", "data.playerActuals[]."))
+        } == key_paths(after) | {"data.evaluation", "data.playerActuals[]"}
+
+    def test_actuals_key_exists_before_the_game(self) -> None:
+        """**試合前も `playerActuals` のキーを落とさない**（詳細設計 3.3 / 3.1）。
+
+        `key_paths` は空の配列を見ないため、上の検査では捕まらない。
+        """
+        payload = build_game_detail(
+            GameDetailInput(game=a_game(), prediction=a_prediction()), GENERATED_AT,
+        )
+        assert payload["data"]["playerActuals"] == []
+
+    def test_actuals_do_not_depend_on_the_prediction(self) -> None:
+        """**予測が1本も無い試合でも実績を出す**（詳細設計 3.3）。
+
+        2026-10-09 時点の本番11試合すべてがこの状態である。依存させると
+        「この試合の記録」が画面に何も出ない。
+        """
+        payload = build_game_detail(
+            GameDetailInput(
+                game=a_game(status="FINISHED", home_score=88, away_score=81),
+                prediction=None,
+                actuals=[an_actual()],
+            ),
+            GENERATED_AT,
+        )
+        assert payload["data"]["prediction"] is None
+        assert len(payload["data"]["playerActuals"]) == 1
+        assert payload["data"]["playerActuals"][0]["summary"]["pts"] == 18
+
+    def test_actual_rates_have_no_threshold(self) -> None:
+        """**実績の率に閾値を設けない**（要件 8.3 / 詳細設計 3.3）。
+
+        予測側は `fg3.a >= 3` を課すが、実績の `1 / 2` は丸めのない事実である。
+        **試投数が0のときだけ出さない。**
+        """
+        rows = build_game_detail(
+            GameDetailInput(
+                game=a_game(status="FINISHED"),
+                actuals=[an_actual(fg3m=1, fg3a=2, ftm=0, fta=0)],
+            ),
+            GENERATED_AT,
+        )["data"]["playerActuals"]
+        assert rows[0]["box"]["fg3"]["pct"] == 0.5
+        assert rows[0]["box"]["ft"]["pct"] is None
+
+    def test_actual_counts_keep_null(self) -> None:
+        """**欠損を 0 に置換しない**（規約5）。旧年度は `plus_minus` が無い（4.4）。"""
+        rows = build_game_detail(
+            GameDetailInput(
+                game=a_game(status="FINISHED"),
+                actuals=[an_actual(plus_minus=None, oreb=None)],
+            ),
+            GENERATED_AT,
+        )["data"]["playerActuals"]
+        assert rows[0]["box"]["plusMinus"] is None
+        # 片方が None なら合計も None（0 として足さない）
+        assert rows[0]["summary"]["reb"] is None
+
+    def test_actuals_carry_no_error_column(self) -> None:
+        """**実績に誤差はない**（詳細設計 3.3）。予測側の `error` を持たない。"""
+        rows = build_game_detail(
+            GameDetailInput(game=a_game(status="FINISHED"), actuals=[an_actual()]),
+            GENERATED_AT,
+        )["data"]["playerActuals"]
+        assert "error" not in rows[0]
 
     def test_tipoff_is_utc_and_no_jst_label(self) -> None:
         """UTC のまま出す。JST の文字列を作らない（CLAUDE.md 時刻の扱い）。"""

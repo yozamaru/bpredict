@@ -195,3 +195,49 @@ export function byTipoff(a: GameView, b: GameView): number {
   if (b.tipoffLabel === null) return -1;
   return a.tipoffLabel < b.tipoffLabel ? -1 : 1;
 }
+
+/**
+ * その試合の実績1人ぶん（詳細設計 3.3 の `playerActuals`）。
+ *
+ * **`PlayerView`（予測）とは別の型である。** 母集団が違い（予測は
+ * `P(出場) >= 0.5`、実績は実際に出場した全員）、持つものも違う。
+ *
+ * | 予測（`PlayerView`） | 実績（`ActualView`） |
+ * |---|---|
+ * | 期待値。小数第1位で出す | **整数**。公式記録そのもの |
+ * | `availProb` を持つ | 持たない。**出場したという事実**がある |
+ * | `err`（誤差の目安） | **持たない。** 実績に誤差はない |
+ * | `＋/－` を出さない（要件 6.8.3） | **`plusMinus` を出す**（実績のみ） |
+ *
+ * **すべて null を取りうる。** 旧年度は `plus_minus` のキーが無く（詳細設計 4.4）、
+ * **0 で埋めない** — 0 は「記録がない」ではなく「0回」を意味する。
+ */
+export type ActualView = {
+  playerId: string;
+  name: string;
+  clubId: string;
+  position: 'PG' | 'SG' | 'SF' | 'PF' | 'C' | null;
+  /** スターターか。NULL は「分からない」であって「控え」ではない */
+  started: boolean | null;
+  minutes: number | null;
+  pts: number | null;
+  reb: number | null;
+  ast: number | null;
+  oreb: number | null;
+  dreb: number | null;
+  tov: number | null;
+  stl: number | null;
+  blk: number | null;
+  pf: number | null;
+  fd: number | null;
+  plusMinus: number | null;
+  /**
+   * 成功数・試投数・率。**率は試投数0のときだけ null**（要件 8.3）。
+   * 予測側の閾値（`fg3.a >= 3` など）は**実績には及ばない** — 丸めのない事実である。
+   */
+  fg: { m: number | null; a: number | null; pct: number | null };
+  fg2: { m: number | null; a: number | null; pct: number | null };
+  fg3: { m: number | null; a: number | null; pct: number | null };
+  ft: { m: number | null; a: number | null; pct: number | null };
+  efgPct: number | null;
+};

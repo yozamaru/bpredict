@@ -13,7 +13,9 @@ import type {
   ResultsByDate,
 } from '@/lib/source';
 import type { ResultView } from '@/components/prediction/ResultComparison';
-import type { AccuracyView, Club, GameView, PlayerView, ReasonView } from '@/lib/view';
+import type {
+  AccuracyView, ActualView, Club, GameView, PlayerView, ReasonView,
+} from '@/lib/view';
 
 /** 遅延と判定する間隔（時間。基本設計 4.5）。 */
 export const STALE_HOURS = 24;
@@ -348,6 +350,88 @@ export function toResults(source: ResultsByDate): ResultView[] {
         rate: e.bucketContext.rate,
       },
     });
+  }
+  return out;
+}
+
+/** 試合詳細の `playerActuals[]`（詳細設計 3.3）。 */
+type RawActualShooting = { m: number | null; a: number | null; pct: number | null };
+type RawActual = {
+  playerId: string;
+  name: string;
+  position: string | null;
+  clubId: string;
+  started: boolean | null;
+  summary: {
+    min: number | null;
+    pts: number | null;
+    reb: number | null;
+    ast: number | null;
+  };
+  box: {
+    fg: RawActualShooting;
+    fg2: RawActualShooting;
+    fg3: RawActualShooting;
+    ft: RawActualShooting;
+    oreb: number | null;
+    dreb: number | null;
+    ast: number | null;
+    tov: number | null;
+    stl: number | null;
+    blk: number | null;
+    pf: number | null;
+    fd: number | null;
+    plusMinus: number | null;
+    efgPct: number | null;
+    tsPct: number | null;
+  };
+};
+
+/**
+ * 実績。**サーバが出した値をそのまま写す**（予測と同じ作法）。
+ *
+ * **率を計算し直さない。** `pct` が null なのは「試投数が0」であって、
+ * 予測側の閾値とは別の理由である（詳細設計 3.3）。
+ */
+export function toActual(raw: RawActual): ActualView {
+  const box = raw.box;
+  return {
+    playerId: raw.playerId,
+    name: raw.name,
+    clubId: raw.clubId,
+    position: asPosition(raw.position),
+    started: raw.started,
+    minutes: raw.summary.min,
+    pts: raw.summary.pts,
+    reb: raw.summary.reb,
+    ast: raw.summary.ast,
+    oreb: box.oreb,
+    dreb: box.dreb,
+    tov: box.tov,
+    stl: box.stl,
+    blk: box.blk,
+    pf: box.pf,
+    fd: box.fd,
+    plusMinus: box.plusMinus,
+    fg: box.fg,
+    fg2: box.fg2,
+    fg3: box.fg3,
+    ft: box.ft,
+    efgPct: box.efgPct,
+  };
+}
+
+/** 形が合わない行は落とす（`toPlayers` と同じ作法）。 */
+export function toActuals(list: unknown[]): ActualView[] {
+  const out: ActualView[] = [];
+  for (const item of list) {
+    const raw = item as Partial<RawActual>;
+    if (
+      typeof raw.playerId !== 'string'
+      || raw.summary === undefined
+      || raw.box === undefined
+    ) continue;
+    out.push(toActual(raw as RawActual));
   }
   return out;
 }

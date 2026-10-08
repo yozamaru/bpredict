@@ -152,6 +152,8 @@ export type GameDetail = {
     bucketContext: { bucket: string; n: number; correct: number; rate: number } | null;
   } | null;
   playerPredictions: unknown[];
+  /** その試合の実績（詳細設計 3.3）。**予測の有無に依存しない** */
+  playerActuals: unknown[];
   recentForm: unknown;
   modelAccuracy: AccuracyShape;
 };

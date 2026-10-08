@@ -26,7 +26,9 @@ export const ACTUAL_NOT_RATING =
 
 export function StatNotes({ notes }: { notes: readonly string[] }) {
   return (
-    <ul className="mt-2 list-none p-0 text-[10.5px] leading-relaxed text-ink-3">
+    // 注記は 12px（基本設計 6.2。旧版は 10.5px で、運営者が「文字が小さい」と
+    // 指摘した水準である）。**文言は1字も変えない** — `npm run test:stats` が照合する
+    <ul className="mt-4 flex list-none flex-col gap-1.5 p-0 text-[12px] leading-relaxed text-ink-3">
       {notes.map((note) => (
         <li key={note}>{note}</li>
       ))}

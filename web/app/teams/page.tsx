@@ -17,7 +17,7 @@ export const metadata = { title: 'チーム | B.PREDICT（仮称）' };
 export default function Page() {
   return (
     <>
-      <h2 className="mt-5 font-serif text-[19px] font-semibold tracking-[0.02em]">チーム</h2>
+      <h2 className="mt-5 font-serif text-[21px] font-semibold tracking-[0.02em] text-ink">チーム</h2>
       <TeamList />
     </>
   );

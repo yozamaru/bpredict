@@ -9,7 +9,7 @@
 //    3.31:1 あったが帯の上では 2.61:1 しかなかった。**目視では気づけない。**
 // 2. **テキストと線を別の系列として扱う。** 旧版は `--text-4`（非テキスト専用）を
 //    テキスト色の系列に混ぜていたため、誤用の走査が必要だった。新トークンでは
-//    `--rule` / `--rule-soft` / `--axis` が線の系列で、走査の対象もこちらに移る。
+//    `--rule` / `--axis` が線の系列で、走査の対象もこちらに移る。
 import { readFileSync, readdirSync } from 'node:fs';
 
 const CSS = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
@@ -68,17 +68,31 @@ function ratio(fg, bg) {
 }
 
 // ── テキスト: 両テーマで 4.5:1 以上 ──────────────────────────────
-// 画面で実際に使う前景と背景の対だけを並べる。`--tint` を含めるのは、互角の行と
-// 合計行が `--tint` の地で、その上に `--ink-3` のラベルが乗るため（最小値がここに出る）。
+// 画面で実際に使う前景と背景の対だけを並べる（2026-10-08。スコアボード型。
+// 基本設計 6.1）。面が4段あるため組が増えた。
+//
+// **`--home` / `--away` を `--strip` の上で検査しない。** ライトで 4.23 / 4.21:1
+// となり 4.5 を割るため、**画面で使わないことで避けている**（基本設計 6.1）。
+// 使っていない組を検査すると、通すために色を動かすことになる。
+// **代わりに下の FORBIDDEN で「使っていないこと」を検査する。**
 const TEXT_PAIRS = [
-  ['--ink', '--paper'], ['--ink', '--panel'], ['--ink', '--tint'],
-  ['--ink-2', '--paper'], ['--ink-2', '--panel'], ['--ink-2', '--tint'],
-  ['--ink-3', '--paper'], ['--ink-3', '--panel'], ['--ink-3', '--tint'],
-  ['--home', '--paper'], ['--home', '--panel'],
-  ['--away', '--paper'], ['--away', '--panel'],
-  ['--warn', '--paper'], ['--warn', '--panel'], ['--warn', '--warn-bg'],
-  // H / A の記号は `--panel` の文字を `--home` / `--away` の地に置く（GameTable）
+  ['--ink', '--ground'], ['--ink', '--panel'], ['--ink', '--panel-sub'], ['--ink', '--strip'],
+  ['--ink-2', '--ground'], ['--ink-2', '--panel'], ['--ink-2', '--panel-sub'], ['--ink-2', '--strip'],
+  ['--ink-3', '--ground'], ['--ink-3', '--panel'], ['--ink-3', '--panel-sub'], ['--ink-3', '--strip'],
+  ['--home', '--ground'], ['--home', '--panel'], ['--home', '--panel-sub'],
+  ['--away', '--ground'], ['--away', '--panel'], ['--away', '--panel-sub'],
+  // 暫定は**常に塗りチップ**（基本設計 6.1）。地が `--warn`、文字が `--warn-ink`
+  ['--warn-ink', '--warn'],
+  // H / A の記号は `--panel` の文字を `--home` / `--away` の地に置く
   ['--panel', '--home'], ['--panel', '--away'],
+];
+
+// ── 画面で使ってはならない組（通すために色を動かさないため） ──────────
+// **ライトで 4.5 を割るので使わない**と決めた組（基本設計 6.1）。
+// 検査は色ではなく**コンポーネントの原文**に対して行う（下の走査）。
+const FORBIDDEN = [
+  { fg: 'home', bg: 'strip' },
+  { fg: 'away', bg: 'strip' },
 ];
 
 // ── 意味を持つ非テキスト: 3:1 以上 ──────────────────────────────
@@ -89,15 +103,20 @@ const TEXT_PAIRS = [
 // 帯の上と同じく 3:1 を課す。
 const GRAPHIC_PAIRS = [
   ['--axis', '--band'],
-  ['--axis', '--paper'],
+  ['--axis', '--groove'],
+  ['--axis', '--ground'],
   ['--home', '--band'],
   ['--away', '--band'],
+  // **溝を描くようになった**（2026-10-08。スコアボード型では、バーがボードの中に
+  // あり「どこまでが目盛りの全体か」を示す器が要る）。塗りは溝の上にも乗る
+  ['--home', '--groove'],
+  ['--away', '--groove'],
 ];
 
 // ── 装飾的な仕切り: 基準を課さない ─────────────────────────────
-// `--rule` / `--rule-soft` は情報を持たない。同じ情報を余白と見出しが伝える。
+// `--rule` / `--groove` / `--band` は情報を持たない面と線である。
 // 値は参考として出し、**文字色に使われていないか**は下の走査で止める。
-const DECORATIVE = ['--rule', '--rule-soft', '--band'];
+const DECORATIVE = ['--rule', '--band', '--groove'];
 
 const MIN_TEXT = 4.5;
 const MIN_GRAPHIC = 3;
@@ -138,8 +157,8 @@ for (const [theme, selector] of [['light', ':root {'], ['dark', ":root[data-them
 
   for (const name of DECORATIVE) {
     console.log(
-      `参考 ${theme.padEnd(5)} 装飾 ${name.padEnd(10)} on --paper     ` +
-      ` ${measure(name, '--paper').toFixed(2)}:1 （情報を持たない。基準を課さない）`,
+      `参考 ${theme.padEnd(5)} 装飾 ${name.padEnd(10)} on --ground    ` +
+      ` ${measure(name, '--ground').toFixed(2)}:1 （情報を持たない。基準を課さない）`,
     );
   }
 }
@@ -162,7 +181,7 @@ for (const dir of ['app', 'components', 'lib']) {
     // まだ存在しないディレクトリは飛ばす
   }
 }
-const BANNED_TEXT_CLASSES = /\btext-(rule|rule-soft|band|axis)\b/;
+const BANNED_TEXT_CLASSES = /\btext-(rule|band|axis|groove|strip)\b/;
 for (const path of sources) {
   const body = readFileSync(path, 'utf8');
   // `globals.css` は `.axis-bar::after` で `--axis` を線として使う。文字ではない
@@ -182,7 +201,7 @@ for (const path of sources) {
 // 既定の黒になっていた。**走査はあったのに、SVG の塗りだけが対象外だった。**
 const PREFIX = '(?:text|bg|border|stroke|fill|outline|ring|decoration|divide|from|via|to)';
 const REMOVED = new RegExp(
-  `\\b${PREFIX}-(?:text|text-2|text-3|text-4|accent|accent-bg|track|surface)\\b`,
+  `\\b${PREFIX}-(?:text|text-2|text-3|text-4|accent|accent-bg|track|surface|paper|tint|rule-soft|warn-bg)\\b`,
 );
 for (const path of sources) {
   if (REMOVED.test(readFileSync(path, 'utf8'))) {
@@ -193,7 +212,7 @@ for (const path of sources) {
 
 // 線のトークンを文字に使う誤用は、`text-` だけでなく `fill-` でも起きる
 // （SVG の文字は fill で塗る）。同じ系列の誤用なので同じ基準で止める。
-const BANNED_TEXT_FILL = /\bfill-(rule|rule-soft|band|axis)\b/;
+const BANNED_TEXT_FILL = /\bfill-(rule|band|axis|groove|strip)\b/;
 for (const path of sources) {
   const body = readFileSync(path, 'utf8');
   if (path.endsWith('globals.css')) continue;
@@ -201,6 +220,29 @@ for (const path of sources) {
   if (body.includes('<text') && BANNED_TEXT_FILL.test(body)) {
     console.error(`NG  線のトークンを SVG の文字に使っている: ${path.replace(/.*\/web\//, '')}`);
     failed += 1;
+  }
+}
+
+// **使ってはならない組を、原文に対して検査する。**
+// `--home` / `--away` を `--strip` の上に置くとライトで 4.23 / 4.21:1 となり
+// 4.5 を割る。**色を動かして通すのではなく、使わないことで避ける**と決めた
+// （基本設計 6.1）。決めただけでは守られないため、ここで止める。
+for (const path of sources) {
+  if (path.endsWith('globals.css')) continue;
+  const body = readFileSync(path, 'utf8');
+  for (const { fg, bg } of FORBIDDEN) {
+    // 同じ要素に両方のクラスが付いている場合だけを拾う（別の行にあるのは別の要素）
+    const onSameElement = new RegExp(
+      `class(?:Name)?="[^"]*\\b(?:text|fill)-${fg}\\b[^"]*\\bbg-${bg}\\b[^"]*"`
+      + `|class(?:Name)?="[^"]*\\bbg-${bg}\\b[^"]*\\b(?:text|fill)-${fg}\\b[^"]*"`,
+    );
+    if (onSameElement.test(body)) {
+      console.error(
+        `NG  使ってはならない組: ${fg} on ${bg}（ライトで 4.5 を割る）`
+        + ` — ${path.replace(/.*\/web\//, '')}`,
+      );
+      failed += 1;
+    }
   }
 }
 

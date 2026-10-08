@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { GameTable } from '@/components/prediction/GameTable';
+import { GameBoardList } from '@/components/prediction/GameBoardList';
 import { StaleBanner } from '@/components/prediction/StaleBanner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ACTIONS, LOADING, LOAD_ERROR, noGames } from '@/lib/messages';
@@ -76,7 +76,7 @@ export function TodayView() {
     return (
       <p
         aria-live="polite"
-        className="mt-3 border border-dashed border-rule px-2 py-3 text-center text-[12.5px] text-ink-3"
+        className="mt-3 rounded-[2px] border border-dashed border-rule px-2 py-3 text-center text-ink-3"
       >
         {LOADING}
       </p>
@@ -94,10 +94,11 @@ export function TodayView() {
       )}
 
       <div className="mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <h2 className="font-serif text-[19px] font-semibold tracking-[0.02em]">
+        {/* **`--ink` は主数値と画面見出しだけに予約する**（基本設計 6.1） */}
+        <h2 className="font-serif text-[19px] font-semibold tracking-[0.02em] text-ink">
           {label}の予測
         </h2>
-        <span className="font-mono text-[11px] text-ink-2">全{games.length}試合</span>
+        <span className="num text-[12px] text-ink-2">全{games.length}試合</span>
       </div>
 
       {/* **日付別へ辿れるようにする**（基本設計 5.1）。導線がないと URL を
@@ -105,13 +106,13 @@ export function TodayView() {
       <nav aria-label="日付の移動" className="mt-2.5 flex items-stretch gap-2">
         <Link
           href={`/schedule/${shiftDate(loaded.day, -1)}/`}
-          className="flex min-h-11 flex-1 items-center justify-center border border-rule text-[13px] font-bold"
+          className="flex min-h-11 flex-1 items-center justify-center rounded-[2px] bg-panel font-bold text-ink-2"
         >
           ← 前日
         </Link>
         <Link
           href={`/schedule/${shiftDate(loaded.day, 1)}/`}
-          className="flex min-h-11 flex-1 items-center justify-center border border-rule text-[13px] font-bold"
+          className="flex min-h-11 flex-1 items-center justify-center rounded-[2px] bg-panel font-bold text-ink-2"
         >
           {dateLabel(shiftDate(loaded.day, 1))} →
         </Link>
@@ -119,8 +120,8 @@ export function TodayView() {
 
       {games.length > 0 ? (
         <>
-          <GameTable games={games} dateLabel={label} />
-          <ul className="mt-2 list-none space-y-0.5 p-0 text-[10.5px] leading-relaxed text-ink-3">
+          <GameBoardList games={games} dateLabel={label} />
+          <ul className="mt-2.5 list-none space-y-1 p-0 text-[12px] leading-relaxed text-ink-3">
             {tossUps.length > 0 && (
               <li className="relative pl-[11px] before:absolute before:left-0 before:text-ink-3 before:content-['—']">
                 <b className="font-bold text-ink-2">ほぼ互角の{tossUps.length}試合</b>

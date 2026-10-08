@@ -40,7 +40,7 @@ export function TeamList() {
     return (
       <p
         aria-live="polite"
-        className="mt-5 border border-dashed border-rule px-2 py-3 text-center text-[12.5px] text-ink-3"
+        className="mt-5 rounded-xs bg-panel px-3 py-4 text-center text-[15px] text-ink-3"
       >
         {LOADING}
       </p>
@@ -54,16 +54,23 @@ export function TeamList() {
 
   return (
     <section className="mt-5">
-      <h2 className="font-serif text-[16px] font-semibold">クラブ</h2>
-      <p className="mt-1 text-[11px] text-ink-3">
+      {/* **ページ側に h2「チーム」がある**ため、ここは節見出し（h3）である。
+          見出し要素で文書構造を作る（要件 8.6）。16px / `--ink-2`（基本設計 6.2） */}
+      <h3 className="font-serif text-[16px] font-semibold text-ink-2">クラブ</h3>
+      <p className="mt-1 text-[12px] leading-relaxed text-ink-3">
         クラブごとのシーズン別・通算の戦績と、当季の選手一覧を見られます。
       </p>
-      <ul className="mt-2 border-t border-rule">
-        {data.teams.map((team) => (
-          <li key={team.clubId} className="border-b border-rule-soft">
+      {/* **区切りは面の明るさの差で作る**（基本設計 6.3）。線は引かない */}
+      <ul className="mt-3 flex list-none flex-col gap-0.5 p-0">
+        {data.teams.map((team, at) => (
+          <li
+            key={team.clubId}
+            className={`rounded-xs ${at % 2 === 0 ? 'bg-panel-sub' : 'bg-panel'}`}
+          >
             <Link
               href={`/teams/${team.slug}/`}
-              className="flex min-h-11 items-center text-[13px] text-ink underline decoration-rule"
+              // **下線を残す。** 行そのものがリンクであることを色だけに頼らせない
+              className="flex min-h-13 items-center px-3 text-[16px] text-ink-2 underline underline-offset-2"
             >
               {team.name ?? team.shortName ?? team.slug}
             </Link>

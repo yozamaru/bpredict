@@ -6,6 +6,14 @@ export type GameStatus = 'SCHEDULED' | 'FINISHED' | 'POSTPONED' | 'CANCELLED';
 
 export type Club = {
   /**
+   * クラブの識別子（詳細設計 3.3 の `clubId`）。**`slug` とは別物**で、
+   * `playerPredictions[].clubId` と突き合わせるのに要る。
+   *
+   * **これも落としていた**（2026-10-08）。`toClub` が `slug` / `name` /
+   * `shortName` だけを写しており、そのため個人スタッツをクラブ別に畳めなかった。
+   */
+  clubId: string;
+  /**
    * `/teams/[slug]` の識別子。**改称があっても変わらない**（詳細設計 1.1）。
    * 表示名は年度で変わるが slug は恒久であり、API の応答にも含まれる（詳細設計 3.3）。
    */
@@ -93,6 +101,16 @@ export type ReasonView = {
 export type PlayerView = {
   playerId: string;
   name: string;
+  /**
+   * どのクラブの選手か（詳細設計 3.3 の `playerPredictions[].clubId`）。
+   *
+   * **落としていた**（2026-10-08 に気づいた）。API も契約（`contracts/public-shapes.json`）も
+   * この値を持っているのに、`map.ts` が写していなかった。**そのため合計行を出せず、
+   * 詳細設計 5.3 の「選手の合計が予想スコアと一致していることを画面で確かめられる」が
+   * 未達だった** — クラブ別に畳めないため、合計すると 400分・両チーム得点の和という
+   * 誤った数字になる。
+   */
+  clubId: string;
   /**
    * **null を許す。** 本番のロスターにはポジション未登録の選手が実在する
    * （2026-27 のクラブ 712 に1名。詳細設計 1.2）。**落とすと登録選手が

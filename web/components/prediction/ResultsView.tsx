@@ -56,18 +56,22 @@ export function ResultsView() {
 
   return (
     <>
-      <h2 className="mt-5 text-[19px] font-extrabold">結果</h2>
+      <h2 className="mt-5 font-serif text-[21px] font-semibold tracking-[0.02em] text-ink">
+        結果
+      </h2>
 
       {/* 外れた試合を隠さない（要件 8.3）。並びも扱いも的中と同じにする */}
-      <p className="mt-2 text-[11px] leading-relaxed text-ink-3">
+      <p className="mt-2 text-[12px] leading-relaxed text-ink-3">
         予測を外した試合も同じ並びで出しています。それぞれに、その確率帯の通算成績を添えました。
       </p>
 
       {loaded !== null && (
-        <h3 className="mt-3 text-[16px] font-bold">{dateLabel(loaded.day)}の結果</h3>
+        <h3 className="mt-4 font-serif text-[16px] font-semibold text-ink-2">
+          {dateLabel(loaded.day)}の結果
+        </h3>
       )}
 
-      <div className="mt-3 flex flex-col gap-3">
+      <div className="mt-2 flex flex-col gap-2.5">
         {failed ? (
           <EmptyState message={LOAD_ERROR} action={ACTIONS.about} />
         ) : empty ? (
@@ -86,7 +90,8 @@ export function ResultsView() {
 
       <Link
         href={ACTIONS.accuracy.href}
-        className="mt-4 flex min-h-11 items-center justify-center rounded-xl border border-rule text-[13px] font-bold"
+        // **線で囲まない**（基本設計 6.3）。面の差で押せることを示す
+        className="mt-5 flex min-h-11 items-center justify-center rounded-xs bg-panel text-[14px] font-bold text-ink-2"
       >
         通算の的中率と較正を見る
       </Link>

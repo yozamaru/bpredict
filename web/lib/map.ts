@@ -61,6 +61,7 @@ export function shiftDate(date: string, days: number): string {
  */
 export function toClub(shape: ClubShape): Club {
   return {
+    clubId: shape.clubId,
     slug: shape.slug,
     name: shape.name ?? shape.slug,
     shortName: shape.shortName ?? shape.name ?? shape.slug,
@@ -254,6 +255,7 @@ export function toPlayer(raw: RawPlayer): PlayerView {
     playerId: raw.playerId,
     name: raw.name,
     position: asPosition(raw.position),
+    clubId: raw.clubId,
     availProb: raw.availProb,
     minutes: raw.summary.min,
     fg2a: box.fg2.a,

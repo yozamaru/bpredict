@@ -1,78 +1,56 @@
-// 生成した HTML で、**優勢バーが列から溢れないこと**と**軸が列の全高に通っていること**
-// を検査する（詳細設計 5.3）。
+// 勝率バーの**意味が読める形で組まれていること**を検査する。
 //
-// 2026-10-02 に実機で2つの誤りが出た。
+// 守りたいことは3つあり、どれも「クラスが付いているか」では捕まらない。
 //
-//   1. 軸がバーの内側（高さ12px）にしかなく、塗りの隣に互角帯の片側だけが見えるため
-//      **「2色の積み上げバー」に読めた**。基準の線が無く、どこが 50% かも分からない
-//   2. 縮尺が **1ポイント = 1px** で、確率がクランプの上限（95%）に寄ると
-//      隔たり45ポイント = 45px になり、半幅 31px を越えて**隣の列へ溢れる**。
-//      合成データの最大が 68% だったため画面では見えていなかった
+//   1. **縮尺は % で持つ。** px で持つと確率が高いほど塗りが器を越える。
+//      実際に起きた（2026-10-02）— バー 62px・半幅 31px に対し、確率は
+//      `[0.05, 0.95]` にクランプされるため隔たりは最大45ポイントになり、
+//      px 縮尺では 14px ぶんが隣へ溢れていた。合成データの最大が 68% だった
+//      ため画面では見えていなかった。
+//   2. **軸を背景で描く。** 絶対配置の `::after` は、`border-collapse: collapse`
+//      の表で WebKit が包含ブロックを作らず **iOS Safari で1本も出なかった**
+//      （2026-10-02）。表はやめたが（スコアボード型。2026-10-08）、
+//      **同じ誤りを繰り返さないために背景のままにする。**
+//   3. **溝が目盛りの全体を示していること。** スコアボード型ではバーがボードの
+//      中にあり、「どこまでが 0〜100 か」を示す器が要る。旧版（データ密度型）は
+//      溝を描いていなかったが、あれは表の列に軸を通して器の代わりにしていた。
 //
-// **2 は目で見ても分からない。** 溢れる確率のデータが画面に無いためである。
-// 縮尺が % であれば、バーの半分が 50ポイントに対応するので構造的に収まる。
+// **`.axis-column` の検査は廃止した**（2026-10-08）。あれは `<table>` の列を
+// セルの全高で貫くための仕組みで、スコアボード型には表そのものが無い。
 //
-// そして 1 の直し方そのものが3つめの誤りだった。
-//
-//   3. 軸を `<td>` の `::after`（絶対配置）で描いた。`border-collapse: collapse` の
-//      表では **WebKit が `<td>` の `position: relative` に包含ブロックを作らない**
-//      ため、Chrome では出て **iOS Safari では1本も出なかった**（運営者が実機で指摘）。
-//
-// **3 はクラスの有無を見るだけでは捕まらない。** `axis-column` は付いていたのに
-// 描かれていなかった。したがって**描き方（CSS）も検査する** — 背景で描いていること、
-// 絶対配置に戻っていないこと。同じ列の互角帯は最初から背景グラデーションであり、
-// Safari でも出ていた（`.axis-bar`）。
-//
-// E2E は工程15であり、それまでこの種の誤りを捕まえるものがない。
-//
-// **工程11b から、検査は生成物ではなく部品の原文を読む。** 一覧は
-// クライアントで静的JSON を読むようになったため（基本設計 5.6）、**プリレンダ
-// された HTML には読み込み中の文しか入らない** — バーは出力に現れない。
-// 生成物を読む検査は「0件見つからない」で落ち、**当てる先が消えていた。**
-//
-// 原文を読む検査は出力を読むより弱い（実際に描かれたかは見ていない）。
-// **それでも上の3つは捕まる** — いずれも「原文に何が書いてあるか」で決まる誤りである。
+// 検査は**部品の原文**を読む。取得をクライアントで行うため、プリレンダされた
+// HTML には読み込み中の文しか入らない（詳細設計 5.6）。
 //
 // 依存を増やさない（Node の標準モジュールだけ）。
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const APP = resolve(import.meta.dirname, '..', 'app');
 const COMPONENTS = resolve(import.meta.dirname, '..', 'components', 'prediction');
 const CSS_SOURCE = resolve(APP, 'globals.css');
 
-/** 確率は後処理で [0.05, 0.95] にクランプされる（詳細設計 4.6）→ 隔たりは最大45 */
+/** 勝率は `[0.05, 0.95]` にクランプされるため、50% からの隔たりは最大45ポイント */
 const MAX_DEVIATION = 45;
 
 const problems = [];
-let bars = 0;
-let cells = 0;
 
-// 1. 優勢のセルに `axis-column` が付いていること（軸がセルの全高に通る）
-const table = await readFile(resolve(COMPONENTS, 'GameTable.tsx'), 'utf8');
-for (const cell of table.match(/<td\b[^>]*rowSpan=\{2\}[^>]*>/g) ?? []) {
-  // 時刻・状態のセルも rowSpan=2 である。バーを含むセルだけを見る
-  const at = table.indexOf(cell) + cell.length;
-  if (!table.slice(at, at + 900).includes('AxisBar')) continue;
-  cells += 1;
-  if (!cell.includes('axis-column')) {
-    problems.push('GameTable.tsx: 優勢のセルに axis-column がない（軸が列を貫かない）');
-  }
-}
-if (cells === 0) {
-  problems.push('GameTable.tsx: 優勢のセルが見つからない（表の構造が変わったか）');
-}
-
-// 2. 塗りの縮尺が % であり、最大の隔たりでも半幅（50%）に収まること
-for (const file of ['GameTable.tsx', 'ProbabilityBar.tsx']) {
-  const source = await readFile(resolve(COMPONENTS, file), 'utf8');
+// ── 1. 縮尺は % で持つ ────────────────────────────────────────────
+// バーを使う部品を名前で決め打ちしない（一覧の部品名は移行で変わった）。
+// `devScale=` を持つファイルすべてを見る。
+const BAR_FILES = ['GameBoardList.tsx', 'ProbabilityBar.tsx', 'GameDetailView.tsx'];
+let scalesSeen = 0;
+for (const file of BAR_FILES) {
+  const path = resolve(COMPONENTS, file);
+  if (!existsSync(path)) continue;
+  const source = await readFile(path, 'utf8');
   for (const scale of source.match(/devScale="([^"]+)"/g) ?? []) {
-    bars += 1;
+    scalesSeen += 1;
     const unit = scale.replace(/devScale="|"/g, '').trim();
     if (!unit.endsWith('%')) {
       problems.push(
-        `${file}: 縮尺が % でない（${unit}）。` +
-          `px だと隔たり ${MAX_DEVIATION} ポイントで列から溢れる`,
+        `${file}: 縮尺が % でない（${unit}）。`
+        + 'px で持つと確率が高いほど塗りが器を越える',
       );
       continue;
     }
@@ -81,42 +59,82 @@ for (const file of ['GameTable.tsx', 'ProbabilityBar.tsx']) {
       problems.push(`${file}: 縮尺が読めない（${unit}）`);
       continue;
     }
-    // バーの半分が 50% である。最大の隔たりがそれを越えてはならない
+    // バーの半分（50%）に、最大の隔たりが収まること
     const widest = MAX_DEVIATION * perPoint;
     if (widest > 50) {
       problems.push(
-        `${file}: 隔たり ${MAX_DEVIATION} ポイントで幅 ${widest}% となり半幅 50% を越える`,
+        `${file}: 縮尺 ${unit} では 95% の塗りが ${widest.toFixed(1)}% になり、`
+        + 'バーの半分（50%）を越える',
       );
     }
   }
 }
+if (scalesSeen === 0) {
+  problems.push('devScale を持つ部品が1つも見つからない（バーの組み方が変わったか）');
+}
 
-// 3. 軸の**描き方**を検査する。クラスが付いていても描かれないことがある
-const css = await readFile(CSS_SOURCE, 'utf8');
-const rule = css.slice(css.indexOf('.axis-column'));
-const block = rule.slice(0, rule.indexOf('}') + 1);
-if (!block.includes('background-image')) {
-  problems.push('globals.css: .axis-column が背景で軸を描いていない');
-}
-if (!/background-size:\s*1px\s+100%/.test(block)) {
-  problems.push('globals.css: .axis-column の軸が全高（1px 100%）でない');
-}
-// `::after` + `position: relative` に戻すと iOS Safari で1本も出なくなる
-if (css.includes('.axis-column::after') || /\.axis-column\s*\{[^}]*position:\s*relative/.test(css)) {
+// ── 2. 軸を背景で描く ────────────────────────────────────────────
+// **コメントを落としてから見る。** 廃止した仕組みは文書として言及が残るため、
+// 素朴に `includes` すると自分の注記を拾って落ちる（実際に落ちた）。
+const css = (await readFile(CSS_SOURCE, 'utf8')).replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+if (css.includes('.axis-column')) {
   problems.push(
-    'globals.css: .axis-column を絶対配置で描いている' +
-      '（border-collapse の表では WebKit が包含ブロックを作らない）',
+    'globals.css: .axis-column が残っている。'
+    + 'スコアボード型では表をやめたため、この仕組みは使わない（基本設計 6.3）',
   );
 }
 
-if (bars === 0) {
-  console.error('check-bar: 縮尺の指定が1つも見つからない（部品の構造が変わったか）');
+const barRule = css.slice(css.indexOf('.axis-bar'));
+const barBlock = barRule.slice(0, barRule.indexOf('}') + 1);
+
+// ── 3. 溝が目盛りの全体を示す ───────────────────────────────────
+if (!/background-color:\s*var\(--groove\)/.test(barBlock)) {
+  problems.push(
+    'globals.css: .axis-bar に溝（--groove）がない。'
+    + 'ボードの中のバーは「どこまでが 0〜100 か」を示す器を要する',
+  );
+}
+
+// 互角帯（±5ポイント）が常に同じ位置に描かれていること
+if (!/var\(--band\)/.test(barBlock) || !css.includes('--band-half')) {
+  problems.push(
+    'globals.css: .axis-bar に互角帯（--band / --band-half）がない。'
+    + 'しきい値が画面に出ていないと、互角かどうかを読者が検算できない（要件 8.3）',
+  );
+}
+
+// 軸は `::after` で描くが、**位置は背景ではなく絶対配置**にした。
+// ボードの中ではバーが器であり、`border-collapse` の包含ブロックの問題は起きない。
+// それでも**幅1pxで上下いっぱいに通っている**ことは確かめる。
+const axisRule = css.slice(css.indexOf('.axis-bar::after'));
+const axisBlock = axisRule.slice(0, axisRule.indexOf('}') + 1);
+for (const [pattern, message] of [
+  [/left:\s*50%/, '軸が 50% の位置にない'],
+  [/width:\s*1px/, '軸の幅が 1px でない'],
+  [/background:\s*var\(--axis\)/, '軸が --axis で塗られていない'],
+  [/top:\s*0/, '軸が上端から始まっていない'],
+  [/bottom:\s*0/, '軸が下端まで届いていない'],
+]) {
+  if (!pattern.test(axisBlock)) problems.push(`globals.css: ${message}`);
+}
+
+// ── 4. 塗りは両側を持つ ─────────────────────────────────────────
+for (const name of ['.axis-fill-home', '.axis-fill-away']) {
+  if (!css.includes(name)) {
+    problems.push(`globals.css: ${name} がない（勝率は必ず両チーム分を示す。要件 8.3）`);
+  }
+}
+
+if (problems.length > 0) {
+  for (const problem of problems) console.error(`NG  ${problem}`);
+  console.error(
+    `\n勝率バーの組み方が ${problems.length} 件、設計と違う（基本設計 6.3 / 詳細設計 5.3）。`,
+  );
   process.exit(1);
 }
 
-console.log(`優勢バー ${bars} 本 / 優勢セル ${cells} 件を検査した`);
-if (problems.length > 0) {
-  for (const problem of problems) console.error(`NG  ${problem}`);
-  process.exit(1);
-}
-console.log('OK  軸が背景で列の全高に通り、どの確率でも塗りが列に収まる。');
+console.log(
+  'OK  縮尺は % で、95% の塗りも器に収まる。軸は 50% に幅1pxで上下いっぱいに通り、'
+  + '溝と互角帯が目盛りを示している。',
+);

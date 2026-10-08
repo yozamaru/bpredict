@@ -105,10 +105,29 @@ test('表示名が無いときは slug を出す', () => {
   // **`clubs.name`（現在の表示名）で埋めない** — 過去試合の表示が遡って変わる
   const club = toClub({ clubId: '692', slug: 'sendai-89ers', name: null, shortName: null });
   assert.deepEqual(club, {
+    // **`clubId` を写す**（2026-10-08 に足した）。`playerPredictions[].clubId` と
+    // 突き合わせて個人スタッツをクラブ別に畳むのに要る（詳細設計 5.3 の合計行）。
+    // **API も契約も持っているのに `toClub` が落としていた**ため、合計行が
+    // 実装できず「選手の合計が予想スコアと一致していることを画面で確かめられる」が
+    // 未達だった。
+    clubId: '692',
     slug: 'sendai-89ers',
     name: 'sendai-89ers',
     shortName: 'sendai-89ers',
   });
+});
+
+test('個人スタッツをクラブ別に畳める（合計を両チームで足さないため）', () => {
+  // **両チームを1つの配列で受け取る。** クラブで分けられないと総出場時間が
+  // 400分・得点が両チームの和という**誤った合計**になる（詳細設計 5.3）
+  const players = toPlayers([
+    rawPlayer({ playerId: '1', clubId: '692' }),
+    rawPlayer({ playerId: '2', clubId: '701' }),
+  ]);
+  assert.deepEqual(
+    players.map((p) => p.clubId),
+    ['692', '701'],
+  );
 });
 
 // --- 試合 ---

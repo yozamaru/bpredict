@@ -107,10 +107,13 @@ async function seedFullyPopulated(): Promise<Seed> {
        VALUES (?,?,?,?,0.68,6,'WIN',1,1,1,0.1024,3,0)`,
     ).bind(predictionId, s.gameId, s.seasonId, s.modelVersion),
     env.DB.prepare(
-      `INSERT INTO accuracy_summary (scope,scope_key,model_version,n,accuracy,brier,actual_rate)
-       VALUES ('OVERALL','all','',312,0.682,0.204,NULL),
-              ('MODEL',?,?,312,0.682,0.204,NULL),
-              ('BUCKET','60-70%','',42,0.690,0.204,0.690)`,
+      // **`hit_rate` は BUCKET 行だけが持つ**（詳細設計 1.6）。
+      // 入れないと `bucketContext` が null になり、契約のキーが欠ける
+      `INSERT INTO accuracy_summary
+         (scope,scope_key,model_version,n,accuracy,brier,actual_rate,hit_rate)
+       VALUES ('OVERALL','all','',312,0.682,0.204,NULL,NULL),
+              ('MODEL',?,?,312,0.682,0.204,NULL,NULL),
+              ('BUCKET','60-70%','',42,0.690,0.204,0.690,0.690)`,
     ).bind(s.modelVersion, s.modelVersion),
   ]);
   return s;
@@ -326,7 +329,7 @@ describe('内部APIの要求ボディ（契約）', () => {
     const res = await post('/internal/summary', bodyFrom('internalSummary', {
       scope: 'BUCKET', scopeKey: '60-70%', modelVersion: '', n: 42,
       accuracy: 0.65, brier: 0.21, actualRate: 0.69, baselineAccuracy: null,
-      scoreMae: 8.8,
+      scoreMae: 8.8, hitRate: 0.69,
     }));
     expect(res.status).toBe(200);
   });

@@ -185,7 +185,13 @@ describe('日付の検証（URL 空間の有限化。要件 4.2）', () => {
 
 describe('GET /results?date=', () => {
   /** 終了した試合と照合結果を入れる。 */
-  async function seedFinished(over: { isCorrect: number; outcome?: string; date: string }) {
+  async function seedFinished(
+    over: { isCorrect: number; outcome?: string; date: string; bucket?: number },
+  ) {
+    // **帯を変えられるようにする。** 50%未満の帯でしか出ない誤りがあり、
+    // 6（60-70%）に固定したままでは検査が空振りする
+    const bucket = over.bucket ?? 6;
+    const prob = bucket / 10 + 0.05;
     const s = await seedGame({ tipoffAt: '2026-09-22T10:05:00Z', status: 'FINISHED' });
     await seedClubSeasons(s);
     await moveTo(s, over.date);
@@ -196,21 +202,29 @@ describe('GET /results?date=', () => {
       `INSERT INTO prediction_results
          (prediction_id,game_id,season_id,model_version,home_win_prob,prob_bucket,outcome,
           predicted_home_win,actual_home_win,is_correct,brier,score_mae,was_provisional)
-       VALUES (?,?,?,?,0.68,6,?,1,1,?,0.1024,3,0)`,
-    ).bind(predictionId, s.gameId, s.seasonId, s.modelVersion,
-           over.outcome ?? 'WIN', over.isCorrect).run();
+       VALUES (?,?,?,?,?,?,?,?,1,?,0.1024,3,0)`,
+    ).bind(predictionId, s.gameId, s.seasonId, s.modelVersion, prob, bucket,
+           over.outcome ?? 'WIN', prob > 0.5 ? 1 : 0, over.isCorrect).run();
     return s;
   }
 
-  /** 確率帯の通算成績。`bucketContext` の出どころ（詳細設計 1.6 / 3.3） */
-  async function seedBucket(key: string, n: number, rate: number) {
+  /**
+   * 確率帯の通算成績。`bucketContext` の出どころ（詳細設計 1.6 / 3.3）。
+   *
+   * **`hit_rate`（的中率）と `actual_rate`（ホーム勝率）を別に受ける。**
+   * 同じ値で埋めると、`actual_rate` を読んでいた実装でも通ってしまう。
+   */
+  async function seedBucket(
+    key: string, n: number, hitRate: number | null, actualRate = 0.5,
+  ) {
     await env.DB.prepare(
       `INSERT INTO accuracy_summary
-         (scope,scope_key,model_version,n,accuracy,brier,actual_rate)
-       VALUES ('BUCKET',?, '', ?, 0.65, 0.2, ?)
+         (scope,scope_key,model_version,n,accuracy,brier,actual_rate,hit_rate)
+       VALUES ('BUCKET',?, '', ?, 0.65, 0.2, ?, ?)
        ON CONFLICT(scope,scope_key,model_version) DO UPDATE
-          SET n = excluded.n, actual_rate = excluded.actual_rate`,
-    ).bind(key, n, rate).run();
+          SET n = excluded.n, actual_rate = excluded.actual_rate,
+              hit_rate = excluded.hit_rate`,
+    ).bind(key, n, actualRate, hitRate).run();
   }
 
   type ResultsBody = { data: { results: { homeScore: number; evaluation: {
@@ -251,9 +265,35 @@ describe('GET /results?date=', () => {
     const context = body.data.results[0]!.evaluation.bucketContext;
     expect(context).not.toBeNull();
     expect(context!.n).toBe(42);
-    // correct は actual_rate × n から戻す（列として持っていない）
+    // correct は hit_rate × n から戻す（件数の列は持っていない）
     expect(context!.correct).toBe(29);
     expect(context!.rate).toBeCloseTo(0.69, 5);
+  });
+
+  it('**的中率は hit_rate から出す。`actual_rate` ではない**（詳細設計 1.6）', async () => {
+    // 27% と予想してアウェイが勝つ帯 — **予測は当たっているがホーム勝率は0%**。
+    // `actual_rate` を読んでいた実装は「0試合が的中（0.0%）」と出し、
+    // **「予測どおりでした」のすぐ下に矛盾した数字を並べていた**
+    // （2026-10-08 の本番で6試合中3試合。運営者の指摘で見つかった）
+    const date = nextDate();
+    await seedFinished({ isCorrect: 1, date, bucket: 2 });
+    await seedBucket('20-30%', 4, 1.0, 0.0);
+    const body = await (await get(`/results?date=${date}`, { token: null }))
+      .json<ResultsBody>();
+    const context = body.data.results[0]!.evaluation.bucketContext;
+    expect(context!.bucket).toBe('20-30%');
+    expect(context!.rate).toBeCloseTo(1.0, 5);
+    expect(context!.correct).toBe(4);
+  });
+
+  it('**hit_rate が NULL の帯は返さない**（0 として出さない。詳細設計 3.3）', async () => {
+    // 「0.0%が的中」は「1件も当たっていない」という意味を持ってしまう
+    const date = nextDate();
+    await seedFinished({ isCorrect: 1, date, bucket: 3 });
+    await seedBucket('30-40%', 7, null, 0.4);
+    const body = await (await get(`/results?date=${date}`, { token: null }))
+      .json<ResultsBody>();
+    expect(body.data.results[0]!.evaluation.bucketContext).toBeNull();
   });
 
   it('通算成績がまだ無ければ bucketContext は null（帯だけを出さない）', async () => {

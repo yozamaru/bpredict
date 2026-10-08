@@ -159,6 +159,7 @@
       "rows[].actualRate",
       "rows[].baselineAccuracy",
       "rows[].brier",
+      "rows[].hitRate",
       "rows[].modelVersion",
       "rows[].n",
       "rows[].scope",

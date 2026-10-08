@@ -241,8 +241,10 @@ describe('GET /games/:gameId（予測あり）', () => {
          VALUES (?,?,?,?,0.68,6,'LOSS',1,0,0,0.4624,5,0)`,
       ).bind(predictionId, s.gameId, s.seasonId, s.modelVersion),
       env.DB.prepare(
+        // **出典は `hit_rate`（的中率）であり `actual_rate`（ホーム勝率）ではない**
+        // （詳細設計 1.6）。2つに別の値を入れて、読み違えが通らないようにする
         `INSERT INTO accuracy_summary (scope, scope_key, model_version, n, accuracy, brier,
-           actual_rate) VALUES ('BUCKET','60-70%','',42,0.65,0.21,?)`,
+           actual_rate, hit_rate) VALUES ('BUCKET','60-70%','',42,0.65,0.21,0.5,?)`,
       ).bind(29 / 42),
     ]);
 

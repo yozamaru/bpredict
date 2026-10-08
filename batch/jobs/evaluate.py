@@ -219,6 +219,11 @@ class Summary:
     #: 予想スコアの誤差（**1チームあたり**の平均絶対誤差）。母数は `n` と同じ。
     #: **食い違う場合は None**（4.12。母数の列を2つ持たない）
     score_mae: float | None = None
+    #: **その帯の的中率。`BUCKET` 行だけが持つ**（1.6 / 4.12）。
+    #: 他のスコープでは `accuracy` がそのまま的中率であり、同じ値を2列に持たない。
+    #: **`actual_rate` で代用できない** — あれはホームが勝った割合で、
+    #: 50%未満の帯では的中率と符号が逆になる（本番で6試合中3試合が逆に出た）
+    hit_rate: float | None = None
 
 
 def _mean(values: Sequence[float]) -> float:
@@ -289,8 +294,14 @@ def summarize(results: Sequence[Result]) -> list[Summary]:
         if row is not None:
             rows.append(row)
 
-    # BUCKET — **`accuracy` 列には「予想した確率の平均」を入れる**（4.12）。
-    # 公開APIが `predicted: r.accuracy` / `actual: r.actual_rate` と読む
+    # BUCKET — **3つの意味を3つの列に分ける**（4.12）。
+    #   accuracy    = 予想した確率の平均       （較正曲線の横軸）
+    #   actual_rate = ホームが勝った割合       （較正曲線の縦軸）
+    #   hit_rate    = **その帯の的中率**       （/results の「位置づけ」）
+    #
+    # **`hit_rate` を足すまで `/results` は `actual_rate` を的中率として出していた。**
+    # 50%未満の帯では予測が「アウェイ勝ち」なので符号が反転し、27%と予想して
+    # アウェイが勝った試合に「0.0%が的中」と出ていた（2026-10-08 の本番で3件）。
     for bucket in sorted({r.prob_bucket for r in counted}):
         inside = [r for r in counted if r.prob_bucket == bucket]
         rows.append(Summary(
@@ -299,6 +310,7 @@ def summarize(results: Sequence[Result]) -> list[Summary]:
             accuracy=_mean([r.home_win_prob for r in inside]),
             brier=_mean([float(r.brier or 0.0) for r in inside]),
             actual_rate=_mean([float(r.actual_home_win or 0) for r in inside]),
+            hit_rate=_mean([float(r.is_correct or 0) for r in inside]),
             score_mae=_score_mae_of(inside),
         ))
 
@@ -339,6 +351,7 @@ def _summary_payload(rows: Sequence[Summary]) -> dict[str, object]:
             "actualRate": s.actual_rate,
             "baselineAccuracy": s.baseline_accuracy,
             "scoreMae": s.score_mae,
+            "hitRate": s.hit_rate,
         }
         for s in rows
     ]}

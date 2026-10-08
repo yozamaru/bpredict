@@ -222,10 +222,13 @@ SPECIFIC: dict[tuple[str, str], str] = {
     # accuracy_summary
     ("accuracy_summary", "scope"): "集計の単位",
     ("accuracy_summary", "scope_key"): "その単位の中の鍵（シーズンID・確率帯など）",
-    ("accuracy_summary", "accuracy"): "的中率。**画面では必ず母数を併記する**",
+    ("accuracy_summary", "accuracy"):
+        "的中率。**画面では必ず母数を併記する**。ただし `BUCKET` 行だけは「予想した確率の平均」である（較正曲線の横軸。的中率は `hit_rate`）",
     ("accuracy_summary", "baseline_accuracy"): "比較対象（ホーム必勝）の的中率",
     ("accuracy_summary", "score_mae"):
         "予想スコアの誤差。**1チームあたりの平均絶対誤差**で、得点差の MAE とは別物である。母数は `n` と同じ（食い違う場合は NULL）",
+    ("accuracy_summary", "hit_rate"):
+        "その確率帯の的中率。**`BUCKET` 行だけが持つ**（他のスコープは `accuracy` がそのまま的中率）。**`actual_rate`（ホーム勝率）と別の量で、50%未満の帯では符号が逆になる**",
     # ingestion_logs
     ("ingestion_logs", "id"): "実行の識別子",
     ("ingestion_logs", "job"): "ジョブ名",

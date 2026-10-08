@@ -19,6 +19,7 @@ from batch.static_json.builder import (
     ActualInput,
     ClubInput,
     EvaluationInput,
+    FactorInput,
     GameDetailInput,
     GameInput,
     GameListInput,
@@ -45,6 +46,9 @@ class PredictedGame:
     #: 根拠（詳細設計 2.7.1）。**現在の21列では2件**（`VENUE` に該当列がなく、
     #: `PLAYER` の3列は定数で寄与が厳密に 0）。空のこともある
     reasons: tuple[ReasonInput, ...] = ()
+    #: この予測に使った項目（詳細設計 2.7.2）。**21列すべて出る** — `reasons` が
+    #: 2件しか出ないことの埋め合わせではなく、別の問いへの答えである
+    factors: tuple[FactorInput, ...] = ()
     #: 整合化後の個人スタッツ（詳細設計 4.2）。**両チーム分か0件**である —
     #: 片側だけ出すと、画面の合計行が片方しか並べられない（5.3）
     players: tuple[PlayerInput, ...] = ()
@@ -236,6 +240,7 @@ def build_inputs(
             details.append(GameDetailInput(
                 game=game, prediction=prediction,
                 reasons=[] if found is None else list(found.reasons),
+                factors=[] if found is None else list(found.factors),
                 players=[] if found is None else list(found.players),
                 actuals=actuals.get(game.game_id, []),
             ))

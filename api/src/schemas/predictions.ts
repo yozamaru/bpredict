@@ -50,6 +50,28 @@ export const reasonSchema = z
   })
   .strict();
 
+/**
+ * この予測に使った項目（詳細設計 2.7.2 の `prediction_factors`）。
+ *
+ * **`reasonSchema` と別に持つ。** あちらは寄与の主張で `favors` が必須だが、
+ * こちらは「値が大きい側」であり**向きを持たない列がある**（`series_game_no` /
+ * `entry_is_official` / 差が 0）。
+ *
+ * `rank` の上限は特徴量の列数で決まる。現在21列で、**上限を40にしてある** —
+ * 列を足したときに Zod で落ちないようにするためで、`reasonSchema` の20
+ * （要因グループは4つしかない）とは別の数である。
+ */
+export const factorSchema = z
+  .object({
+    rank: z.number().int().min(1).max(40),
+    groupKey: z.enum(['TEAM_STRENGTH', 'SCHEDULE', 'PLAYER', 'VENUE']),
+    labelJa: z.string().min(1).max(128),
+    valueText: z.string().min(1).max(128),
+    // **「有利な側」ではない。** 向きを持たない列は null
+    larger: z.enum(['HOME', 'AWAY']).nullable(),
+  })
+  .strict();
+
 export const bundleSchema = z
   .object({
     modelType: z.enum([
@@ -79,6 +101,7 @@ export const predictionBody = z
     teamTargets: z.array(teamTargetSchema).max(2).optional(),
     playerPredictions: z.array(playerPredictionSchema).optional(),
     reasons: z.array(reasonSchema).optional(),
+    factors: z.array(factorSchema).max(40).optional(),
     modelBundle: z.array(bundleSchema).optional(),
   })
   .strict()

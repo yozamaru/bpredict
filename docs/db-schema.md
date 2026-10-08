@@ -28,6 +28,7 @@
 | [`player_seasons`](#player_seasons) | マスタ | 8 | — | 選手の所属断面。シーズン途中の移籍にも対応する |
 | [`player_stat_summary`](#player_stat_summary) | 集計 | 23 | — | 選手の実績の集計。シーズン別（**クラブ別**）と通算。保存するのは合計で、1試合平均は API が導出する |
 | [`players`](#players) | マスタ | 5 | — | 恒久的な選手の人物マスタ。所属は持たない（`player_seasons` と実績側が持つ） |
+| [`prediction_factors`](#prediction_factors) | — | 6 | — | **この予測に使った項目**（詳細設計 2.7.2）。`prediction_reasons` が「なぜそうなったか」を要因グループに集約して述べるのに対し、こちらは「**何を見たか**」を列ごとに並べる。**有利不利を主張しない**ため打ち消しが起きず、21列すべてを出せる |
 | [`prediction_model_bundle`](#prediction_model_bundle) | 予測 | 4 | — | その予測に使ったモデル一式。1本の予測は最大33本のモデルの合成である |
 | [`prediction_reasons`](#prediction_reasons) | 予測 | 8 | — | 判断根拠。個別特徴ではなく**要因グループ**に集約した SHAP 値を持つ |
 | [`prediction_results`](#prediction_results) | 評価 | 14 | — | 確定予測と実績の照合結果。**中止・延期は `VOID` として的中率の母数から外す** |
@@ -427,6 +428,21 @@ erDiagram
 | `created_at` | TEXT | 不可 | `datetime('now')` | — | 行を作った時刻 |
 | `updated_at` | TEXT | 不可 | `datetime('now')` | — | **値が変わった時刻**（`fetched_at` は取得時刻であって更新時刻ではない） |
 
+### prediction_factors
+
+— ／ `db/migrations/0014_*.sql` ／ 行数 —
+
+**この予測に使った項目**（詳細設計 2.7.2）。`prediction_reasons` が「なぜそうなったか」を要因グループに集約して述べるのに対し、こちらは「**何を見たか**」を列ごとに並べる。**有利不利を主張しない**ため打ち消しが起きず、21列すべてを出せる
+
+| 列 | 型 | NULL | 既定値 | 値あり | 説明 |
+|---|---|---|---|---:|---|
+| `prediction_id` 🔑 | TEXT | 不可 | — | — | 並び順。**寄与の大きさではない**（要因グループの順 → 列の順）。 寄与で並べると「どれがどれだけ効いたか」を主張することになり、 この表が避けている話に戻る |
+| `rank` 🔑 | INTEGER | 不可 | — | — | 表示順。**寄与の大きさではない**（要因グループの順 → 列の順） |
+| `group_key` | TEXT | 不可 | — | — | 要因グループ。画面には言い換えを出す 許容値: `TEAM_STRENGTH` / `SCHEDULE` / `PLAYER` / `VENUE` |
+| `label_ja` | TEXT | 不可 | — | — | 画面に出すラベル。**生の特徴量名を出さない**（要件 6.9） |
+| `value_text` | TEXT | 不可 | — | — | **値が大きい側。** 「有利な側」ではない（`prediction_reasons.favors` と 書き分ける）。係数が負の列（`drtg_diff`）では両者が逆を向く。 向きを持たない列（`series_game_no` / `entry_is_official` / 差が 0）は NULL |
+| `larger` | TEXT | 可 | — | — | **値が大きい側。「有利な側」ではない** — 係数が負の列（`drtg_diff`）では両者が逆を向く。向きを持たない列（6本）と差が 0 の列は NULL |
+
 ### prediction_model_bundle
 
 予測 ／ `db/migrations/0005_*.sql` ／ 行数 —
@@ -700,6 +716,8 @@ erDiagram
 | `trg_ppred_final_nodelete` | `player_predictions` |
 | `trg_ppred_parent_final_immutable` | `player_predictions` |
 | `trg_ppred_parent_final_nodelete` | `player_predictions` |
+| `trg_factors_final_immutable` | `prediction_factors` |
+| `trg_factors_final_nodelete` | `prediction_factors` |
 | `trg_bundle_final_immutable` | `prediction_model_bundle` |
 | `trg_bundle_final_nodelete` | `prediction_model_bundle` |
 | `trg_reasons_final_immutable` | `prediction_reasons` |

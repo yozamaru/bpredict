@@ -14,6 +14,7 @@ from batch.model.explain import (
     WORDING,
     Explainer,
     ExplainError,
+    factor_payload,
     logit,
     payload_of,
 )
@@ -274,3 +275,96 @@ def test_the_payload_matches_the_zod_schema_keys() -> None:
     }
     assert 1 <= len(str(body["labelJa"])) <= 128
     assert 1 <= len(str(body["valueText"])) <= 128
+
+
+class TestFactors:
+    """この予測に使った項目（詳細設計 2.7.2）。
+
+    運営者の指摘「どの項目からこの予測を導き出したのかを詳しく知りたい」に対する
+    もので、`reasons()` とは**別の問い**への答えである。
+    """
+
+    def test_every_column_is_listed(self) -> None:
+        """**21列すべて出る。** 寄与を主張しないため打ち消しが起きない。
+
+        `reasons()` は現在の21列で**2件しか出ない**（`VENUE` に該当列がなく、
+        `PLAYER` の3列は定数で寄与が厳密に 0）。こちらはその影響を受けない。
+        """
+        rows = explainer({"elo_diff": 0.01}).factors(features(elo_diff=82.0))
+        assert len(rows) == len(FEATURE_KEYS)
+        assert [r.rank for r in rows] == list(range(1, len(FEATURE_KEYS) + 1))
+
+    def test_a_constant_column_is_not_dropped(self) -> None:
+        """**定数列も「見た項目」である。** `reasons()` は落とすが、ここは落とさない。"""
+        labels = [r.label_ja for r in explainer().factors(features())]
+        assert WORDING["minutes_lost_diff"].label in labels
+        # 「未発表」は読者にとって意味のある事実である
+        assert WORDING["entry_is_official"].label in labels
+
+    def test_the_order_is_group_then_column(self) -> None:
+        """**寄与の大きさで並べない**（2.7.2）。
+
+        寄与で並べると「どれがどれだけ効いたか」を主張することになり、
+        この表が避けている話に戻る。
+        """
+        rows = explainer({"rest_days_diff": 10.0}).factors(
+            features(rest_days_diff=3.0, elo_diff=1.0))
+        groups = [r.group_key for r in rows]
+        # グループは `GROUP_ORDER` の順に固まって現れる（交互に出ない）
+        seen = [g for i, g in enumerate(groups) if i == 0 or groups[i - 1] != g]
+        assert seen == [g for g in GROUP_ORDER if g in set(groups)]
+        # 1件目はチーム力（寄与が最大なのは休養だが、並びは変わらない）
+        assert rows[0].group_key == "TEAM_STRENGTH"
+
+    def test_larger_is_the_side_with_the_bigger_value(self) -> None:
+        """**「有利な側」ではない**（2.7.2）。係数の符号を見ない。"""
+        by_key = {
+            r.label_ja: r
+            for r in explainer({"drtg_diff": -0.5}).factors(
+                features(elo_diff=82.0, drtg_diff=2.1))
+        }
+        assert by_key[WORDING["elo_diff"].label].larger == "HOME"
+        # **係数が負でも「値が大きい側」は変わらない**（有利な側とは逆を向く）
+        assert by_key[WORDING["drtg_diff"].label].larger == "HOME"
+
+    def test_a_negative_difference_points_away(self) -> None:
+        rows = {r.label_ja: r for r in explainer().factors(features(elo_diff=-82.0))}
+        assert rows[WORDING["elo_diff"].label].larger == "AWAY"
+
+    def test_a_zero_difference_has_no_side(self) -> None:
+        """**「同じだからホーム」のような既定値を置かない**（2.7.2）。"""
+        rows = {r.label_ja: r for r in explainer().factors(features(elo_diff=0.0))}
+        assert rows[WORDING["elo_diff"].label].larger is None
+
+    def test_non_directional_columns_have_no_side(self) -> None:
+        """片側の水準・両チーム共通・選択肢 の列は向きを持たない。"""
+        rows = {r.label_ja: r for r in explainer().factors(
+            features(elo_home=1582.0, series_game_no=2.0, away_streak_away=3.0))}
+        for key in ("elo_home", "elo_away", "series_game_no", "away_streak_away",
+                    "prev_result_diff", "entry_is_official"):
+            assert rows[WORDING[key].label].larger is None, key
+
+    def test_the_value_has_no_sign(self) -> None:
+        """**符号つきの数値を出さない**（2.7.1 と同じ規約）。向きは `larger` が持つ。"""
+        rows = {r.label_ja: r for r in explainer().factors(features(elo_diff=-82.0))}
+        assert rows[WORDING["elo_diff"].label].value_text == "82ポイント"
+
+    def test_missing_columns_are_rejected(self) -> None:
+        with pytest.raises(ExplainError):
+            explainer().factors({"elo_diff": 1.0})
+
+    def test_the_payload_sends_larger_not_favors(self) -> None:
+        """内部APIへ送る形（3.4）。**`favors` を送らない。**"""
+        row = explainer().factors(features(elo_diff=82.0))[0]
+        sent = factor_payload(row)
+        assert set(sent) == {"rank", "groupKey", "labelJa", "valueText", "larger"}
+        assert "favors" not in sent
+
+    def test_reasons_and_factors_stay_separate(self) -> None:
+        """**`factors` は `reasons` の不足を埋めるものではない**（2.7.2）。
+
+        A-01 の判定は `reasons` に対して行う。
+        """
+        ex = explainer({"elo_diff": 0.01})
+        assert len(ex.reasons(features(elo_diff=82.0))) < len(
+            ex.factors(features(elo_diff=82.0)))

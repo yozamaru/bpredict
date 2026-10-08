@@ -47,6 +47,11 @@ type ReasonRow = {
   group_key: string; label_ja: string; value_text: string; favors: string; contribution: number;
 };
 
+/** この予測に使った項目（詳細設計 2.7.2）。**寄与を持たない。** */
+type FactorRow = {
+  group_key: string; label_ja: string; value_text: string; larger: string | null;
+};
+
 type PlayerRow = {
   player_id: string; name: string; club_id: string; avail_prob: number;
   pred_minutes: number;
@@ -287,11 +292,17 @@ games.get('/games/:gameId', async (c) => {
     return okCached(c, body, finished ? CACHE.settled : CACHE.pending);
   }
 
-  const [reasons, players, evaluation, model] = await Promise.all([
+  const [reasons, factors, players, evaluation, model] = await Promise.all([
     c.env.DB.prepare(
       `SELECT group_key, label_ja, value_text, favors, contribution
          FROM prediction_reasons WHERE prediction_id = ? ORDER BY rank`,
     ).bind(prediction.id).all<ReasonRow>(),
+    // **この予測に使った項目**（詳細設計 2.7.2）。`reasons` とは別物で、
+    // 寄与ではなく「何を見たか」を全列並べる。並びは `rank`（グループ順 → 列順）
+    c.env.DB.prepare(
+      `SELECT group_key, label_ja, value_text, larger
+         FROM prediction_factors WHERE prediction_id = ? ORDER BY rank`,
+    ).bind(prediction.id).all<FactorRow>(),
     // `availProb < 0.5` の選手は含めない（要件 6.8.4）
     c.env.DB.prepare(
       `SELECT pp.player_id, p.name, pp.club_id, pp.avail_prob, pp.pred_minutes,
@@ -333,6 +344,12 @@ games.get('/games/:gameId', async (c) => {
     reasons: reasonRows.map((r) => ({
       group: r.group_key, label: r.label_ja, value: r.value_text,
       favors: r.favors, strength: strength(r.contribution, largest),
+    })),
+    // **`larger` は「値が大きい側」であり「有利な側」ではない**（2.7.2）。
+    // 係数が負の列（守備効率）では両者が逆を向く
+    factors: (factors.results ?? []).map((f) => ({
+      group: f.group_key, label: f.label_ja, value: f.value_text,
+      larger: f.larger === 'HOME' || f.larger === 'AWAY' ? f.larger : null,
     })),
   };
   body.playerPredictions = (players.results ?? []).map((row) => ({

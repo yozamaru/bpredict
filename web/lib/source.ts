@@ -140,6 +140,15 @@ export type GamesByDate = {
   accuracy: AccuracyShape;
 };
 
+/** この予測に使った項目（詳細設計 2.7.2）。**寄与を持たない。** */
+export type FactorShape = {
+  group: string;
+  label: string;
+  value: string;
+  /** **「有利な側」ではない。** 向きを持たない列は null */
+  larger: string | null;
+};
+
 export type ReasonShape = {
   group: string;
   label: string;
@@ -155,7 +164,16 @@ export type GameDetail = {
     homeScore: number | null;
     awayScore: number | null;
   };
-  prediction: (PredictionShape & { reasons: ReasonShape[] }) | null;
+  prediction: (PredictionShape & {
+    reasons: ReasonShape[];
+    /**
+     * この予測に使った項目（詳細設計 2.7.2）。
+     *
+     * **古い配信物にはキーが無い。** この画面を配った直後、次の `daily_ingest` が
+     * 書くまでは入っていない（`homeScore` と同じ。5.6）。省略可で受ける。
+     */
+    factors?: FactorShape[];
+  }) | null;
   evaluation: {
     outcome: string;
     isCorrect: boolean | null;

@@ -59,6 +59,21 @@ class ReasonInput:
 
 
 @dataclass(frozen=True)
+class FactorInput:
+    """この予測に使った項目1つ（詳細設計 2.7.2 の `prediction_factors`）。
+
+    **`ReasonInput` と別に持つ。** あちらは寄与の主張（`favors` / `contribution`）、
+    こちらは「何を見たか」である。**`larger` は値が大きい側であって有利な側ではない。**
+    """
+
+    group_key: str
+    label_ja: str
+    value_text: str
+    #: 向きを持たない列（片側の水準・両チーム共通・差が 0）は None
+    larger: str | None = None
+
+
+@dataclass(frozen=True)
 class PlayerInput:
     """整合化後の選手予測。**成功数は持たない**（率 × 試投数の導出値。詳細設計 1.5）。"""
 
@@ -193,6 +208,8 @@ class GameDetailInput:
     game: GameInput
     prediction: PredictionInput | None = None
     reasons: list[ReasonInput] = field(default_factory=list)
+    #: この予測に使った項目（詳細設計 2.7.2）。**21列すべて**
+    factors: list[FactorInput] = field(default_factory=list)
     players: list[PlayerInput] = field(default_factory=list)
     #: その試合の実績（詳細設計 3.3）。**予測の有無に依存しない** — 予測が1本も
     #: 無い試合でも「この試合の記録」は出す
@@ -492,6 +509,17 @@ def build_game_detail(source: GameDetailInput, generated_at: str) -> dict[str, A
                 "strength": _strength(reason.contribution, largest),
             }
             for reason in source.reasons
+        ],
+        # **使った項目の一覧**（詳細設計 2.7.2）。`reasons` とは別の問いへの答え
+        # であり、**有利不利を主張しない**（`larger` は値が大きい側）
+        "factors": [
+            {
+                "group": factor.group_key,
+                "label": factor.label_ja,
+                "value": factor.value_text,
+                "larger": factor.larger,
+            }
+            for factor in source.factors
         ],
     }
     # `avail_prob < 0.5` の選手は出さない（要件 6.8.4）。**ここでも落とす** —

@@ -70,6 +70,7 @@ from batch.loader.payload import (
     upcoming_games_payload,
 )
 from batch.model.dataset import as_of
+from batch.model.explain import factor_payload
 from batch.model.explain import payload_of as reason_payload
 from batch.model.predict import (
     ActiveModels,
@@ -108,7 +109,12 @@ from batch.scraper.client import (
     TransportError,
 )
 from batch.scraper.schedule import schedule_html_url
-from batch.static_json.builder import EvaluationInput, PlayerInput, ReasonInput
+from batch.static_json.builder import (
+    EvaluationInput,
+    FactorInput,
+    PlayerInput,
+    ReasonInput,
+)
 from batch.static_json.from_snapshot import PredictedGame, build_inputs
 from batch.static_json.writer import (
     DATA_DIR,
@@ -955,6 +961,9 @@ def run_inference(
         # **根拠は寄与から機械的に出る**（詳細設計 2.7.1）。例外を投げる経路は
         # 「列が足りない」だけで、それは `models.predict` が先に落とす
         reasons = models.explainer.reasons(features)
+        # **使った項目は全列出る**（詳細設計 2.7.2）。`reasons` が2件しか出ない
+        # ことの埋め合わせではなく、別の問い（「何を見たか」）への答えである
+        factors = models.explainer.factors(features)
         try:
             api.post("predictions", prediction_payload(
                 game_id=game_id, season_id=season_id, run_id=run_id,
@@ -962,6 +971,7 @@ def run_inference(
                 prediction=prediction, features=features,
                 model_versions=models.versions,
                 reasons=[reason_payload(r) for r in reasons],
+                factors=[factor_payload(f) for f in factors],
                 team_targets=team_target_rows(box),
                 player_predictions=player_rows(box),
                 # **使ったモデルだけを並べる**（詳細設計 4.2 の `modelBundle`）。
@@ -992,6 +1002,13 @@ def run_inference(
                     contribution=r.contribution,
                 )
                 for r in reasons
+            ),
+            factors=tuple(
+                FactorInput(
+                    group_key=f.group_key, label_ja=f.label_ja,
+                    value_text=f.value_text, larger=f.larger,
+                )
+                for f in factors
             ),
         ))
     return result

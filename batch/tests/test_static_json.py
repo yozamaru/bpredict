@@ -18,6 +18,7 @@ from batch.static_json.builder import (
     ActualInput,
     ClubInput,
     EvaluationInput,
+    FactorInput,
     GameDetailInput,
     GameInput,
     GameListInput,
@@ -172,6 +173,12 @@ def a_full_detail() -> GameDetailInput:
             ReasonInput("TEAM_STRENGTH", "チーム力の差", "＋82ポイント", "HOME", 0.42),
             ReasonInput("SCHEDULE", "アウェイの休養", "中0日", "HOME", 0.11),
         ],
+        factors=[
+            # **向きを持つ列と持たない列の両方を入れる**（`larger` が null を
+            # 取りうることを契約に残す。詳細設計 2.7.2）
+            FactorInput("TEAM_STRENGTH", "チーム力の差", "82ポイント", "HOME"),
+            FactorInput("SCHEDULE", "同一カードの連戦", "2戦目", None),
+        ],
         players=[a_player()],
         actuals=[an_actual()],
         evaluation=EvaluationInput(
@@ -306,6 +313,8 @@ class TestShape:
                 game=a_game(),
                 prediction=a_prediction(),
                 reasons=a_full_detail().reasons,
+                # **使った項目は試合前からある**（予測があれば出る。2.7.2）
+                factors=a_full_detail().factors,
                 players=[a_player()],
                 model_accuracy=AccuracyInput(0.682, 0.204, 312),
             ),

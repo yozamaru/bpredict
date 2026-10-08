@@ -143,6 +143,10 @@
       "data.playerPredictions[].summary.min",
       "data.playerPredictions[].summary.pts",
       "data.playerPredictions[].summary.reb",
+      "data.prediction.factors[].group",
+      "data.prediction.factors[].label",
+      "data.prediction.factors[].larger",
+      "data.prediction.factors[].value",
       "data.prediction.homeWinProb",
       "data.prediction.isFinal",
       "data.prediction.isProvisional",
@@ -234,10 +238,15 @@
     ]
   },
   "internalPredictions": {
-    "$comment": "POST /internal/predictions の本文（batch/loader/payload.py の prediction_payload）。**teamTargets と playerPredictions は v1.114 で出るようになった**（33本の登録と整合化の結線）。reasons は現在の21列では2件であり、**A-01 の「根拠3件以上」は依然として未達**である（詳細設計 2.7.1 / 4.2）",
+    "$comment": "POST /internal/predictions の本文（batch/loader/payload.py の prediction_payload）。**teamTargets と playerPredictions は v1.114 で出るようになった**（33本の登録と整合化の結線）。reasons は現在の21列では2件であり、**A-01 の「根拠3件以上」は依然として未達**である（詳細設計 2.7.1 / 4.2）。**factors は21件出る**が、あれは「使った項目の事実」であり寄与の主張ではないため、**A-01 の判定は reasons に対して行う**（2.7.2）",
     "paths": [
       "asOf",
       "dataAsOf",
+      "factors[].groupKey",
+      "factors[].labelJa",
+      "factors[].larger",
+      "factors[].rank",
+      "factors[].valueText",
       "featureSnapshot",
       "gameId",
       "homeWinProb",

@@ -61,7 +61,7 @@ export async function resetAll() {
   const live = '(SELECT id FROM predictions WHERE is_final = 0)';
   await env.DB.batch([
     ...['prediction_results', 'prediction_model_bundle', 'prediction_reasons',
-        'prediction_team_targets'].map((tbl) =>
+        'prediction_factors', 'prediction_team_targets'].map((tbl) =>
       env.DB.prepare(`DELETE FROM ${tbl} WHERE prediction_id IN ${live}`)),
     env.DB.prepare('DELETE FROM player_predictions WHERE is_final = 0'),
     env.DB.prepare('DELETE FROM predictions WHERE is_final = 0'),

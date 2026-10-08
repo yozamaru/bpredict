@@ -112,6 +112,25 @@ export type ReasonView = {
   strength: 1 | 2 | 3 | 4;
 };
 
+/**
+ * この予測に使った項目（詳細設計 2.7.2 の `prediction_factors`）。
+ *
+ * **`ReasonView` とは別物である。** あちらは「なぜそうなったか」を要因グループに
+ * 集約して述べ、こちらは「**何を見たか**」を列ごとに並べる。
+ */
+export type FactorView = {
+  /** 要因グループの識別子。画面には言い換えを出す（`FactorList`） */
+  group: string;
+  /** 表示名。生の特徴量名は出さない（要件 6.9） */
+  label: string;
+  value: string;
+  /**
+   * 値が大きい側。**「有利な側」ではない** — 係数が負の列（守備効率）では
+   * 両者が逆を向く。向きを持たない列と差が 0 の列は null（2.7.2）。
+   */
+  larger: 'HOME' | 'AWAY' | null;
+};
+
 /** 個人スタッツ予測。成功数は率×試投数の導出値で、独立に持たない（要件 6.8.2） */
 export type PlayerView = {
   playerId: string;

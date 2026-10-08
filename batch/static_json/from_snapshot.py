@@ -18,9 +18,11 @@ from batch.features.dataset import Dataset
 from batch.static_json.builder import (
     ActualInput,
     ClubInput,
+    EvaluationInput,
     GameDetailInput,
     GameInput,
     GameListInput,
+    GameListRow,
     PlayerInput,
     PredictionInput,
     ReasonInput,
@@ -171,6 +173,7 @@ def _days(today: str, days: int) -> list[str]:
 
 def build_inputs(
     ds: Dataset, predictions: Sequence[PredictedGame], *, today: str, days: int,
+    verdicts: Mapping[str, EvaluationInput] | None = None,
 ) -> tuple[GameListInput, list[GameListInput], list[GameDetailInput]]:
     """`today.json` / `schedule/<date>.json` / `games/<id>.json` の入力。
 
@@ -184,9 +187,13 @@ def build_inputs(
     wanted = [today, *_days(today, days)]
     picked = games[games["game_date"].isin(wanted)].sort_values(["tipoff_at", "id"])
 
-    rows: dict[str, list[tuple[GameInput, PredictionInput | None]]] = {
-        day: [] for day in wanted
-    }
+    rows: dict[str, list[GameListRow]] = {day: [] for day in wanted}
+    # **照合の結果はこの回の `evaluate` から受け取る**（詳細設計 3.3 の v1.131）。
+    # スナップショットに `prediction_results` は無く、**D1 から読み戻さない**。
+    # **遅い時刻に終わった試合には付かない** — スロットは 06/11/13/16 JST で、
+    # 19:05 開始の試合が終わる頃には次の回がない（その試合は翌日に窓から出て、
+    # `/schedule/<date>` が公開APIへ落ちる。あちらは照合済みの値を持つ）
+    found_verdicts = dict(verdicts or {})
     # **当日の試合の実績だけを引く**（詳細は当日の試合だけである。詳細設計 3.7）。
     # 終了した試合は 16:00 のスロットで実績が入っており、ここで静的JSON に乗る —
     # **無料枠が枯れた日でも「この試合の記録」が見える**（要件 4.2）
@@ -219,7 +226,11 @@ def build_inputs(
             # **推測で False を入れない。** 消化試合数の集計がない（builder の注記）
             is_early_season=None,
         )
-        rows[str(row.game_date)].append((game, prediction))
+        rows[str(row.game_date)].append(GameListRow(
+            game=game, prediction=prediction,
+            # **予測が無ければ照合も無い**（照合は予測に対する判定である）
+            evaluation=None if prediction is None else found_verdicts.get(game.game_id),
+        ))
         if str(row.game_date) == today:
             # **詳細は当日の試合だけ**（詳細設計 3.7。7日窓にすると年460MB 積む）
             details.append(GameDetailInput(

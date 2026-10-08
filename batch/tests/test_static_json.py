@@ -21,6 +21,7 @@ from batch.static_json.builder import (
     GameDetailInput,
     GameInput,
     GameListInput,
+    GameListRow,
     MetaInput,
     PlayerInput,
     PredictionInput,
@@ -185,12 +186,85 @@ def a_full_detail() -> GameDetailInput:
     )
 
 
+class TestListResults:
+    """一覧の実績の併記（詳細設計 3.3 の v1.131）。
+
+    運営者の指摘「詳細画面じゃないと結果が分からない」に対して、**一覧でも
+    予測と実績を併記する**。
+    """
+
+    def _list(self, row: GameListRow) -> dict[str, Any]:
+        payload = build_game_list(
+            GameListInput(game_date="2026-10-07", games=[row]), GENERATED_AT)
+        games = payload["data"]["games"]
+        assert isinstance(games, list)
+        first = games[0]
+        assert isinstance(first, dict)
+        return first
+
+    def test_finished_games_carry_the_score(self) -> None:
+        game = self._list(GameListRow(
+            a_game(status="FINISHED", home_score=81, away_score=87), a_prediction()))
+        assert (game["homeScore"], game["awayScore"]) == (81, 87)
+
+    def test_unfinished_games_hide_the_score(self) -> None:
+        """**列に値があっても出さない。** 詳細と同じ関門である（3.3）。"""
+        game = self._list(GameListRow(
+            a_game(home_score=40, away_score=38), a_prediction()))
+        assert (game["homeScore"], game["awayScore"]) == (None, None)
+
+    def test_the_verdict_is_null_until_the_match_is_evaluated(self) -> None:
+        """**終了してもすぐには付かない**（freeze は毎時、照合は日次）。
+
+        **false で埋めない** — null は「まだ照合していない」であって
+        「外した」ではない。
+        """
+        game = self._list(GameListRow(
+            a_game(status="FINISHED", home_score=81, away_score=87), a_prediction()))
+        assert game["evaluation"] is None
+
+    def test_the_verdict_comes_from_the_evaluation(self) -> None:
+        game = self._list(GameListRow(
+            a_game(status="FINISHED", home_score=81, away_score=87),
+            a_prediction(),
+            EvaluationInput(is_correct=False, score_error=5.5, outcome="LOSS"),
+        ))
+        assert game["evaluation"] == {"isCorrect": False, "scoreError": 5.5}
+
+    def test_the_keys_exist_even_before_the_game(self) -> None:
+        """**キーを落とさない**（3.1 の契約）。中身だけが変わる。"""
+        game = self._list(GameListRow(a_game(), a_prediction()))
+        for key in ("homeScore", "awayScore", "evaluation"):
+            assert key in game
+
+    def test_a_game_without_a_prediction_has_no_verdict(self) -> None:
+        """**予測が無ければ照合も無い**（照合は予測に対する判定である）。
+
+        **ここでも落とす。** 呼び出し側の取りこぼしで「判定する対象の無い判定」が
+        出ないようにするためで、`avail_prob` の二重の絞り込みと同じ作法である。
+        """
+        game = self._list(GameListRow(
+            a_game(status="FINISHED", home_score=81, away_score=87),
+            None,
+            EvaluationInput(is_correct=True, score_error=1.0, outcome="WIN"),
+        ))
+        assert game["evaluation"] is None
+        # スコアは出す（事実であり、予測とは独立している）
+        assert (game["homeScore"], game["awayScore"]) == (81, 87)
+
+
 class TestContract:
     def test_game_list_matches_contract(self) -> None:
         payload = build_game_list(
             GameListInput(
                 game_date="2026-09-26",
-                games=[(a_game(), a_prediction())],
+                games=[GameListRow(
+                    a_game(status="FINISHED", home_score=88, away_score=81),
+                    a_prediction(),
+                    # **実績と判定も入れた標本で契約を照合する**（v1.131）。
+                    # 入れないと `evaluation` が null になり、配下のキーが欠ける
+                    EvaluationInput(is_correct=True, score_error=3.0, outcome="WIN"),
+                )],
                 accuracy=AccuracyInput(accuracy=0.682, brier=0.204, n=312),
             ),
             GENERATED_AT,
@@ -219,7 +293,7 @@ class TestShape:
     def test_prediction_is_null_but_the_key_remains(self) -> None:
         """予測がない試合を一覧から落とさない（要件 8.5）。"""
         payload = build_game_list(
-            GameListInput(game_date="2026-09-26", games=[(a_game(), None)]), GENERATED_AT
+            GameListInput(game_date="2026-09-26", games=[GameListRow(a_game(), None)]), GENERATED_AT
         )
         game = payload["data"]["games"][0]
         assert "prediction" in game
@@ -313,7 +387,7 @@ class TestShape:
     def test_tipoff_is_utc_and_no_jst_label(self) -> None:
         """UTC のまま出す。JST の文字列を作らない（CLAUDE.md 時刻の扱い）。"""
         payload = build_game_list(
-            GameListInput(game_date="2026-09-26", games=[(a_game(), a_prediction())]),
+            GameListInput(game_date="2026-09-26", games=[GameListRow(a_game(), a_prediction())]),
             GENERATED_AT,
         )
         assert payload["data"]["games"][0]["tipoffAt"] == "2026-09-26T10:05:00Z"
@@ -419,7 +493,7 @@ class TestWriter:
     def _write(self, root: Path, **over: Any) -> Any:
         kwargs: dict[str, Any] = {
             "today": GameListInput(
-                game_date="2026-09-26", games=[(a_game(), a_prediction())]
+                game_date="2026-09-26", games=[GameListRow(a_game(), a_prediction())]
             ),
             "upcoming": [GameListInput(game_date="2026-09-27")],
             "details": [
@@ -531,7 +605,7 @@ class TestWriter:
         self._write(
             tmp_path,
             today=GameListInput(
-                game_date="2026-10-07", games=[(a_game(game_id="old"), a_prediction())]
+                game_date="2026-10-07", games=[GameListRow(a_game(game_id="old"), a_prediction())]
             ),
             details=[GameDetailInput(game=a_game(game_id="old"), prediction=a_prediction())],
         )
@@ -565,7 +639,7 @@ class TestWriter:
             tmp_path,
             today=GameListInput(
                 game_date="2026-09-26",
-                games=[(a_game(game_id="yes"), a_prediction()), (a_game(game_id="no"), None)],
+                games=[GameListRow(a_game(game_id="yes"), a_prediction()), GameListRow(a_game(game_id="no"), None)],
             ),
             details=[],
         )
@@ -579,7 +653,7 @@ class TestWriter:
             upcoming=[
                 GameListInput(
                     game_date="2026-09-27",
-                    games=[(a_game(game_id="tomorrow"), a_prediction())],
+                    games=[GameListRow(a_game(game_id="tomorrow"), a_prediction())],
                 )
             ],
         )
@@ -592,7 +666,7 @@ class TestWriter:
             tmp_path,
             today=GameListInput(
                 game_date="2026-09-26",
-                games=[(a_game(game_id="b"), a_prediction()), (a_game(game_id="a"), a_prediction())],
+                games=[GameListRow(a_game(game_id="b"), a_prediction()), GameListRow(a_game(game_id="a"), a_prediction())],
             ),
             details=[],
         )
@@ -601,7 +675,7 @@ class TestWriter:
             tmp_path,
             today=GameListInput(
                 game_date="2026-09-26",
-                games=[(a_game(game_id="a"), a_prediction()), (a_game(game_id="b"), a_prediction())],
+                games=[GameListRow(a_game(game_id="a"), a_prediction()), GameListRow(a_game(game_id="b"), a_prediction())],
             ),
             details=[],
         )

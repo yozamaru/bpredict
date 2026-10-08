@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { AxisBar, WinProbRows } from '@/components/prediction/ProbabilityBar';
 import { StatusBadge } from '@/components/prediction/StatusBadge';
-import { favoredSide, isTossUp, percentPair, statusBadgeKind, type GameView } from '@/lib/view';
+import {
+  favoredSide, isTossUp, percentPair, resultLine, statusBadgeKind, type GameView,
+} from '@/lib/view';
 
 /**
  * その日の試合を**1試合 = 1枚のボード**で並べる（基本設計 6.3。2026-10-08 に
@@ -33,6 +35,8 @@ function GameBoard({ game }: { game: GameView }) {
   const { home, away } = percentPair(game.homeWinProb);
   const tossUp = isTossUp(game.homeWinProb);
   const kind = statusBadgeKind(game);
+  // **実績が無ければ行を足さない**（詳細設計 5.3）。空の行はボードの高さだけを増やす
+  const result = resultLine(game);
   const label =
     `ホーム ${game.home.name} の勝率${home}パーセント、` +
     `アウェイ ${game.away.name} の勝率${away}パーセント。` +
@@ -105,6 +109,28 @@ function GameBoard({ game }: { game: GameView }) {
             </span>
           </div>
         </div>
+
+        {/* **終了した試合は実績を下に1行足す**（詳細設計 5.3 の v1.131。
+            運営者の指摘「詳細画面じゃないと結果が分からない」）。
+
+            **予測の表示を変えない。** 上のブロックは終了前と同じままで、
+            この行が増えるだけである（約180px → 約210px）。
+
+            **判定が無くてもスコアは出す。** 終了したのに照合が付いていない状態は
+            実在し（freeze は毎時、照合は日次）、そのとき出せるのはスコアだけである。
+
+            **外れた試合に強い否定色を使わない**（基本設計 5.2）。文字で書く */}
+        {result !== null && (
+          <div className="mt-0.5 flex items-baseline justify-between gap-2 border-t border-rule pt-2">
+            <span className="text-[12px] text-ink-3">
+              実績
+              {result.verdict !== null && (
+                <span className="ml-1.5 text-ink-2">{result.verdict}</span>
+              )}
+            </span>
+            <span className="num text-[16px] font-bold text-ink">{result.score}</span>
+          </div>
+        )}
       </Link>
     </article>
   );

@@ -13,7 +13,7 @@
     "内部APIの要求ボディも同じ仕組みで固定する（詳細設計 4.12）。api/tests/models-ops.test.ts と batch/tests/test_job_evaluate.py の両方がこれを読む。"
   ],
   "gamesByDate": {
-    "$comment": "GET /games?date= / GET /results?date= の一覧 = today.json と schedule/<date>.json",
+    "$comment": "GET /games?date= の一覧 = today.json と schedule/<date>.json。GET /results?date= は形が別であり、ここでは固定しない（api のテストが見る。詳細設計 3.3 の v1.101）",
     "paths": [
       "data.accuracy.accuracy",
       "data.accuracy.brier",
@@ -23,12 +23,16 @@
       "data.games[].away.name",
       "data.games[].away.shortName",
       "data.games[].away.slug",
+      "data.games[].awayScore",
       "data.games[].competition",
+      "data.games[].evaluation.isCorrect",
+      "data.games[].evaluation.scoreError",
       "data.games[].gameId",
       "data.games[].home.clubId",
       "data.games[].home.name",
       "data.games[].home.shortName",
       "data.games[].home.slug",
+      "data.games[].homeScore",
       "data.games[].prediction.homeWinProb",
       "data.games[].prediction.isEarlySeason",
       "data.games[].prediction.isFinal",

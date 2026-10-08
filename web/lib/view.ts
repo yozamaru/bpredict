@@ -40,6 +40,21 @@ export type GameView = {
   isFinal: boolean;
   /** 両チームとも消化5試合未満 */
   isEarlySeason: boolean;
+  /**
+   * 実際のスコア。**終了していなければ null**（v1.131）。
+   *
+   * 運営者の指摘「詳細画面じゃないと結果が分からない」に対して、**一覧でも
+   * 予測と実績を併記する**（要件 F-09 / 基本設計 5.2）。
+   */
+  homeScore: number | null;
+  awayScore: number | null;
+  /**
+   * 照合の結果。**終了してもすぐには付かない**（freeze は毎時、照合は日次。
+   * 基本設計 4.1）。**null は「まだ照合していない」であって「外した」ではない。**
+   */
+  isCorrect: boolean | null;
+  /** 得点の誤差（1チームあたり）。`null` は未照合か予想スコア未保存 */
+  scoreError: number | null;
 };
 
 export type AccuracyView = {
@@ -241,3 +256,27 @@ export type ActualView = {
   ft: { m: number | null; a: number | null; pct: number | null };
   efgPct: number | null;
 };
+
+/**
+ * 一覧に出す「結果」の1行（詳細設計 5.3 の v1.131）。
+ *
+ * **実績が無ければ出さない。** スコアが揃っていない試合に空の行を足すと、
+ * **ボードの高さだけが増えて何も伝わらない。**
+ *
+ * **判定が無くてもスコアは出す。** 終了したのに照合が付いていない状態は実在し
+ * （freeze は毎時、照合は日次）、そのとき出せるのはスコアだけである。
+ */
+export function resultLine(
+  game: GameView,
+): { score: string; verdict: string | null } | null {
+  if (game.homeScore === null || game.awayScore === null) return null;
+  return {
+    score: `${game.homeScore} – ${game.awayScore}`,
+    verdict:
+      game.isCorrect === null
+        ? null
+        : game.isCorrect
+          ? '予測どおりでした'
+          : '予測を外しました',
+  };
+}

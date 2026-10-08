@@ -162,11 +162,27 @@ class GameInput:
 
 
 @dataclass(frozen=True)
+class GameListRow:
+    """一覧の1行（詳細設計 3.3 の `games[]`）。
+
+    **タプルをやめて型にした**（v1.131）。照合の結果を持たせるためで、3要素の
+    タプルにすると**どれが何かを呼び出し側が位置で覚える**ことになる。
+
+    `evaluation` は**終了してもすぐには付かない**（freeze は毎時、照合は日次。
+    基本設計 4.1）。**予測が無ければ照合も無い** — 照合は予測に対する判定である。
+    """
+
+    game: GameInput
+    prediction: PredictionInput | None = None
+    evaluation: EvaluationInput | None = None
+
+
+@dataclass(frozen=True)
 class GameListInput:
     """`today.json` / `schedule/<date>.json` の入力。"""
 
     game_date: str
-    games: list[tuple[GameInput, PredictionInput | None]] = field(default_factory=list)
+    games: list[GameListRow] = field(default_factory=list)
     accuracy: AccuracyInput | None = None
 
 
@@ -365,7 +381,9 @@ def _accuracy(value: AccuracyInput | None) -> dict[str, Any] | None:
 def build_game_list(source: GameListInput, generated_at: str) -> dict[str, Any]:
     """`GET /games?date=` と同じ形を作る（詳細設計 3.3 / 3.7）。"""
     games: list[dict[str, Any]] = []
-    for game, prediction in source.games:
+    for row in source.games:
+        game, prediction = row.game, row.prediction
+        finished = game.status == "FINISHED"
         games.append(
             {
                 "gameId": game.game_id,
@@ -388,6 +406,22 @@ def build_game_list(source: GameListInput, generated_at: str) -> dict[str, Any]:
                         "isFinal": prediction.is_final,
                         "isEarlySeason": prediction.is_early_season,
                         "modelVersion": prediction.model_version,
+                    }
+                ),
+                # **終了した試合は実績も出す**（v1.131。運営者の指摘）。
+                # **`status` が FINISHED でなければ出さない** — 途中経過が入って
+                # いても出さないのは詳細と同じ関門である
+                "homeScore": game.home_score if finished else None,
+                "awayScore": game.away_score if finished else None,
+                # **照合していなければ null。** 0 や false で埋めない。
+                # **予測が無ければ照合も無い** — ここでも落とす（呼び出し側の
+                # 取りこぼしで、判定する対象の無い判定が出ないようにする）
+                "evaluation": (
+                    None
+                    if row.evaluation is None or prediction is None
+                    else {
+                        "isCorrect": row.evaluation.is_correct,
+                        "scoreError": row.evaluation.score_error,
                     }
                 ),
             }

@@ -113,9 +113,9 @@ def _predicted_game_ids(
     """
     found: list[str] = []
     for day in (today, *upcoming):
-        for game, prediction in day.games:
-            if prediction is not None:
-                found.append(game.game_id)
+        for row in day.games:
+            if row.prediction is not None:
+                found.append(row.game.game_id)
     return found
 
 

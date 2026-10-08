@@ -92,6 +92,13 @@ export function toGame(shape: GameShape): GameView | null {
     isFinal: prediction.isFinal,
     // **null は false として扱う。** 「序盤である」と主張できないため出さない
     isEarlySeason: prediction.isEarlySeason === true,
+    // **実績はサーバが出した値をそのまま写す**（v1.131）。終了していなければ null で
+    // あり、**スコアから勝敗を計算し直さない**（`VOID` の扱いが画面側へ漏れる）
+    homeScore: shape.homeScore ?? null,
+    awayScore: shape.awayScore ?? null,
+    // **null は「まだ照合していない」であって「外した」ではない**（3.3）
+    isCorrect: shape.evaluation?.isCorrect ?? null,
+    scoreError: shape.evaluation?.scoreError ?? null,
   };
 }
 

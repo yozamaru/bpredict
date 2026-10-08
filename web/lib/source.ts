@@ -115,6 +115,17 @@ export type GameShape = {
   away: ClubShape;
   /** **試合ごと省略しない。** 日程に載っているのに予測がない状態は実在する */
   prediction: PredictionShape | null;
+  /**
+   * 実際のスコア（v1.131）。**終了していなければ null。**
+   *
+   * **古い配信物にはキーが無い。** この画面を配った直後、次の `daily_ingest` が
+   * 書くまでは `today.json` にこのキーが入っていない（`latestResultDate` と同じ。
+   * 詳細設計 5.6）。したがって省略可で受ける。
+   */
+  homeScore?: number | null;
+  awayScore?: number | null;
+  /** 照合の結果。**終了してもすぐには付かない**（基本設計 4.1） */
+  evaluation?: { isCorrect: boolean | null; scoreError: number | null } | null;
 };
 
 export type AccuracyShape = {

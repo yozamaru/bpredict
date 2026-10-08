@@ -29,6 +29,7 @@ import {
   toResults,
   tipoffLabel,
 } from '../map.ts';
+import { resultLine } from '../view.ts';
 import type { GameShape, Meta } from '../source.ts';
 
 // --- 時刻（CLAUDE.md 時刻の扱い） ---
@@ -463,4 +464,68 @@ test('実績のポジションは5値のどれでもなければ null', () => {
   // 画面はサーバを信じきらない（`toPlayer` と同じ作法）
   assert.equal(toActuals([actualRow({ position: 'G' })])[0]!.position, null);
   assert.equal(toActuals([actualRow({ position: null })])[0]!.position, null);
+});
+
+/**
+ * 一覧の実績の併記（`resultLine`。詳細設計 5.3 の v1.131）。
+ *
+ * 運営者の指摘「詳細画面じゃないと結果が分からない」に対して、**一覧でも
+ * 予測と実績を併記する**。
+ */
+function finishedGame(over: Record<string, unknown> = {}): GameShape {
+  return {
+    gameId: 'g1',
+    tipoffAt: '2026-10-07T10:05:00Z',
+    status: 'FINISHED',
+    competition: 'REGULAR',
+    home: { clubId: 'ch', slug: 'home', name: '架空ホーム', shortName: '架空H' },
+    away: { clubId: 'ca', slug: 'away', name: '架空アウェイ', shortName: '架空A' },
+    prediction: {
+      homeWinProb: 0.68,
+      predHomeScore: 84,
+      predAwayScore: 78,
+      isProvisional: false,
+      isFinal: true,
+      isEarlySeason: null,
+      modelVersion: 'winner-v1.0.0',
+    },
+    homeScore: 81,
+    awayScore: 87,
+    evaluation: { isCorrect: false, scoreError: 5.5 },
+    ...over,
+  };
+}
+
+test('終了した試合は実績のスコアと判定を出す', () => {
+  const game = toGame(finishedGame())!;
+  assert.deepEqual(resultLine(game), { score: '81 – 87', verdict: '予測を外しました' });
+});
+
+test('的中した試合の文言', () => {
+  const game = toGame(finishedGame({ evaluation: { isCorrect: true, scoreError: 3 } }))!;
+  assert.equal(resultLine(game)!.verdict, '予測どおりでした');
+});
+
+test('照合していなければスコアだけを出す（false で埋めない）', () => {
+  // 終了してもすぐには判定が付かない（freeze は毎時、照合は日次。基本設計 4.1）
+  const game = toGame(finishedGame({ evaluation: null }))!;
+  assert.deepEqual(resultLine(game), { score: '81 – 87', verdict: null });
+});
+
+test('実績が無ければ行を足さない', () => {
+  // 空の行はボードの高さだけを増やして何も伝えない（詳細設計 5.3）
+  const game = toGame(finishedGame({ homeScore: null, awayScore: null }))!;
+  assert.equal(resultLine(game), null);
+});
+
+test('古い配信物にキーが無くても落ちない', () => {
+  // この画面を配った直後、次の daily_ingest が書くまでキーが入っていない（5.6）
+  const shape = finishedGame();
+  delete (shape as Record<string, unknown>).homeScore;
+  delete (shape as Record<string, unknown>).awayScore;
+  delete (shape as Record<string, unknown>).evaluation;
+  const game = toGame(shape)!;
+  assert.equal(game.homeScore, null);
+  assert.equal(game.isCorrect, null);
+  assert.equal(resultLine(game), null);
 });

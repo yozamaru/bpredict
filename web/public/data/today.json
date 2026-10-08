@@ -19,7 +19,7 @@
      "slug": "alvark-tokyo"
     },
     "prediction": {
-     "homeWinProb": 0.8385428944909734,
+     "homeWinProb": 0.8385428944909733,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -73,13 +73,13 @@
      "slug": "nagasaki-velca"
     },
     "prediction": {
-     "homeWinProb": 0.4620843115360119,
+     "homeWinProb": 0.46208431153601187,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 79.7942952088979,
-     "predHomeScore": 78.56201343726029
+     "predAwayScore": 79.79429520889792,
+     "predHomeScore": 78.56201343726028
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-08T10:05:00Z"
@@ -127,7 +127,7 @@
      "slug": "ryukyu-golden-kings"
     },
     "prediction": {
-     "homeWinProb": 0.4214166648332711,
+     "homeWinProb": 0.421416664833271,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-08T00:34:22Z"
+  "generatedAt": "2026-10-08T08:13:14Z"
  }
 }

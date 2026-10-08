@@ -19,7 +19,7 @@
      "slug": "sendai-89ers"
     },
     "prediction": {
-     "homeWinProb": 0.22770684668279959,
+     "homeWinProb": 0.22770684668279967,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -46,7 +46,7 @@
      "slug": "ibaraki-robots"
     },
     "prediction": {
-     "homeWinProb": 0.30972745808549457,
+     "homeWinProb": 0.3097274580854944,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -73,7 +73,7 @@
      "slug": "altiri-chiba"
     },
     "prediction": {
-     "homeWinProb": 0.5010194664933131,
+     "homeWinProb": 0.5010194664933133,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -127,13 +127,13 @@
      "slug": "kyoto-hannaryz"
     },
     "prediction": {
-     "homeWinProb": 0.6006378947797992,
+     "homeWinProb": 0.6006378947797991,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 77.71976964713434,
-     "predHomeScore": 81.02105819109241
+     "predAwayScore": 77.71976964713436,
+     "predHomeScore": 81.0210581910924
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-09T10:15:00Z"
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-08T00:34:22Z"
+  "generatedAt": "2026-10-08T08:13:14Z"
  }
 }

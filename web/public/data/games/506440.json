@@ -26,12 +26,12 @@
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.4620843115360119,
+   "homeWinProb": 0.46208431153601187,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
-   "predAwayScore": 79.7942952088979,
-   "predHomeScore": 78.56201343726029,
+   "predAwayScore": 79.79429520889792,
+   "predHomeScore": 78.56201343726028,
    "reasons": [
     {
      "favors": "AWAY",
@@ -52,6 +52,6 @@
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-08T00:34:22Z"
+  "generatedAt": "2026-10-08T08:13:14Z"
  }
 }

@@ -19,7 +19,7 @@
      "slug": "altiri-chiba"
     },
     "prediction": {
-     "homeWinProb": 0.41641064031956104,
+     "homeWinProb": 0.4164106403195609,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -46,7 +46,7 @@
      "slug": "kyoto-hannaryz"
     },
     "prediction": {
-     "homeWinProb": 0.2669616999141547,
+     "homeWinProb": 0.26696169991415464,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -73,7 +73,7 @@
      "slug": "ibaraki-robots"
     },
     "prediction": {
-     "homeWinProb": 0.19233189110070417,
+     "homeWinProb": 0.19233189110070406,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -141,6 +141,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-08T00:34:22Z"
+  "generatedAt": "2026-10-08T08:13:14Z"
  }
 }

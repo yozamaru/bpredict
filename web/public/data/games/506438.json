@@ -26,7 +26,7 @@
   "modelAccuracy": null,
   "playerPredictions": [],
   "prediction": {
-   "homeWinProb": 0.8385428944909734,
+   "homeWinProb": 0.8385428944909733,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.1.0",
@@ -52,6 +52,6 @@
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-08T00:34:22Z"
+  "generatedAt": "2026-10-08T08:13:14Z"
  }
 }

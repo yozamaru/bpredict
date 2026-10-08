@@ -12,7 +12,7 @@ export const metadata = { title: '的中率 | B.PREDICT（仮称）' };
 export default function Page() {
   return (
     <>
-      <h2 className="mt-5 font-serif text-[19px] font-semibold tracking-[0.02em]">的中率</h2>
+      <h2 className="mt-5 font-serif text-[21px] font-semibold tracking-[0.02em] text-ink">的中率</h2>
       <AccuracyView />
     </>
   );

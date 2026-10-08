@@ -14,7 +14,7 @@ import { SITE_COPYRIGHT, SITE_VERSION } from '@/lib/version';
  */
 export function Footer() {
   return (
-    <footer className="mt-8 border-t border-rule py-4 text-[11px] leading-relaxed text-ink-3">
+    <footer className="mt-10 border-t border-rule pt-4 pb-6 text-[12px] leading-relaxed text-ink-3">
       <p>
         データ出典: B.LEAGUE 公式サイト（
         <a href="https://www.bleague.jp/" className="underline">
@@ -28,14 +28,19 @@ export function Footer() {
         予測内容について B.LEAGUE および各クラブへお問い合わせいただくことはご遠慮ください。
       </p>
       <nav aria-label="このサイトについて" className="mt-2 flex gap-4">
-        <Link href="/about/" className="flex min-h-11 items-center font-bold text-ink-2 underline">
+        <Link
+          href="/about/"
+          className="flex min-h-11 items-center text-[14px] font-bold text-ink-2 underline"
+        >
           免責・出典・個人情報の取扱い
         </Link>
       </nav>
       {/* 著作権表示と版（要件 F-12）。**数字は等幅で組む**（ui-implementation の
-          規約）。リンクにしない — 遷移先が無い。**© を出典より先に置かない** */}
-      <p className="mt-2 font-mono tabular-nums">{SITE_COPYRIGHT}</p>
-      <p className="font-mono tabular-nums">{SITE_VERSION}</p>
+          規約）。`font-mono` を直接書かず `num` を使う（基本設計 6.2）。ただし
+          ここは主数値ではなく注記の行なので、**ウェイトは上げない**。
+          リンクにしない — 遷移先が無い。**© を出典より先に置かない** */}
+      <p className="num mt-3 font-normal">{SITE_COPYRIGHT}</p>
+      <p className="num font-normal">{SITE_VERSION}</p>
     </footer>
   );
 }

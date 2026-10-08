@@ -24,11 +24,15 @@ export type HistoryView = {
  * ほぼ読めなくなる（コンテンツ幅の上限は 440px、左右ガター 16px。基本設計 6.3）。
  * 上段に「いつ・どこで・誰と」、下段に「予測と結果」を置く。
  *
+ * **下段を字下げしない**（2026-10-08）。旧版は上段の列幅に合わせた `pl-[6.5rem]` を
+ * 置いていたが、字組みを上げた（本文 15〜16px / ラベル 12px。基本設計 6.2）時点で
+ * 合わなくなる種類の指定である。左端で揃えれば列幅から独立する。
+ *
  * **勝率は両チーム分を出す**（要件 8.3）。「このクラブの勝率」だけを出すと、
  * 誰の何%なのかが行だけでは読めない。圧縮表示でも省略しない。
  *
  * **外れた試合に強い否定色を使わない**（詳細設計 5.3）。的中は `--home`（藍）、
- * 外れは `--text-2` にし、**色だけで情報を伝えない**（文字でも示す。要件 8.6）。
+ * 外れは `--ink-2` にし、**色だけで情報を伝えない**（文字でも示す。要件 8.6）。
  */
 /**
  * `linked` を false にすると、試合詳細へのリンクを外して同じ見た目を保つ。
@@ -36,35 +40,46 @@ export type HistoryView = {
  * **過去の試合には詳細ページが無い。** 静的生成の対象は窓の中（当日＋7日）の
  * 試合IDだけで（`lib/routes.ts`）、**リンクを出すと 404 になる**。
  * 「リンクはあるのに開けない」状態を作らない（`npm run test:links` の趣旨）。
+ *
+ * `alt` は行の地を1段落とす。**区切りは罫線ではなく面の明るさの差で作る**
+ * （基本設計 6.3。`--rule-soft` はスコアボード型で廃止された）。
  */
-export function HistoryRow({ item, linked = true }: { item: HistoryView; linked?: boolean }) {
+export function HistoryRow({
+  item,
+  linked = true,
+  alt = false,
+}: {
+  item: HistoryView;
+  linked?: boolean;
+  alt?: boolean;
+}) {
   const own = Math.round(item.ownWinProb * 100);
   const opponent = 100 - own;
   const won = item.ownScore > item.opponentScore;
 
   return (
-    <li className="border-b border-rule last:border-b-0">
+    <li className={`rounded-xs ${alt ? 'bg-panel-sub' : 'bg-panel'}`}>
       <Body linked={linked} gameId={item.gameId}>
-        <div className="flex items-baseline gap-2 text-[13px]">
-          <span className="w-14 shrink-0 text-ink-2">{item.dateLabel}</span>
-          <span className="w-11 shrink-0 text-[11px] font-bold text-ink-2">
+        <div className="flex items-baseline gap-2">
+          <span className="w-14 shrink-0 text-[12px] text-ink-3">{item.dateLabel}</span>
+          <span className="w-13 shrink-0 text-[12px] font-bold text-ink-3">
             {item.isHome ? 'ホーム' : 'アウェイ'}
           </span>
-          <span className="min-w-0 flex-1 truncate font-bold">{item.opponentName}</span>
-          <span className="shrink-0 font-bold">
+          <span className="min-w-0 flex-1 truncate text-[16px] text-ink-2">
+            {item.opponentName}
+          </span>
+          <span className="num shrink-0 text-[16px] text-ink">
             {item.ownScore}–{item.opponentScore}
           </span>
-          <span className="w-7 shrink-0 text-right text-[11px] font-bold text-ink-2">
+          <span className="w-8 shrink-0 text-right text-[12px] font-bold text-ink-2">
             {won ? '勝ち' : '負け'}
           </span>
         </div>
-        <div className="mt-0.5 flex items-baseline gap-2 pl-[6.5rem] text-[11px]">
+        <div className="mt-1 flex items-baseline gap-2 text-[12px]">
           <span className="flex-1 text-ink-3">
-            予測 {own}% — {opponent}%
+            予測 <span className="num">{own}%</span> — <span className="num">{opponent}%</span>
           </span>
-          <span
-            className={`shrink-0 font-bold ${item.isCorrect ? 'text-home' : 'text-ink-2'}`}
-          >
+          <span className={`shrink-0 font-bold ${item.isCorrect ? 'text-home' : 'text-ink-2'}`}>
             {item.isCorrect ? '的中' : '外れ'}
           </span>
         </div>
@@ -82,7 +97,7 @@ function Body({
   gameId: string;
   children: React.ReactNode;
 }) {
-  const className = 'block min-h-11 px-1 py-2';
+  const className = 'block min-h-13 px-3 py-2';
   return linked ? (
     <Link href={`/games/${gameId}/`} className={className}>
       {children}

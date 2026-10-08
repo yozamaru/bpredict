@@ -6,7 +6,7 @@
 // それより前の日付は Workers API からクライアント fetch で表示する。
 
 import { useEffect, useState } from 'react';
-import { GameTable } from '@/components/prediction/GameTable';
+import { GameBoardList } from '@/components/prediction/GameBoardList';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ACTIONS, LOADING, LOAD_ERROR, noGames } from '@/lib/messages';
 import { dateLabel, toGames } from '@/lib/map';
@@ -54,7 +54,7 @@ export function ScheduleView({ date }: { date: string }) {
     return (
       <p
         aria-live="polite"
-        className="border border-dashed border-rule px-2 py-3 text-center text-[12.5px] text-ink-3"
+        className="rounded-[2px] border border-dashed border-rule px-2 py-3 text-center text-ink-3"
       >
         {LOADING}
       </p>
@@ -63,5 +63,5 @@ export function ScheduleView({ date }: { date: string }) {
   if (games.length === 0) {
     return <EmptyState message={noGames(dateLabel(date))} action={ACTIONS.accuracy} />;
   }
-  return <GameTable games={[...games].sort(byTipoff)} dateLabel={dateLabel(date)} />;
+  return <GameBoardList games={[...games].sort(byTipoff)} dateLabel={dateLabel(date)} />;
 }

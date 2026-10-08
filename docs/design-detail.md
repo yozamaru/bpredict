@@ -6707,7 +6707,7 @@ CI が存在を検査する（`npm run test:stats`）。
 :root[data-theme="dark"] {
   --ground:#0E1116; --panel:#171C23; --panel-sub:#1E242D;
   --strip:#2E3642; --groove:#121720;
-  --ink:#F4F7FB; --ink-2:#C2CBD6; --ink-3:#8C97A6;
+  --ink:#F4F7FB; --ink-2:#C2CBD6; --ink-3:#98A3B2;
   --home:#58CFE6; --away:#F2A65A;    /* 0.5242 / 0.4690 */
   --warn:#E8C468; --warn-ink:#0E1116;
   --rule:#2A313B; --axis:#7B8899; --band:#2E3642;

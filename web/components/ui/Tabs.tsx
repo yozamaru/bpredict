@@ -27,11 +27,16 @@ function normalize(path: string): string {
  * **現在地はパスから導く。** 呼び出し側から渡すと、渡し忘れたページが静かに
  * 「今日の予測」を現在地として描く（実際にそうなっていた。`layout.tsx` が
  * 引数なしで描いており、下線も `aria-current` も動かなかった）。
+ *
+ * **現在地は面の差で示す**（基本設計 6.3。スコアボード型では線は意味を持つものだけ）。
+ * 旧版は `--ink` の下線を引いていたが、**`--ink` は主数値と画面見出しに予約する**
+ * という 6.1 の規約と食い違っていた。
+ * **色だけで伝えない** — `aria-current` と文字の濃さも併せて変える（要件 8.6）。
  */
 export function Tabs() {
   const current = normalize(usePathname() || '/');
   return (
-    <nav aria-label="主要な画面" className="-mx-1 mt-1 flex">
+    <nav aria-label="主要な画面" className="mt-2 flex gap-1">
       {TABS.map((tab) => {
         const active = normalize(tab.href) === current;
         return (
@@ -39,10 +44,8 @@ export function Tabs() {
             key={tab.href}
             href={tab.href}
             aria-current={active ? 'page' : undefined}
-            className={`flex min-h-11 items-center px-3 text-[13px] font-bold ${
-              active
-                ? 'border-b-2 border-ink text-ink'
-                : 'border-b-2 border-transparent text-ink-2'
+            className={`flex min-h-11 items-center rounded-xs px-3 text-[14px] font-bold ${
+              active ? 'bg-strip text-ink-2' : 'text-ink-3'
             }`}
           >
             {tab.label}

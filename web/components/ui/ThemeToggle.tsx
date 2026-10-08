@@ -47,7 +47,8 @@ export function ThemeToggle() {
       type="button"
       onClick={() => apply(theme === 'dark' ? 'light' : 'dark')}
       aria-pressed={theme === 'dark'}
-      className="min-h-11 min-w-11 rounded-xl border border-rule px-3 text-[11px] font-bold text-ink-2"
+      // **線で囲まない**（基本設計 6.3。線は意味を持つものだけ）。面の差で押せることを示す
+      className="flex min-h-11 min-w-11 items-center justify-center rounded-xs bg-panel px-3 text-[12px] font-bold text-ink-2"
     >
       {theme === 'dark' ? 'ダーク' : 'ライト'}
     </button>

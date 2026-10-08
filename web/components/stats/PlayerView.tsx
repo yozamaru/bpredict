@@ -4,6 +4,10 @@
 //
 // **出すのは集計値だけである**（要件 3.1.1）。試合ごとの記録を並べない。
 // **予測値を1つも出さない** — この画面に出るのはすべて実績である。
+//
+// 2026-10-08 にスコアボード型へ移した（基本設計 6.1〜6.3）。**通算の主数値が
+// 26px になり**（`StatSummaryTable` の `total`）、**季のクラブ名は行の2行目へ
+// 下げた**（`sublabel`。横幅を数値に譲る）。
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -45,7 +49,7 @@ export function PlayerView({ playerId }: { playerId: string }) {
     return (
       <p
         aria-live="polite"
-        className="mt-5 border border-dashed border-rule px-2 py-3 text-center text-[12.5px] text-ink-3"
+        className="mt-5 rounded-xs bg-panel px-3 py-4 text-center text-[15px] text-ink-3"
       >
         {LOADING}
       </p>
@@ -58,6 +62,8 @@ export function PlayerView({ playerId }: { playerId: string }) {
     rows.push({
       key: 'career',
       label: '通算',
+      // **主数値を 26px のカードで出す**（基本設計 6.2）
+      total: true,
       games: player.career.games,
       cells: [
         player.career.perGame.minutes,
@@ -74,7 +80,9 @@ export function PlayerView({ playerId }: { playerId: string }) {
       // **季中に移籍した季は2行になる**（クラブ別に持つため。詳細設計 1.9）。
       // 鍵に季とクラブの両方を含める
       key: `${season.seasonId}/${season.club.slug ?? ''}`,
-      label: club === null ? (season.label ?? season.seasonId) : `${season.label ?? season.seasonId} ${club}`,
+      label: season.label ?? season.seasonId,
+      // **クラブ名は2行目に置く**（横幅を数値に譲る。基本設計 6.3）
+      sublabel: club ?? undefined,
       games: season.games,
       cells: [
         season.perGame.minutes,
@@ -88,28 +96,27 @@ export function PlayerView({ playerId }: { playerId: string }) {
 
   return (
     <>
-      <h2 className="mt-5 font-serif text-[19px] font-semibold tracking-[0.02em]">
+      {/* **画面の見出しだけが `--ink` を使う**（主数値と共有。基本設計 6.1） */}
+      <h2 className="mt-5 font-serif text-[21px] font-semibold tracking-[0.02em] text-ink">
         {player.player.name}
       </h2>
 
       {player.current !== null && (
-        <p className="mt-1 text-[11.5px] text-ink-2">
+        <p className="mt-1.5 text-[15px] text-ink-3">
           <Link href={`/teams/${player.current.clubSlug}/`} className="underline">
             {player.current.clubName ?? player.current.clubSlug}
           </Link>
           {player.current.position !== null && <span> ・ {player.current.position}</span>}
-          {player.current.number !== null && (
-            <span className="font-mono"> #{player.current.number}</span>
-          )}
+          {player.current.number !== null && <span className="num"> #{player.current.number}</span>}
         </p>
       )}
 
-      {rows.length > 0 ? (
-        <StatSummaryTable heading="成績" columns={COLUMNS} rows={rows} />
-      ) : (
+      {rows.length === 0 ? (
         <div className="mt-4">
           <EmptyState message={NO_STATS_YET} action={ACTIONS.today} />
         </div>
+      ) : (
+        <StatSummaryTable heading="成績" columns={COLUMNS} rows={rows} />
       )}
 
       <StatNotes notes={[CAREER_RANGE, ACTUAL_NOT_RATING]} />

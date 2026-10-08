@@ -74,7 +74,9 @@ if (scalesSeen === 0) {
 }
 
 // ── 2. 軸を背景で描く ────────────────────────────────────────────
-const css = await readFile(CSS_SOURCE, 'utf8');
+// **コメントを落としてから見る。** 廃止した仕組みは文書として言及が残るため、
+// 素朴に `includes` すると自分の注記を拾って落ちる（実際に落ちた）。
+const css = (await readFile(CSS_SOURCE, 'utf8')).replace(/\/\*[\s\S]*?\*\//g, ' ');
 
 if (css.includes('.axis-column')) {
   problems.push(

@@ -4,11 +4,13 @@ export const dynamic = 'force-static';
 
 export const metadata = { title: 'このサイトについて | B.PREDICT（仮称）' };
 
+// 節見出しは明朝16px・`--ink-2`、本文は 15px（基本設計 6.1 / 6.2。スコアボード型）。
+// **`--ink` は主数値と画面見出し（h2）だけに予約する**ため、h3 には使わない。
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-6">
-      <h3 className="text-[15px] font-extrabold">{title}</h3>
-      <div className="mt-1.5 space-y-2 text-[13px] leading-relaxed text-ink-2">{children}</div>
+      <h3 className="font-serif text-[16px] font-semibold text-ink-2">{title}</h3>
+      <div className="mt-2 space-y-2.5 text-[15px] leading-relaxed text-ink-2">{children}</div>
     </section>
   );
 }
@@ -16,7 +18,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function Page() {
   return (
     <>
-      <h2 className="mt-5 text-[19px] font-extrabold">このサイトについて</h2>
+      <h2 className="mt-5 font-serif text-[21px] font-semibold tracking-[0.02em] text-ink">
+        このサイトについて
+      </h2>
 
       <Section title="非公式であること">
         <p>

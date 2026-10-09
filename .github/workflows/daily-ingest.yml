@@ -4,12 +4,16 @@
 #
 # | cron (UTC) | JST | ステップ |
 # |---|---|---|
-# | `0 21 * * *` | **06:00** | **すべて**（1 / 1b / 3 / 4 / 5） |
-# | `0 2,4,7 * * *` | 11:00 / 13:00 / 16:00 | 1 / 3 / 4 / 5 |
+# | `0 2 * * *` | **11:00** | **すべて**（1 / 1b / 3 / 4 / 5） |
+# | `0 6,10,14 * * *` | 15:00 / 19:00 / 23:00 | 1 / 3 / 4 / 5 |
 #
-# **06:00 以外ではステップ1b を回さない。** 日程の walk を1回節約する
+# **11:00 以外ではステップ1b を回さない。** 日程の walk を1回節約する
 # （要件 5.2「取得は必要最小限のページに限る」）。未実施の試合の追加・延期は
 # 1日1回の反映で足りる。
+#
+# **4つを1つの cron 式にまとめない。** `github.event.schedule` は cron 式を
+# そのまま返すため、`0 2,6,10,14 * * *` と書くと**4スロットが同じ文字列になり、
+# 11:00 を見分けられない**（ステップ1b の分岐が死ぬ）。
 #
 # **ワークフローを2つに分けない。** 設計 4.1 は `gameday_update` を別ジョブとして
 # 定めるが、**エントリー取得が未実装である今、行う処理は同じ**である。同じコマンドを
@@ -32,8 +36,8 @@ name: daily-ingest
 on:
   # **UTC で書く**（CLAUDE.md 時刻の扱い）。06:00 / 11:00 / 13:00 / 16:00 JST。
   schedule:
-    - cron: '0 21 * * *'
-    - cron: '0 2,4,7 * * *'
+    - cron: '0 2 * * *'
+    - cron: '0 6,10,14 * * *'
   workflow_dispatch:
     inputs:
       results:
@@ -133,7 +137,7 @@ jobs:
         env:
           RESULTS: ${{ github.event_name == 'schedule' || inputs.results }}
           # **ステップ1b は 06:00 だけ**（日程の walk を節約する。詳細設計 4.2）
-          UPCOMING: ${{ github.event_name == 'schedule' && github.event.schedule == '0 21 * * *' || github.event_name != 'schedule' && inputs.upcoming }}
+          UPCOMING: ${{ github.event_name == 'schedule' && github.event.schedule == '0 2 * * *' || github.event_name != 'schedule' && inputs.upcoming }}
           SETTLE: ${{ github.event_name == 'schedule' || inputs.settle }}
           INFERENCE: ${{ github.event_name == 'schedule' || inputs.inference }}
           DRY_RUN: ${{ inputs.dry_run }}

@@ -264,25 +264,42 @@ def test_backfill_carries_the_exclusion_list_home():
 # --- cron を置く条件（詳細設計 4.2） ---
 
 def test_daily_ingest_runs_four_times_a_day():
-    """**1日4回回す**（運営者の指示。2026-10-05）。
+    """**1日4回回す**（運営者の指示。2026-10-10 に時刻を変えた）。
 
-    cron は UTC で書く（CLAUDE.md 時刻の扱い）。06:00 JST = 21:00 UTC、
-    11:00 / 13:00 / 16:00 JST = 02:00 / 04:00 / 07:00 UTC。スロットの時刻は
-    設計 4.1 の `gameday_update` と同じである。
+    cron は UTC で書く（CLAUDE.md 時刻の扱い）。
+    **11:00 / 15:00 / 19:00 / 23:00 JST = 02:00 / 06:00 / 10:00 / 14:00 UTC。**
+    4つとも同じ UTC 日に収まるため、曜日指定のずらしは要らない。
     """
     body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    assert "cron: '0 21 * * *'" in body
-    assert "cron: '0 2,4,7 * * *'" in body
+    assert "cron: '0 2 * * *'" in body
+    assert "cron: '0 6,10,14 * * *'" in body
 
 
-def test_only_the_morning_slot_walks_the_upcoming_schedule():
-    """**06:00 以外ではステップ1b を回さない**（日程の walk を1回節約する）。
+def test_the_four_slots_are_not_one_cron_expression():
+    """**4つを1つの cron 式にまとめない。**
+
+    `github.event.schedule` は cron 式をそのまま返すため、
+    `0 2,6,10,14 * * *` と書くと**4スロットが同じ文字列になり、最初の
+    スロットを見分けられない** — ステップ1b の分岐が静かに全スロットで真になる。
+    """
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    crons = re.findall(r"- cron: '([^']+)'", body)
+    assert len(crons) == 2, crons
+    # ステップ1b を回すスロットの式は、時刻を1つしか持たないこと
+    gate = re.search(r"github\.event\.schedule == '([^']+)'", body)
+    assert gate is not None
+    assert gate.group(1) in crons, gate.group(1)
+    assert "," not in gate.group(1).split()[1], gate.group(1)
+
+
+def test_only_the_first_slot_walks_the_upcoming_schedule():
+    """**11:00 以外ではステップ1b を回さない**（日程の walk を1回節約する）。
 
     要件 5.2「取得は必要最小限のページに限る」。未実施の試合の追加・延期は
     1日1回の反映で足りる。
     """
     body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    assert "github.event.schedule == '0 21 * * *'" in body
+    assert "github.event.schedule == '0 2 * * *'" in body
 
 
 def test_the_schedule_run_turns_on_every_step():

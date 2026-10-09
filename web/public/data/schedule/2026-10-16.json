@@ -22,7 +22,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4085179324076,
+     "homeWinProb": 0.40851793240760004,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -52,7 +52,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.3952498250298055,
+     "homeWinProb": 0.3952498250298053,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -82,7 +82,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.271482364242925,
+     "homeWinProb": 0.2714823642429251,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -96,6 +96,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-09T00:49:00Z"
+  "generatedAt": "2026-10-09T01:12:12Z"
  }
 }

@@ -106,6 +106,34 @@ describe('GET /games/:gameId', () => {
     expect(game.venue?.isPrimary).toBe(true);
   });
 
+  /**
+   * **会場IDが無くても、名前があれば返す**（2026-10-09。運営者の指摘）。
+   *
+   * 未実施の試合には公式の `StadiumCD` が付かない（会場IDはボックススコアに
+   * しかない）。それでも**日程ページには会場が出ている**ため、返さないと
+   * 画面が「会場は未発表」と出し、**事実と違う表示になる**。
+   */
+  it('会場IDが無くても日程ページの会場名を返す', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await env.DB.prepare(
+      "UPDATE games SET venue_id = NULL, venue_name_at_game = '架空アリーナ' WHERE id = ?",
+    ).bind(s.gameId).run();
+
+    const game = (await body(await get(`/games/${s.gameId}`))).game as {
+      venue: { name: string; isPrimary: boolean | null } | null;
+    };
+    expect(game.venue?.name).toBe('架空アリーナ');
+    // **本拠かどうかは判定しない。** ID 同士で比べるものであり、名前では比べない
+    expect(game.venue?.isPrimary).toBeNull();
+  });
+
+  it('会場IDも名前も無ければ null を返す', async () => {
+    // **「未発表」は本当に何も無いときだけである**
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    const game = (await body(await get(`/games/${s.gameId}`))).game as { venue: unknown };
+    expect(game.venue).toBeNull();
+  });
+
   it('本拠が未設定なら代替会場とは言わない', async () => {
     // 「分からない」と「代替会場である」は違う（詳細設計 1.2）
     const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });

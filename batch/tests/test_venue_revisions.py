@@ -231,6 +231,15 @@ class _Recorder:
         return Response(200, json.dumps({"data": {"applied": {}}}))
 
 
+#: 収容人数を読まない場所（存在しないパス）。
+#:
+#: **合成シードのテストが本番のマスタ CSV を読まないようにする。** 2026-10-09 に
+#: 実在22会場の雛形を置いた回で CI が落ちた — **合成シードの試合には実在の会場が
+#: 無く、`(venue_id, valid_from)` がどの名称区間にも一致しない**。4.9 の関門は
+#: そのとおりに働いており、**テストが本番のマスタに依存していたことが誤りだった。**
+_NO_CAPACITIES = Path("batch/tests/does-not-exist.csv")
+
+
 def _api(recorder: _Recorder) -> InternalApi:
     return InternalApi("https://example.invalid", "t", transport=recorder)
 
@@ -241,7 +250,8 @@ def test_run_derives_from_the_seeded_games(
     """シードの改称（1会場が2シーズン目に改称）が区間2つになること。"""
     write_snapshot(export_sqlite(seeded_db), tmp_path)
     recorder = _Recorder()
-    result = build_venue_revisions.run(api=_api(recorder), snapshot_dir=tmp_path)
+    result = build_venue_revisions.run(api=_api(recorder), snapshot_dir=tmp_path,
+        capacity_csv=_NO_CAPACITIES)
 
     per_venue: dict[str, int] = {}
     for revision in result.revisions:
@@ -262,7 +272,8 @@ def test_run_writes_snapshot_and_posts_once(
     """
     write_snapshot(export_sqlite(seeded_db), tmp_path)
     recorder = _Recorder()
-    result = build_venue_revisions.run(api=_api(recorder), snapshot_dir=tmp_path)
+    result = build_venue_revisions.run(api=_api(recorder), snapshot_dir=tmp_path,
+        capacity_csv=_NO_CAPACITIES)
 
     assert len(recorder.calls) == 1
     _, payload = recorder.calls[0]
@@ -277,9 +288,11 @@ def test_run_is_idempotent(seeded_db: sqlite3.Connection, tmp_path: Path) -> Non
     """2回流して同じ結果になること（派生テーブルの洗い替え）。"""
     write_snapshot(export_sqlite(seeded_db), tmp_path)
     first, second = _Recorder(), _Recorder()
-    a = build_venue_revisions.run(api=_api(first), snapshot_dir=tmp_path)
+    a = build_venue_revisions.run(api=_api(first), snapshot_dir=tmp_path,
+        capacity_csv=_NO_CAPACITIES)
     digest = (tmp_path / "venue_revisions.parquet").read_bytes()
-    b = build_venue_revisions.run(api=_api(second), snapshot_dir=tmp_path)
+    b = build_venue_revisions.run(api=_api(second), snapshot_dir=tmp_path,
+        capacity_csv=_NO_CAPACITIES)
     assert a.revisions == b.revisions
     assert digest == (tmp_path / "venue_revisions.parquet").read_bytes()
     assert [p for _, p in first.calls] == [p for _, p in second.calls]
@@ -290,4 +303,5 @@ def test_run_refuses_to_split_across_requests(monkeypatch, seeded_db, tmp_path) 
     write_snapshot(export_sqlite(seeded_db), tmp_path)
     monkeypatch.setattr(build_venue_revisions, "ROWS_PER_REQUEST", 1)
     with pytest.raises(VenueRevisionError, match="上限"):
-        build_venue_revisions.run(api=_api(_Recorder()), snapshot_dir=tmp_path)
+        build_venue_revisions.run(api=_api(_Recorder()), snapshot_dir=tmp_path,
+        capacity_csv=_NO_CAPACITIES)

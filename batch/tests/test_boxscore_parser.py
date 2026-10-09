@@ -325,3 +325,42 @@ def test_failure_streak_resets_on_success():
     tracker.failure()
     with pytest.raises(ParseErrorStreak):
         tracker.failure()
+
+
+# ---------------------------------------------------------------------------
+# 試合前の会場ID（2026-10-09。運営者の指示「試合会場は試合前に把握できるはず」）
+#
+# **設計の前提が外れていた。** 詳細設計 2.2 / 4.2 は「公式の `StadiumCD` は
+# ボックススコア（試合後）にしかない」と書いていたが、**試合前のページを実際に
+# 見た記録が無く、推測だった**。実測すると `ArenaCD` が出る
+# （`verification/RESULTS.md`）。**これで会場名による名寄せをせずに済む。**
+# ---------------------------------------------------------------------------
+
+
+def test_arena_cd_is_read_from_a_link():
+    from batch.parser.boxscore_parser import parse_arena_cd
+    assert parse_arena_cd('<a href="/arena_detail/?ArenaCD=186">会場</a>') == "186"
+
+
+def test_arena_cd_is_read_from_embedded_json():
+    from batch.parser.boxscore_parser import parse_arena_cd
+    assert parse_arena_cd('{"ArenaCD":"186","Other":1}') == "186"
+
+
+def test_the_same_id_in_both_places_is_not_a_conflict():
+    from batch.parser.boxscore_parser import parse_arena_cd
+    assert parse_arena_cd('ArenaCD=186 ... "ArenaCD":"186"') == "186"
+
+
+def test_a_page_without_an_arena_id_returns_none():
+    """**推測で埋めない**（規約5）。試合後にボックススコアが埋める。"""
+    from batch.parser.boxscore_parser import parse_arena_cd
+    assert parse_arena_cd("<html><body></body></html>") is None
+
+
+def test_two_different_ids_are_refused():
+    """**黙って1つ選ばない。** 選ぶと、構造が変わったとき別の会場が静かに入る。"""
+    from batch.parser.boxscore_parser import parse_arena_cd
+    from batch.parser.errors import ParseError
+    with pytest.raises(ParseError, match="一意でない"):
+        parse_arena_cd("ArenaCD=186 ... ArenaCD=187")

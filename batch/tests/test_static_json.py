@@ -774,3 +774,42 @@ def test_actuals_pick_the_position_of_the_games_season() -> None:
     rows = _actuals_by_game(ds, ["g1"])["g1"]
     assert len(rows) == 1
     assert rows[0].position == "PF"
+
+
+def test_upcoming_games_show_the_official_venue_name() -> None:
+    """**未実施の試合は正式名称を出す**（詳細設計 1.2 の v1.136）。
+
+    `venue_name_at_game` は**日程ページの略称**（「ゼビオ」）であり、
+    「当時の名称」ではない。**未来の試合に「当時」は無い**ため、`venues` の
+    正式名称を優先する。
+
+    **終わった試合は逆**（当時の名称を優先する。改称で遡って変わらないように）。
+    """
+    from batch.static_json.from_snapshot import _venue_name
+
+    official = {"186": "ゼビオアリーナ仙台"}
+
+    class Row:
+        def __init__(self, status: str) -> None:
+            self.status = status
+            self.venue_id = "186"
+            self.venue_name_at_game = "ゼビオ"          # 日程ページの略称
+
+    assert _venue_name(Row("SCHEDULED"), official) == "ゼビオアリーナ仙台"
+    assert _venue_name(Row("FINISHED"), official) == "ゼビオ"
+
+
+def test_a_venue_without_an_id_falls_back_to_the_abbreviation() -> None:
+    """会場IDが取れなかった試合は略称を出す。**「会場は未発表」よりは良い**。"""
+    from batch.static_json.from_snapshot import _is_primary, _venue_name
+
+    class Row:
+        status = "SCHEDULED"
+        venue_id = None
+        venue_name_at_game = "ゼビオ"
+        season_id = "2026-27-PREMIER"
+        home_club_id = "701"
+
+    assert _venue_name(Row(), {}) == "ゼビオ"
+    # **会場IDが無ければ本拠かどうかを判定しない**（名前では比べない。1.1）
+    assert _is_primary(Row(), {}) is None

@@ -14,6 +14,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from types import MappingProxyType
 
 from batch.model.predict import Prediction
 from batch.parser.models import BoxScore
@@ -219,6 +220,7 @@ def upcoming_games_payload(
     club_ids: Mapping[str, str],
     series_game_no: Mapping[str, int],
     fetched_at: str,
+    venue_ids: Mapping[str, str] = MappingProxyType({}),
 ) -> dict[str, object]:
     """未実施の試合の `POST /internal/games` の本文（詳細設計 4.2 のステップ1b）。
 
@@ -231,10 +233,14 @@ def upcoming_games_payload(
     （ボックススコアの取り込み）が埋める** — 会場名による名寄せはしない
     （詳細設計 1.1）。
 
-    **`venueNameAtGame` には日程ページの会場名を入れる。** 入れないと画面が
-    「会場は未発表」と出すが、**公式サイトには出ているため事実と違う**
-    （運営者の指摘。2026-10-09）。試合後はステップ1 が `StadiumNameJ`
-    （公式の正式名称）で上書きする。
+    **`venueId` は試合詳細ページの `ArenaCD` から入る**（2026-10-09 に変えた）。
+    設計は長らく「`StadiumCD` はボックススコア（試合後）にしかない」と書いて
+    いたが、**実測すると試合前のページに `ArenaCD` として出ている**
+    （`verification/RESULTS.md`）。取れなければ `None` のままにする。
+
+    **`venueNameAtGame` には日程ページの会場名を入れる。** ただしこれは**略称**で
+    あり（「ゼビオ」「ADみと」）、会場IDが取れていれば画面は `venues.name`
+    （正式名称）を出す。略称は会場IDが取れなかったときの備えである。
 
     **`venue_revisions` はこれを読まない。** あの派生は `venue_id` が入っている
     試合だけを見る（`batch/masters/venue_revisions.py`）。未実施の試合は
@@ -265,7 +271,7 @@ def upcoming_games_payload(
                 "finishedAtIsEstimated": 0,
                 "homeClubId": home,
                 "awayClubId": away,
-                "venueId": None,
+                "venueId": venue_ids.get(game.game_id),
                 "venueNameAtGame": game.venue_name,
                 "seriesGameNo": series_game_no.get(game.game_id),
                 "status": game.status,

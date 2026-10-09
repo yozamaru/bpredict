@@ -285,9 +285,15 @@ games.get('/games/:gameId', async (c) => {
       // **`isPrimary` は会場IDが無ければ判定しない。** `club_seasons.primary_venue_id`
       // との比較は ID 同士で行うものであり、**名前では比べない**（詳細設計 1.1）
       venue: ((): { name: string; isPrimary: boolean | null } | null => {
-        const name = game.venue_id
+        // **終わった試合は当時の名称を優先する**（詳細設計 1.2）。過去の試合の
+        // 会場表示が改称で遡って変わらないようにするためである。
+        //
+        // **終わっていない試合は逆に、いまの正式名称を優先する。** 未実施の試合の
+        // `venue_name_at_game` は**日程ページの略称**（「ゼビオ」「ADみと」）で
+        // あり、「当時の名称」ではない。**未来の試合に「当時」は無い。**
+        const name = finished
           ? game.venue_name_at_game ?? game.venue_name
-          : game.venue_name_at_game;
+          : game.venue_name ?? game.venue_name_at_game;
         if (name === null) return null;
         return { name, isPrimary: game.venue_id ? isPrimaryVenue(game) : null };
       })(),

@@ -127,6 +127,39 @@ describe('GET /games/:gameId', () => {
     expect(game.venue?.isPrimary).toBeNull();
   });
 
+  /**
+   * **未実施の試合は正式名称を優先する**（2026-10-09。運営者の指示）。
+   *
+   * `venue_name_at_game` は**日程ページの略称**（「ゼビオ」）であり、
+   * 「当時の名称」ではない。**未来の試合に「当時」は無い。**
+   */
+  it('未実施の試合は venues の正式名称を優先する', async () => {
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    await env.DB.prepare("INSERT INTO venues (id,name) VALUES ('186','ゼビオアリーナ仙台')").run();
+    await env.DB.prepare(
+      "UPDATE games SET venue_id = '186', venue_name_at_game = 'ゼビオ' WHERE id = ?",
+    ).bind(s.gameId).run();
+
+    const game = (await body(await get(`/games/${s.gameId}`))).game as {
+      venue: { name: string } | null;
+    };
+    expect(game.venue?.name).toBe('ゼビオアリーナ仙台');
+  });
+
+  it('終わった試合は当時の名称を優先する', async () => {
+    // 改称で過去の試合の会場表示が遡って変わらないようにする（詳細設計 1.2）
+    const s = await seedGame({ tipoffAt: '2020-01-01T10:05:00Z', status: 'FINISHED' });
+    await env.DB.prepare("INSERT INTO venues (id,name) VALUES ('v-now','改称後アリーナ')").run();
+    await env.DB.prepare(
+      "UPDATE games SET venue_id = 'v-now', venue_name_at_game = '当時アリーナ' WHERE id = ?",
+    ).bind(s.gameId).run();
+
+    const game = (await body(await get(`/games/${s.gameId}`))).game as {
+      venue: { name: string } | null;
+    };
+    expect(game.venue?.name).toBe('当時アリーナ');
+  });
+
   it('会場IDも名前も無ければ null を返す', async () => {
     // **「未発表」は本当に何も無いときだけである**
     const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });

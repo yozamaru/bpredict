@@ -10,7 +10,9 @@
      "shortName": "三河",
      "slug": "seahorses-mikawa"
     },
+    "awayScore": null,
     "competition": "REGULAR",
+    "evaluation": null,
     "gameId": "506442",
     "home": {
      "clubId": "692",
@@ -18,14 +20,15 @@
      "shortName": "仙台",
      "slug": "sendai-89ers"
     },
+    "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.2256404848722589,
+     "homeWinProb": 0.22730571163492966,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 84.47632363544936,
-     "predHomeScore": 74.72411760422953
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 84.42687931966185,
+     "predHomeScore": 74.7591868220425
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-09T10:05:00Z"
@@ -37,7 +40,9 @@
      "shortName": "宇都宮",
      "slug": "utsunomiya-brex"
     },
+    "awayScore": null,
     "competition": "REGULAR",
+    "evaluation": null,
     "gameId": "506443",
     "home": {
      "clubId": "712",
@@ -45,14 +50,15 @@
      "shortName": "茨城",
      "slug": "ibaraki-robots"
     },
+    "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.31321012806262627,
+     "homeWinProb": 0.30563108879148154,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 82.73230484813446,
-     "predHomeScore": 76.43041345720299
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 82.82540980034662,
+     "predHomeScore": 76.2539243388772
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-09T10:05:00Z"
@@ -64,7 +70,9 @@
      "shortName": "大阪",
      "slug": "osaka-evessa"
     },
+    "awayScore": null,
     "competition": "REGULAR",
+    "evaluation": null,
     "gameId": "506444",
     "home": {
      "clubId": "2486",
@@ -72,14 +80,15 @@
      "shortName": "A千葉",
      "slug": "altiri-chiba"
     },
+    "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5027791465668114,
+     "homeWinProb": 0.5006050284153672,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 79.32857399020301,
-     "predHomeScore": 79.41876238407207
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 79.33782953446224,
+     "predHomeScore": 79.35743750832272
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-09T10:05:00Z"
@@ -91,7 +100,9 @@
      "shortName": "富山",
      "slug": "toyama-grouses"
     },
+    "awayScore": null,
     "competition": "REGULAR",
+    "evaluation": null,
     "gameId": "506445",
     "home": {
      "clubId": "726",
@@ -99,14 +110,15 @@
      "shortName": "東京SR",
      "slug": "tokyo-sunrockers"
     },
+    "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.7294930277314108,
+     "homeWinProb": 0.7339031054946665,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 75.45474232437793,
-     "predHomeScore": 83.36856376137963
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 75.34689783005997,
+     "predHomeScore": 83.42317122229717
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-09T10:05:00Z"
@@ -118,7 +130,9 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
+    "awayScore": null,
     "competition": "REGULAR",
+    "evaluation": null,
     "gameId": "506446",
     "home": {
      "clubId": "699",
@@ -126,14 +140,15 @@
      "shortName": "京都",
      "slug": "kyoto-hannaryz"
     },
+    "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.6032768423065578,
+     "homeWinProb": 0.6030893868796121,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
-     "modelVersion": "winner-v1.1.0",
-     "predAwayScore": 77.67549671005084,
-     "predHomeScore": 81.06533112817591
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 77.69551840216529,
+     "predHomeScore": 81.07455065019185
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-09T10:15:00Z"
@@ -141,6 +156,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-08T15:46:49Z"
+  "generatedAt": "2026-10-09T00:19:36Z"
  }
 }

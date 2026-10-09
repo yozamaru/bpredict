@@ -225,9 +225,20 @@ def upcoming_games_payload(
     **`games_payload` と分けてある。** あちらはボックススコア（試合後）を入力に取る。
     未実施の試合には**スコアも会場IDも無い**ため、同じ関数では組めない。
 
-    **会場を送らない。** 日程ページは会場名の文字しか持たず、公式の `StadiumCD` は
-    ボックススコアにしかない（詳細設計 2.2）。`venueId` と `venueNameAtGame` は
-    NULL のままにし、**試合後にステップ1（ボックススコアの取り込み）が埋める**。
+    **会場IDは送らない。会場名は送る**（2026-10-09 に変えた）。日程ページは
+    会場名の文字しか持たず、公式の `StadiumCD` はボックススコアにしかない
+    （詳細設計 2.2）。**`venueId` は NULL のままにし、試合後にステップ1
+    （ボックススコアの取り込み）が埋める** — 会場名による名寄せはしない
+    （詳細設計 1.1）。
+
+    **`venueNameAtGame` には日程ページの会場名を入れる。** 入れないと画面が
+    「会場は未発表」と出すが、**公式サイトには出ているため事実と違う**
+    （運営者の指摘。2026-10-09）。試合後はステップ1 が `StadiumNameJ`
+    （公式の正式名称）で上書きする。
+
+    **`venue_revisions` はこれを読まない。** あの派生は `venue_id` が入っている
+    試合だけを見る（`batch/masters/venue_revisions.py`）。未実施の試合は
+    `venue_id` が NULL なので、**名称履歴の出典が揺らぐことはない**。
 
     **`clubSeasons` を送らない。** `ScheduleGame` のクラブ名は**略称のことがある**
     （2020-21 の `千葉J` / `横浜BC`。詳細設計 4.4）。`club_seasons.name` は
@@ -255,7 +266,7 @@ def upcoming_games_payload(
                 "homeClubId": home,
                 "awayClubId": away,
                 "venueId": None,
-                "venueNameAtGame": None,
+                "venueNameAtGame": game.venue_name,
                 "seriesGameNo": series_game_no.get(game.game_id),
                 "status": game.status,
                 "homeScore": None,

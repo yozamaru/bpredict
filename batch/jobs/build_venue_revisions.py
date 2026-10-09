@@ -27,10 +27,12 @@ from batch.features.dataset import Dataset, load_snapshot, write_snapshot
 from batch.loader.api import InternalApi, LoaderError
 from batch.loader.limits import max_rows_per_request
 from batch.masters.venue_revisions import (
+    CAPACITY_CSV,
     BuildResult,
     Revision,
     VenueRevisionError,
     build,
+    load_capacities,
 )
 
 DEFAULT_SNAPSHOT = Path("batch/snapshot")
@@ -84,9 +86,20 @@ def run(
     *,
     api: InternalApi,
     snapshot_dir: Path = DEFAULT_SNAPSHOT,
+    capacity_csv: Path = CAPACITY_CSV,
 ) -> BuildResult:
+    """派生テーブルを全期間洗い替えて D1 へ送る（詳細設計 4.9）。
+
+    **`capacity_csv` を引数に取る。** 既定は本番のマスタだが、**合成シードを使う
+    テストが本番のマスタを読まないようにする**ため差し替えられる。
+
+    2026-10-09 に、収容人数の雛形（実在する22会場）を置いた回で CI が落ちた —
+    **合成シードの試合には実在の会場が無く、`(venue_id, valid_from)` がどの名称
+    区間にも一致しない**（4.9 の関門がそのとおりに働いた）。関門は正しく、
+    **テストが本番のマスタに依存していたことが誤りだった。**
+    """
     dataset = load_snapshot(snapshot_dir)
-    result = build(dataset.table("games"))
+    result = build(dataset.table("games"), load_capacities(capacity_csv))
     if not result.revisions:
         return result
 

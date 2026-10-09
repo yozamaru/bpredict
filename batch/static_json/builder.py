@@ -171,7 +171,12 @@ class GameInput:
     away: ClubInput
     league: str | None = None
     venue_name: str | None = None
-    is_primary_venue: bool = True
+    #: 本拠会場かどうか。**会場IDが無ければ判定しない**（None）。
+    #:
+    #: 未実施の試合には公式の `StadiumCD` が付かない（会場IDはボックススコアに
+    #: しかない）。`club_seasons.primary_venue_id` との比較は**ID 同士で行う**
+    #: ものであり、名前では比べない（詳細設計 1.1）。公開APIも同じく null を返す
+    is_primary_venue: bool | None = None
     home_score: int | None = None
     away_score: int | None = None
 

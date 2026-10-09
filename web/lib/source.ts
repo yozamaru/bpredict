@@ -160,7 +160,14 @@ export type ReasonShape = {
 export type GameDetail = {
   game: GameShape & {
     league: string | null;
-    venue: { name: string | null; isPrimary: boolean } | null;
+    /**
+     * 会場（詳細設計 3.3）。
+     *
+     * **`isPrimary` は会場IDが無ければ null。** 未実施の試合には公式の
+     * `StadiumCD` が付かず、本拠かどうかは ID 同士で比べるものだからである
+     * （名前では比べない。詳細設計 1.1）。**名前は未実施でも出る**
+     */
+    venue: { name: string | null; isPrimary: boolean | null } | null;
     homeScore: number | null;
     awayScore: number | null;
   };

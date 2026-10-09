@@ -276,9 +276,21 @@ games.get('/games/:gameId', async (c) => {
         name: game.away_name, shortName: game.away_short,
       },
       // 当時の名称を優先する。無ければ現在の表示名にフォールバックする（詳細設計 1.2）
-      venue: game.venue_id
-        ? { name: game.venue_name_at_game ?? game.venue_name, isPrimary: isPrimaryVenue(game) }
-        : null,
+      //
+      // **会場IDが無くても、名前があれば返す**（2026-10-09 に変えた）。未実施の
+      // 試合には `venue_id` が付かないが（公式の `StadiumCD` はボックススコアに
+      // しかない）、**日程ページの会場名は取れている**。返さないと画面が
+      // 「会場は未発表」と出すが、**公式サイトには出ているため事実と違う**。
+      //
+      // **`isPrimary` は会場IDが無ければ判定しない。** `club_seasons.primary_venue_id`
+      // との比較は ID 同士で行うものであり、**名前では比べない**（詳細設計 1.1）
+      venue: ((): { name: string; isPrimary: boolean | null } | null => {
+        const name = game.venue_id
+          ? game.venue_name_at_game ?? game.venue_name
+          : game.venue_name_at_game;
+        if (name === null) return null;
+        return { name, isPrimary: game.venue_id ? isPrimaryVenue(game) : null };
+      })(),
       homeScore: finished ? game.home_score : null,
       awayScore: finished ? game.away_score : null,
     },

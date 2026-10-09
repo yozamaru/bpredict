@@ -547,3 +547,55 @@ def test_unresolved_row_does_not_stop_the_rest_of_the_page():
     )
     assert [game.game_id for game in page.games] == ["game-cs-2"]
     assert page.unresolved == 1
+
+
+# ---------------------------------------------------------------------------
+# 会場名（2026-10-09。運営者の指摘「会場は試合前に分かりますよね？」から）
+#
+# **日程ページには `県 | 会場` が出ている。** 画面が「会場は未発表」と出していたのは
+# こちらが読み飛ばしていたためで、**事実と違う表示だった**。
+#
+# **公式の会場ID（`StadiumCD`）はここに無い。** ボックススコア（試合後）にしか
+# なく、設計 1.1 が会場名による名寄せを禁じている。したがってこの名前は
+# **画面に出すためだけ**に取り、`venues` へは解決しない。
+# ---------------------------------------------------------------------------
+
+
+def test_schedule_row_carries_the_venue_name():
+    page = parse_schedule(body(HEADER + game_html()), year=2026, event=2, clubs_by_name=CLUBS)
+    # `架空地域 | 架空会場` の**会場の側**だけを取る
+    assert page.games[0].venue_name == "架空会場"
+
+
+def test_stage_rows_carry_the_venue_name_too():
+    """ステージ区画は span が4つある（日付が時刻の直前に入る）。
+
+    **どちらの形でも会場は index 1 である**（詳細設計 4.4）。
+    """
+    page = parse_schedule(body(STAGE_HEADING, cancelled_stage_row(), index=None),
+                          year=2026, event=3, clubs_by_name=CLUBS, index=0)
+    assert page.games[0].venue_name == "架空会場"
+
+
+def test_time_is_never_taken_as_the_venue_name():
+    """**span の並びが変わったときに「19:05」を会場名として保存しない。**
+
+    保存すると画面にそのまま出る。形で弾く。
+    """
+    html = game_html().replace("<span>架空地域 | 架空会場</span>", "")
+    page = parse_schedule(body(HEADER, html), year=2026, event=2, clubs_by_name=CLUBS)
+    assert page.games[0].venue_name is None
+
+
+def test_a_blank_venue_is_not_invented():
+    """空なら None。**推測で埋めない**（規約5）。"""
+    html = game_html().replace("<span>架空地域 | 架空会場</span>", "<span></span>")
+    page = parse_schedule(body(HEADER, html), year=2026, event=2, clubs_by_name=CLUBS)
+    assert page.games[0].venue_name is None
+
+
+def test_a_venue_without_a_separator_is_taken_whole():
+    """区切りが無ければ全体を会場名とみなす（県が省かれた形）。"""
+    html = game_html().replace("架空地域 | 架空会場", "架空会場")
+    page = parse_schedule(body(HEADER, html), year=2026, event=2, clubs_by_name=CLUBS)
+    assert page.games[0].venue_name == "架空会場"

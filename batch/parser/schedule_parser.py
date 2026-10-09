@@ -58,6 +58,12 @@ class ScheduleGame:
     away_score: int | None
     status: str
     source_url: str
+    #: 日程ページに出ている会場名（`県 | 会場` の会場の側）。取れなければ None。
+    #:
+    #: **公式の `StadiumCD` ではない。** 会場IDはボックススコア（試合後）にしか
+    #: 無く、設計は会場名による名寄せを禁じている（詳細設計 1.1）。したがって
+    #: これは**表示のためだけ**に使い、`venues` へは解決しない。
+    venue_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -280,6 +286,42 @@ def _season_year(month: int, year: int) -> int:
     return year if month >= 9 else year + 1
 
 
+def _row_venue(node: _Node) -> str | None:
+    """行から会場名を取る（詳細設計 4.4 の `info-arena`）。
+
+    span の並びは2通りある（どちらも**会場は index 1**）。
+
+        通常の区画  : [第1節, 県 | 会場, 18:55]
+        ステージ区画: [クォーターファイナル, 県 | 会場, 05/13 (土), 16:05]
+
+    **公式の会場ID（`StadiumCD`）はここに無い。** ボックススコア（試合後）に
+    しかないため、**この名前を `venues` へ解決しない**（詳細設計 1.1 が会場名に
+    よる名寄せを禁じている）。**画面に出すためだけ**に取る。
+
+    **時刻や日付を誤って拾わない。** span の並びが変わったときに「19:05」を
+    会場名として保存すると、画面に出てしまう。形で弾く。
+    """
+    containers = _with_class(node, "info-arena")
+    if not containers:
+        return None
+    arena = _one(containers, "schedule time container")
+    spans = [child for child in arena.children
+             if isinstance(child, _Node) and child.tag == "span"]
+    if len(spans) < 3:
+        return None
+    text = unicodedata.normalize("NFKC", _text(spans[1])).strip()
+    if not text:
+        return None
+    # `県 | 会場` の会場の側を取る。区切りが無ければ全体を会場名とみなす
+    name = text.rsplit("|", 1)[-1].strip()
+    if not name:
+        return None
+    # **時刻・日付に見えるものは採らない**（span の並びが変わった疑い）
+    if _CLOCK.fullmatch(name) or _ROW_DATE.fullmatch(name):
+        return None
+    return name
+
+
 def _row_schedule(node: _Node, year: int, heading_date: str | None) -> tuple[str, str | None]:
     """行から `(game_date, tipoff_at)` を決める。
 
@@ -484,6 +526,7 @@ def _parse_game(
         home_name=home_name, away_name=away_name, home_score=home_score, away_score=away_score,
         status=status,
         source_url=f"{_ORIGIN}/game_detail/?{urlencode({'ScheduleKey': game_id, 'tab': 2})}",
+        venue_name=_row_venue(row),
     )
 
 

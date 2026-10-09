@@ -14,7 +14,7 @@
     },
     "games": {
       "rows": 6332,
-      "sha256": "819b7cf5dd25a52094a6b354c377377e8ec228b8287b5e028f07afe481ecef4c"
+      "sha256": "e6088e19f1740d8e0479fdcd23a1ca51ae26298268394d9cf53c6f3cdcab4514"
     },
     "player_game_stats": {
       "rows": 147342,
@@ -49,11 +49,11 @@
       "sha256": "651a126c4fa7e19acf97c5f8ce6e43b70137d38c10e78cc66ca606947a5c9c62"
     },
     "venues": {
-      "rows": 152,
-      "sha256": "f4bcca73964cf9ab1e74cc0343ba146766126795b8a4bd28c6777bf52b017323"
+      "rows": 153,
+      "sha256": "2114947e37ae5d0352fc2da2c84f8724a0077121f1c85dee58bba284c50d0ba4"
     }
   },
-  "generated_at": "2026-10-09T02:59:02Z",
+  "generated_at": "2026-10-09T03:28:54Z",
   "max_finished_at": "2026-10-08T12:35:00Z",
   "version": 1
 }

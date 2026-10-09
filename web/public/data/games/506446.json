@@ -22,8 +22,8 @@
    "status": "SCHEDULED",
    "tipoffAt": "2026-10-09T10:15:00Z",
    "venue": {
-    "isPrimary": true,
-    "name": "にっしんでんきアリーナ京都(京都市体育館)"
+    "isPrimary": null,
+    "name": "日新電機"
    }
   },
   "modelAccuracy": null,
@@ -1358,6 +1358,6 @@
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-09T02:59:45Z"
+  "generatedAt": "2026-10-09T03:29:29Z"
  }
 }

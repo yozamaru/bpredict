@@ -127,6 +127,35 @@ _ACTUAL_COUNTS = (
 )
 
 
+def _venue_name(row: object, official: Mapping[str, str]) -> str | None:
+    """画面に出す会場名（公開APIの `games.ts` と同じ規則）。
+
+    **終わった試合は当時の名称を優先する**（詳細設計 1.2）。過去の試合の会場表示が
+    改称で遡って変わらないようにするためである。
+
+    **終わっていない試合は逆に、いまの正式名称を優先する。** 未実施の試合の
+    `venue_name_at_game` は**日程ページの略称**（「ゼビオ」「ADみと」）であり、
+    「当時の名称」ではない。**未来の試合に「当時」は無い。**
+    """
+    at_game = _text(getattr(row, "venue_name_at_game", None))
+    venue_id = _text(getattr(row, "venue_id", None))
+    now = official.get(venue_id or "")
+    if str(getattr(row, "status", "")) == "FINISHED":
+        return at_game or now
+    return now or at_game
+
+
+def _is_primary(row: object, primary: Mapping[tuple[str, str], str]) -> bool | None:
+    """本拠会場か。**会場IDが無ければ判定しない**（名前では比べない。1.1）。"""
+    venue_id = _text(getattr(row, "venue_id", None))
+    if venue_id is None:
+        return None
+    key = (str(getattr(row, "season_id", "")), str(getattr(row, "home_club_id", "")))
+    found = primary.get(key)
+    # 「分からない」と「代替会場である」は違う（詳細設計 1.2）
+    return True if found is None else venue_id == found
+
+
 def _actuals_by_game(
     ds: Dataset, game_ids: Sequence[str],
 ) -> dict[str, list[ActualInput]]:
@@ -193,6 +222,17 @@ def build_inputs(
     """
     clubs = _clubs(ds)
     names = _season_names(ds)
+    # **会場は公開APIと同じ規則で出す**（詳細設計 3.3）。未実施の試合の
+    # `venue_name_at_game` は日程ページの略称であり、正式名称は `venues` にある
+    venue_names = {
+        str(r.id): str(r.name) for r in ds.table("venues").itertuples()
+    } if "venues" in ds.tables else {}
+    primary_venues: dict[tuple[str, str], str] = {}
+    if "club_seasons" in ds.tables:
+        for r in ds.tables["club_seasons"].itertuples():
+            primary_id = _text(r.primary_venue_id)
+            if primary_id is not None:
+                primary_venues[(str(r.season_id), str(r.club_id))] = primary_id
     by_id = {p.game_id: p for p in predictions}
     games = ds.table("games")
     wanted = [today, *_days(today, days)]
@@ -221,7 +261,8 @@ def build_inputs(
             home=_club_input(str(row.home_club_id), season_id, clubs, names),
             away=_club_input(str(row.away_club_id), season_id, clubs, names),
             league=_text(row.league),
-            venue_name=_text(row.venue_name_at_game),
+            venue_name=_venue_name(row, venue_names),
+            is_primary_venue=_is_primary(row, primary_venues),
             home_score=_score(row.home_score),
             away_score=_score(row.away_score),
         )

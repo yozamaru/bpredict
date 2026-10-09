@@ -1,5 +1,6 @@
 """終了済み試合の必要項目だけを正規化する。"""
 
+import re
 from collections.abc import Mapping
 from datetime import timedelta
 from zoneinfo import ZoneInfo
@@ -187,3 +188,35 @@ def parse_boxscore(
     if len({p.player_id for p in players}) != len(players):
         raise ValidationError("同一選手が両チームに存在")
     return BoxScore(record, tuple(players), (home_team, away_team))
+
+
+#: 試合詳細ページの会場ID（`/arena_detail/?ArenaCD=<id>` のリンクと埋め込みの両方）。
+_ARENA_CD = re.compile(r'ArenaCD(?:=|"\s*:\s*"?)(\d+)')
+
+
+def parse_arena_cd(body: str) -> str | None:
+    """**試合前**の試合詳細ページから会場の公式IDを取る（2026-10-09 に実測）。
+
+    設計は長らく「公式の `StadiumCD` はボックススコア（試合後）にしかない」と
+    書いていたが、**試合前のページを実際に見た記録が無く、推測だった**。
+    実測すると `StadiumCD` / `StadiumNameJ` は0回、**`ArenaCD` が1回**出る。
+    値は `venues.id`（= `StadiumCD`）と同じ採番である
+    （詳細設計 4.10 が `/arena_detail/?ArenaCD=<id>` に `venues.id` を渡している）。
+
+    **これで会場名による名寄せをせずに済む**（詳細設計 1.1 を変えない）。
+
+    | 返り値 | 意味 |
+    |---|---|
+    | 文字列 | 一意に決まった会場ID |
+    | `None` | **ページに無い。** 推測で埋めない（規約5） |
+    | `ParseError` | **2つ以上の異なる値がある。** どれか選べない |
+
+    **複数あったら黙って1つ選ばない。** 選ぶと、構造が変わったときに
+    別の会場のIDが静かに入る。
+    """
+    found = {match.group(1) for match in _ARENA_CD.finditer(body)}
+    if not found:
+        return None
+    if len(found) > 1:
+        raise ParseError(f"会場IDが一意でない: {len(found)}件")
+    return found.pop()

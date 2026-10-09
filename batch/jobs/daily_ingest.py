@@ -85,6 +85,7 @@ from batch.model.predict_players import (
     SideBox,
     predict_box_score,
 )
+from batch.parser.boxscore_parser import parse_arena_cd
 from batch.parser.errors import (
     DataUnavailable,
     OutOfScopeError,
@@ -100,6 +101,7 @@ from batch.parser.schedule_parser import (
     parse_club_options,
 )
 from batch.parser.terms import report_terms_change
+from batch.scraper.boxscore import boxscore_url
 from batch.scraper.client import (
     PolicyError,
     RateLimitedClient,
@@ -152,6 +154,12 @@ class Result:
     seasons: list[str] = field(default_factory=list)
     #: ステップ2 で書いた行数（テーブルごと）
     snapshot_rows: dict[str, int] = field(default_factory=dict)
+    #: 試合前に会場IDが取れた試合の数（2026-10-09。下記 `resolve_venues`）
+    venues_resolved: int = 0
+    #: ページに会場IDが無かった試合の数。**黙って0にしない**
+    venues_absent: int = 0
+    #: 会場IDは取れたが `venues` に無かった試合。**FK が通らないので入れない**
+    venues_unknown: list[str] = field(default_factory=list)
     #: 取り込まない試合（不戦敗）をシーズンごとに持つ。**件数だけでなく中身を残す**
     #: （要件 5.3 / 4.4）。`backfill` は artifact で持ち帰るしかないが、
     #: **このジョブは `contents: write` であり自分でコミットできる**
@@ -267,6 +275,50 @@ def pick_upcoming(
     return picked
 
 
+def resolve_venues(
+    client: RateLimitedClient,
+    games: list[ScheduleGame],
+    *,
+    known_venue_ids: set[str],
+    already: Mapping[str, str],
+    result: Result,
+    log: Callable[[str], None] = print,
+) -> dict[str, str]:
+    """試合前に会場の公式IDを取る（2026-10-09。運営者の指示）。
+
+    **日程ページは略称しか持たない**（「ゼビオ」「ADみと」）。正式名称を出すには
+    会場IDが要るが、**試合詳細ページは試合前から `ArenaCD` を持っている**
+    （`verification/RESULTS.md` の実測）。**会場名による名寄せをしないで済む。**
+
+    | 規則 | 理由 |
+    |---|---|
+    | **既に会場IDがある試合は取りに行かない** | 会場IDは変わらない。要件 5.2「取得は必要最小限のページに限る」 |
+    | **`venues` に無いIDは使わない** | `games.venue_id` は FK であり、入れると書き込みが落ちる。件数とIDを出す |
+    | **取れなくても止めない** | 試合後にステップ1 が埋める。画面は日程ページの略称を出す |
+    | 1件の取得・解釈の失敗 | その試合を飛ばして続ける（4.3） |
+    """
+    out: dict[str, str] = {}
+    for game in games:
+        if game.game_id in already:
+            continue
+        try:
+            found = parse_arena_cd(client.get(boxscore_url(game.game_id)))
+        except (ScraperError, ParseError, ValidationError) as exc:
+            log(f"daily_ingest: skip venue {game.game_id} {type(exc).__name__} {exc}")
+            continue
+        if found is None:
+            result.venues_absent += 1
+            continue
+        if found not in known_venue_ids:
+            # **推測で `venues` に行を作らない。** 名前が取れないため NOT NULL を
+            # 満たせない（会場名はボックススコアにしかない）
+            result.venues_unknown.append(found)
+            continue
+        out[game.game_id] = found
+        result.venues_resolved += 1
+    return out
+
+
 def send(
     api: Poster,
     games: list[ScheduleGame],
@@ -274,6 +326,7 @@ def send(
     season: Season,
     club_ids: Mapping[str, str],
     fetched_at: str,
+    venue_ids: Mapping[str, str] | None = None,
     collect: list[Mapping[str, object]] | None = None,
 ) -> int:
     """`POST /internal/games` で送る。**1リクエストの行数上限を守る**（詳細設計 3.4）。
@@ -293,11 +346,31 @@ def send(
             club_ids=club_ids,
             series_game_no=series,
             fetched_at=fetched_at,
+            venue_ids=venue_ids or {},
         )
         api.post("games", body)
         if collect is not None:
             collect.append(body)
     return len(games)
+
+
+def _venue_state(snapshot: Path | None) -> tuple[set[str], dict[str, str]]:
+    """`venues` の一覧と、既に会場IDが入っている試合を読む。
+
+    **スナップショットが無ければ会場の解決をしない。** `venues` に無いIDを
+    `games.venue_id` に入れると FK で落ちるため、確かめずに入れない。
+    """
+    if snapshot is None:
+        return set(), {}
+    ds = load_snapshot(snapshot)
+    venues = {str(row.id) for row in ds.table("venues").itertuples()}
+    games = ds.table("games")
+    have = {
+        str(row.id): str(row.venue_id)
+        for row in games.itertuples()
+        if row.venue_id is not None and str(row.venue_id) not in ("", "nan", "None")
+    }
+    return venues, have
 
 
 def run_upcoming(
@@ -315,6 +388,9 @@ def run_upcoming(
     result = Result()
     start, end = window(jst_today())
     club_ids = {row.source_id: row.club_id for row in load_club_source_ids()}
+    # **入力はスナップショットだけ**（絶対ルール3）。`venues` に無いIDは FK が
+    # 通らないため使わず、既に会場IDがある試合は取りに行かない（要件 5.2）
+    known_venues, have_venue = _venue_state(snapshot)
     fetched_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
     bodies: list[Mapping[str, object]] = []
@@ -327,9 +403,14 @@ def run_upcoming(
             list(_collect(client, season, result, through=end,
                           clubs_by_name=clubs_by_name)),
             start, end, result)
+        # **試合前に会場の公式IDを取る**（2026-10-09。運営者の指示）。
+        # 既に取れている試合は取りに行かない（要件 5.2）
+        venue_ids = resolve_venues(
+            client, games, known_venue_ids=known_venues, already=have_venue,
+            result=result, log=log)
         result.ingested += send(
             api, games, season=season, club_ids=club_ids, fetched_at=fetched_at,
-            collect=bodies)
+            venue_ids=venue_ids, collect=bodies)
 
     # --- ステップ2。**D1 に送ったのと同じ本文から写す** ---
     if snapshot is not None and bodies:
@@ -1218,6 +1299,15 @@ def main(argv: list[str] | None = None) -> int:
             f" クラブ一覧={result.club_options} シーズン={','.join(result.seasons) or 'なし'}"
             f" スナップショット={result.snapshot_rows or 'なし'}"
         )
+        # **会場の解決を別の行で出す。** 0件が続いたらページの構造が変わった疑い
+        print(
+            f"  会場: 取れた={result.venues_resolved}"
+            f" ページに無い={result.venues_absent}"
+            f" venues に無い={len(result.venues_unknown)}"
+        )
+        if result.venues_unknown:
+            # **IDは `venues.id` として保存している値であり、機密ではない**
+            print(f"  venues に無い会場ID: {' / '.join(sorted(set(result.venues_unknown)))}")
         if result.unmatched_clubs:
             print(f"  クラブ一覧にない相手: {' / '.join(result.unmatched_clubs)}")
         rows += result.ingested

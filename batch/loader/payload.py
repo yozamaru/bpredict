@@ -221,6 +221,7 @@ def upcoming_games_payload(
     series_game_no: Mapping[str, int],
     fetched_at: str,
     venue_ids: Mapping[str, str] = MappingProxyType({}),
+    venues: Mapping[str, str] = MappingProxyType({}),
 ) -> dict[str, object]:
     """未実施の試合の `POST /internal/games` の本文（詳細設計 4.2 のステップ1b）。
 
@@ -241,6 +242,11 @@ def upcoming_games_payload(
     **`venueNameAtGame` には日程ページの会場名を入れる。** ただしこれは**略称**で
     あり（「ゼビオ」「ADみと」）、会場IDが取れていれば画面は `venues.name`
     （正式名称）を出す。略称は会場IDが取れなかったときの備えである。
+
+    **`venues` に無い会場は、試合前に登録する**（2026-10-09 に追記）。公式サイトは
+    改称のたびに新しい `ArenaCD` を振るため、**その会場で1試合も行われていない間は
+    `venues` に行が無い**。同じ印から正式名称が取れるので、`venues` と
+    `venueSourceKeys` を併せて送る（`games_payload` と同じ形）。
 
     **`venue_revisions` はこれを読まない。** あの派生は `venue_id` が入っている
     試合だけを見る（`batch/masters/venue_revisions.py`）。未実施の試合は
@@ -298,7 +304,17 @@ def upcoming_games_payload(
             }
             for club, opponent, is_home in ((home, away, 1), (away, home, 0))
         )
-    return {"games": rows, "teamGames": team_rows}
+    payload: dict[str, object] = {"games": rows, "teamGames": team_rows}
+    if venues:
+        # **改称で新しい ArenaCD が振られた会場**。`venues` を先に置くと FK の順序が
+        # 守られる（詳細設計 3.4）。`name` は NOT NULL であり、取れた分だけ送る
+        payload["venues"] = [
+            {"id": venue_id, "name": name} for venue_id, name in sorted(venues.items())
+        ]
+        payload["venueSourceKeys"] = [
+            {"sourceCode": venue_id, "venueId": venue_id} for venue_id in sorted(venues)
+        ]
+    return payload
 
 
 def prediction_payload(

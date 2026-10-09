@@ -731,3 +731,143 @@ def test_the_walk_takes_everything_without_a_stop(
         FakeClient(),  # type: ignore[arg-type]
         year=2026, event=2, clubs_by_name={}, on_page=lambda _p: None))
     assert [g.game_id for g in got] == ["1", "2"]
+
+
+# ---------------------------------------------------------------------------
+# 試合前の会場の解決（詳細設計 4.2 のステップ1b）
+#
+# **前のブランチではここに検査が無く、パーサだけを見ていた。** 分岐（既知 /
+# 未知で名称あり / 未知で名称なし / ページに無い）はこの層にある。
+# ---------------------------------------------------------------------------
+
+
+class VenuePages:
+    """会場の印だけを返す偽クライアント。**取得した URL を記録する。**"""
+
+    def __init__(self, by_game: Mapping[str, str]) -> None:
+        self.by_game = by_game
+        self.asked: list[str] = []
+
+    def get(self, url: str) -> str:
+        self.asked.append(url)
+        for game_id, body in self.by_game.items():
+            if f"ScheduleKey={game_id}" in url:
+                return body
+        return "<html></html>"
+
+
+def _mark(arena_cd: str, name: str | None) -> str:
+    inner = "" if name is None else f'<span class="link-line">{name}</span>'
+    return (
+        f'<span class="stadium-name">会場：<a href="?ArenaCD={arena_cd}">{inner}</a></span>'
+    )
+
+
+def test_a_known_venue_is_used_as_is() -> None:
+    from batch.jobs.daily_ingest import resolve_venues
+    result = Result()
+    got = resolve_venues(
+        VenuePages({"1": _mark("186", "ゼビオアリーナ仙台")}),  # type: ignore[arg-type]
+        [game("1", "2026-10-09")],
+        known_venue_ids={"186"}, already={}, result=result, log=lambda _m: None)
+    assert got.ids == {"1": "186"}
+    # **既にある会場を登録し直さない**（`venues.name` は初出で固定する。1.2）
+    assert got.venues == {}
+    assert (result.venues_resolved, result.venues_registered) == (1, 0)
+
+
+def test_an_unknown_venue_is_registered_with_its_name() -> None:
+    """**改称で新しい ArenaCD が振られた会場**を試合前に登録する。"""
+    from batch.jobs.daily_ingest import resolve_venues
+    result = Result()
+    got = resolve_venues(
+        VenuePages({"1": _mark("100122", "とちぎん・ブレックスアリーナ宇都宮")}),  # type: ignore[arg-type]
+        [game("1", "2026-10-11")],
+        known_venue_ids={"7"}, already={}, result=result, log=lambda _m: None)
+    assert got.venues == {"100122": "とちぎん・ブレックスアリーナ宇都宮"}
+    assert got.ids == {"1": "100122"}
+    assert (result.venues_registered, result.venues_unknown) == (1, [])
+
+
+def test_an_unknown_venue_without_a_name_is_not_used() -> None:
+    """**推測で `venues` に行を作らない**（`name` は NOT NULL。規約5）。
+
+    IDも使わない — `games.venue_id` は FK であり、入れると書き込みが落ちる。
+    """
+    from batch.jobs.daily_ingest import resolve_venues
+    result = Result()
+    got = resolve_venues(
+        VenuePages({"1": _mark("100122", None)}),  # type: ignore[arg-type]
+        [game("1", "2026-10-11")],
+        known_venue_ids={"7"}, already={}, result=result, log=lambda _m: None)
+    assert (got.ids, got.venues) == ({}, {})
+    assert result.venues_unknown == ["100122"]
+    assert result.venues_registered == 0
+
+
+def test_the_same_new_venue_is_registered_once() -> None:
+    """2試合が同じ新会場でも登録は1件。**件数は会場の数である。**"""
+    from batch.jobs.daily_ingest import resolve_venues
+    body = _mark("100122", "とちぎん・ブレックスアリーナ宇都宮")
+    result = Result()
+    got = resolve_venues(
+        VenuePages({"1": body, "2": body}),  # type: ignore[arg-type]
+        [game("1", "2026-10-11"), game("2", "2026-10-12")],
+        known_venue_ids=set(), already={}, result=result, log=lambda _m: None)
+    assert got.venues == {"100122": "とちぎん・ブレックスアリーナ宇都宮"}
+    assert got.ids == {"1": "100122", "2": "100122"}
+    assert (result.venues_registered, result.venues_resolved) == (1, 2)
+
+
+def test_a_page_without_an_arena_is_counted_not_guessed() -> None:
+    from batch.jobs.daily_ingest import resolve_venues
+    result = Result()
+    got = resolve_venues(
+        VenuePages({}),  # type: ignore[arg-type]
+        [game("1", "2026-10-09")],
+        known_venue_ids={"186"}, already={}, result=result, log=lambda _m: None)
+    assert got.ids == {}
+    assert result.venues_absent == 1
+
+
+def test_games_that_already_have_a_venue_are_not_fetched() -> None:
+    """要件 5.2「取得は必要最小限のページに限る」。会場IDは変わらない。"""
+    from batch.jobs.daily_ingest import resolve_venues
+    client = VenuePages({"1": _mark("186", "ゼビオアリーナ仙台")})
+    got = resolve_venues(
+        client,  # type: ignore[arg-type]
+        [game("1", "2026-10-09")],
+        known_venue_ids={"186"}, already={"1": "186"}, result=Result(),
+        log=lambda _m: None)
+    assert (got.ids, client.asked) == ({}, [])
+
+
+def test_the_registered_venue_reaches_the_payload_and_the_snapshot() -> None:
+    """**送った本文からスナップショットへ写る**（基本設計 2.2）。"""
+    body = upcoming_games_payload(
+        [game("1", "2026-10-11")],
+        season=SeasonRef("2026-27-PREMIER", "2026-27", "PREMIER"),
+        club_ids={"703": "703", "704": "704"},
+        series_game_no={}, fetched_at="2026-10-09T21:00:00Z",
+        venue_ids={"1": "100122"},
+        venues={"100122": "とちぎん・ブレックスアリーナ宇都宮"},
+    )
+    assert body["venues"] == [
+        {"id": "100122", "name": "とちぎん・ブレックスアリーナ宇都宮"}]
+    assert body["venueSourceKeys"] == [
+        {"sourceCode": "100122", "venueId": "100122"}]
+    rows = snapshot_rows(body)
+    assert rows["venues"] == [
+        {"id": "100122", "name": "とちぎん・ブレックスアリーナ宇都宮"}]
+
+
+def test_the_payload_omits_venues_when_there_are_none() -> None:
+    """**登録する会場が無いときはキーを置かない**（空配列を送らない）。"""
+    body = upcoming_games_payload(
+        [game("1", "2026-10-09")],
+        season=SeasonRef("2026-27-PREMIER", "2026-27", "PREMIER"),
+        club_ids={"703": "703", "704": "704"},
+        series_game_no={}, fetched_at="2026-10-09T21:00:00Z",
+        venue_ids={"1": "186"},
+    )
+    assert "venues" not in body and "venueSourceKeys" not in body

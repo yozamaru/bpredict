@@ -1,7 +1,10 @@
 """終了済み試合の必要項目だけを正規化する。"""
 
+import html
 import re
+import unicodedata
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
@@ -193,26 +196,84 @@ def parse_boxscore(
 #: 試合詳細ページの会場ID（`/arena_detail/?ArenaCD=<id>` のリンクと埋め込みの両方）。
 _ARENA_CD = re.compile(r'ArenaCD(?:=|"\s*:\s*"?)(\d+)')
 
+#: 会場の印。**`stadium-name` の直後の `<a>` に限る**（下記）。
+#: `<span class="stadium-name">会場：<a href="...ArenaCD=186"><span class="link-line">名称</span></a>`
+_STADIUM = re.compile(
+    r'class="[^"]*\bstadium-name\b[^"]*"[^>]*>'
+    r"[^<]{0,40}"
+    r'<a[^>]*ArenaCD=(?P<cd>\d+)[^>]*>\s*'
+    r"(?:<span[^>]*>\s*)?"
+    r"(?P<name>[^<]*)",
+    re.DOTALL,
+)
 
-def parse_arena_cd(body: str) -> str | None:
-    """**試合前**の試合詳細ページから会場の公式IDを取る（2026-10-09 に実測）。
+
+@dataclass(frozen=True)
+class Arena:
+    """試合前のページから読んだ会場。`name` は読めなければ `None`（規約5）。"""
+
+    cd: str
+    name: str | None
+
+
+def _arena_name(raw: str) -> str | None:
+    found = unicodedata.normalize("NFKC", html.unescape(raw)).strip()
+    return found or None
+
+
+def parse_arena(body: str) -> Arena | None:
+    """**試合前**の試合詳細ページから会場の公式IDと正式名称を取る。
 
     設計は長らく「公式の `StadiumCD` はボックススコア（試合後）にしかない」と
     書いていたが、**試合前のページを実際に見た記録が無く、推測だった**。
-    実測すると `StadiumCD` / `StadiumNameJ` は0回、**`ArenaCD` が1回**出る。
-    値は `venues.id`（= `StadiumCD`）と同じ採番である
-    （詳細設計 4.10 が `/arena_detail/?ArenaCD=<id>` に `venues.id` を渡している）。
+    実測すると `StadiumCD` / `StadiumNameJ` は0回だが、**`stadium-name` の印が
+    `ArenaCD` と正式名称の両方を持っている**（2026-10-09。`verification/RESULTS.md`）。
 
-    **これで会場名による名寄せをせずに済む**（詳細設計 1.1 を変えない）。
+    ```html
+    <span class="stadium-name">会場：<a href="...?ArenaCD=100122">
+      <span class="link-line">とちぎん・ブレックスアリーナ宇都宮</span></a></span>
+    ```
+
+    **名称が要るのは、`venues` に無い会場を試合前に登録するためである。**
+    公式サイトは改称のたびに新しい `ArenaCD` を振る（`8` 川崎市とどろきアリーナ →
+    `100086` 東急ドレッセとどろきアリーナ）ため、**その会場で1試合も行われて
+    いない間は `venues` に行が無い**。`venues.name` は NOT NULL であり、
+    名称が無ければ行を作れない（詳細設計 1.2）。
+
+    **名称の印は厳しく、会場IDは緩く取る。** 印が変わったら名称は諦めるが、
+    会場IDだけは埋め込みからでも拾う — **既に動いている解決を落とさない**。
+
+    | 返り値 | 意味 |
+    |---|---|
+    | `Arena(cd, name)` | 会場IDと正式名称の両方が取れた |
+    | `Arena(cd, None)` | **IDだけ取れた。** 名称の印が無い（構造が変わった疑い） |
+    | `None` | **ページに無い。** 推測で埋めない（規約5） |
+    | `ParseError` | **2つ以上の異なる会場がある。** どれか選べない |
+    """
+    found = {
+        (match.group("cd"), _arena_name(match.group("name")))
+        for match in _STADIUM.finditer(body)
+    }
+    if len(found) > 1:
+        raise ParseError(f"会場が一意でない: {len(found)}件")
+    if found:
+        cd, name = found.pop()
+        return Arena(cd, name)
+    cd = parse_arena_cd(body)
+    return None if cd is None else Arena(cd, None)
+
+
+def parse_arena_cd(body: str) -> str | None:
+    """会場IDだけを緩く取る（`parse_arena` の退避手段）。
+
+    `stadium-name` の印が変わっても、埋め込みとリンクのどちらかに `ArenaCD` が
+    あれば拾う。**名称は取れない** — 取れたふりをしない。
 
     | 返り値 | 意味 |
     |---|---|
     | 文字列 | 一意に決まった会場ID |
     | `None` | **ページに無い。** 推測で埋めない（規約5） |
     | `ParseError` | **2つ以上の異なる値がある。** どれか選べない |
-
-    **複数あったら黙って1つ選ばない。** 選ぶと、構造が変わったときに
-    別の会場のIDが静かに入る。
     """
     found = {match.group(1) for match in _ARENA_CD.finditer(body)}
     if not found:

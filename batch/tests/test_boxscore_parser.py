@@ -364,3 +364,67 @@ def test_two_different_ids_are_refused():
     from batch.parser.errors import ParseError
     with pytest.raises(ParseError, match="一意でない"):
         parse_arena_cd("ArenaCD=186 ... ArenaCD=187")
+
+
+# ---------------------------------------------------------------------------
+# 会場の正式名称（2026-10-09。詳細設計 4.2 のステップ1b）
+#
+# **同じ印が会場IDと正式名称の両方を持っている**（実測）。名称が要るのは、
+# 改称で新しい `ArenaCD` が振られた会場を**試合前に `venues` へ登録する**
+# ためである（`venues.name` は NOT NULL）。
+# ---------------------------------------------------------------------------
+
+_STADIUM_MARK = (
+    '<span class="stadium-name">会場：'
+    '<a href="https://www.bleague.jp/arena_detail/?ArenaCD=100122"'
+    ' class="text-link-white link-white">'
+    '<span class="link-line">とちぎん・ブレックスアリーナ宇都宮</span></a></span>'
+)
+
+
+def test_the_arena_mark_carries_both_the_id_and_the_name() -> None:
+    from batch.parser.boxscore_parser import Arena, parse_arena
+    assert parse_arena(_STADIUM_MARK) == Arena("100122", "とちぎん・ブレックスアリーナ宇都宮")
+
+
+def test_the_name_is_read_without_the_inner_span() -> None:
+    """名称が `<a>` の直下にある形も読む（印の入れ子は1段しか仮定しない）。"""
+    from batch.parser.boxscore_parser import Arena, parse_arena
+    body = '<span class="stadium-name">会場：<a href="?ArenaCD=186">ゼビオアリーナ仙台</a></span>'
+    assert parse_arena(body) == Arena("186", "ゼビオアリーナ仙台")
+
+
+def test_entities_in_the_name_are_unescaped() -> None:
+    from batch.parser.boxscore_parser import parse_arena
+    body = '<span class="stadium-name">会場：<a href="?ArenaCD=9">A&amp;B アリーナ</a></span>'
+    got = parse_arena(body)
+    assert got is not None and got.name == "A&B アリーナ"
+
+
+def test_the_id_is_still_taken_when_the_mark_changed() -> None:
+    """**名称の印は厳しく、会場IDは緩く取る。**
+
+    印が変わったら名称は諦めるが、既に動いている会場IDの解決は落とさない。
+    """
+    from batch.parser.boxscore_parser import Arena, parse_arena
+    assert parse_arena('{"ArenaCD":"186"}') == Arena("186", None)
+
+
+def test_a_page_without_an_arena_returns_none() -> None:
+    from batch.parser.boxscore_parser import parse_arena
+    assert parse_arena("<html><body></body></html>") is None
+
+
+def test_two_different_arenas_are_refused() -> None:
+    """**黙って1つ選ばない**（`parse_arena_cd` と同じ規約）。"""
+    from batch.parser.boxscore_parser import parse_arena
+    from batch.parser.errors import ParseError
+    with pytest.raises(ParseError, match="一意でない"):
+        parse_arena(_STADIUM_MARK + _STADIUM_MARK.replace("100122", "7"))
+
+
+def test_an_empty_name_is_none_not_an_empty_string() -> None:
+    """**空を名称として採らない**（規約5）。IDだけ返す。"""
+    from batch.parser.boxscore_parser import Arena, parse_arena
+    body = '<span class="stadium-name">会場：<a href="?ArenaCD=7"><span></span></a></span>'
+    assert parse_arena(body) == Arena("7", None)

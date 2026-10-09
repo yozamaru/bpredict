@@ -85,7 +85,7 @@ from batch.model.predict_players import (
     SideBox,
     predict_box_score,
 )
-from batch.parser.boxscore_parser import parse_arena_cd
+from batch.parser.boxscore_parser import parse_arena
 from batch.parser.errors import (
     DataUnavailable,
     OutOfScopeError,
@@ -160,6 +160,8 @@ class Result:
     venues_absent: int = 0
     #: 会場IDは取れたが `venues` に無かった試合。**FK が通らないので入れない**
     venues_unknown: list[str] = field(default_factory=list)
+    #: 試合前に `venues` へ登録した会場（改称で新しい ArenaCD が振られた会場）
+    venues_registered: int = 0
     #: 取り込まない試合（不戦敗）をシーズンごとに持つ。**件数だけでなく中身を残す**
     #: （要件 5.3 / 4.4）。`backfill` は artifact で持ち帰るしかないが、
     #: **このジョブは `contents: write` であり自分でコミットできる**
@@ -275,6 +277,16 @@ def pick_upcoming(
     return picked
 
 
+@dataclass
+class Resolved:
+    """試合前に解決した会場。**IDと、新しく登録する会場の名称を分けて持つ。**"""
+
+    #: 試合ID -> 会場ID
+    ids: dict[str, str] = field(default_factory=dict)
+    #: 会場ID -> 正式名称。**`venues` に無かった会場だけ**
+    venues: dict[str, str] = field(default_factory=dict)
+
+
 def resolve_venues(
     client: RateLimitedClient,
     games: list[ScheduleGame],
@@ -283,40 +295,48 @@ def resolve_venues(
     already: Mapping[str, str],
     result: Result,
     log: Callable[[str], None] = print,
-) -> dict[str, str]:
+) -> Resolved:
     """試合前に会場の公式IDを取る（2026-10-09。運営者の指示）。
 
     **日程ページは略称しか持たない**（「ゼビオ」「ADみと」）。正式名称を出すには
     会場IDが要るが、**試合詳細ページは試合前から `ArenaCD` を持っている**
     （`verification/RESULTS.md` の実測）。**会場名による名寄せをしないで済む。**
 
+    **同じ印が正式名称も持っている**（2026-10-09 に追記）。公式サイトは改称の
+    たびに新しい `ArenaCD` を振るため（`8` 川崎市とどろきアリーナ →
+    `100086` 東急ドレッセとどろきアリーナ）、**その会場で1試合も行われて
+    いない間は `venues` に行が無い**。名称が取れるなら**試合前に登録する**。
+
     | 規則 | 理由 |
     |---|---|
     | **既に会場IDがある試合は取りに行かない** | 会場IDは変わらない。要件 5.2「取得は必要最小限のページに限る」 |
-    | **`venues` に無いIDは使わない** | `games.venue_id` は FK であり、入れると書き込みが落ちる。件数とIDを出す |
+    | **`venues` に無いIDは、名称が取れたときだけ登録する** | `venues.name` は NOT NULL。推測で埋めない（規約5） |
+    | **名称が取れなければIDも使わない** | `games.venue_id` は FK であり、入れると書き込みが落ちる。件数とIDを出す |
     | **取れなくても止めない** | 試合後にステップ1 が埋める。画面は日程ページの略称を出す |
     | 1件の取得・解釈の失敗 | その試合を飛ばして続ける（4.3） |
     """
-    out: dict[str, str] = {}
+    resolved = Resolved()
     for game in games:
         if game.game_id in already:
             continue
         try:
-            found = parse_arena_cd(client.get(boxscore_url(game.game_id)))
+            arena = parse_arena(client.get(boxscore_url(game.game_id)))
         except (ScraperError, ParseError, ValidationError) as exc:
             log(f"daily_ingest: skip venue {game.game_id} {type(exc).__name__} {exc}")
             continue
-        if found is None:
+        if arena is None:
             result.venues_absent += 1
             continue
-        if found not in known_venue_ids:
-            # **推測で `venues` に行を作らない。** 名前が取れないため NOT NULL を
-            # 満たせない（会場名はボックススコアにしかない）
-            result.venues_unknown.append(found)
-            continue
-        out[game.game_id] = found
+        if arena.cd not in known_venue_ids and arena.cd not in resolved.venues:
+            if arena.name is None:
+                # **推測で `venues` に行を作らない**（`name` は NOT NULL）
+                result.venues_unknown.append(arena.cd)
+                continue
+            resolved.venues[arena.cd] = arena.name
+            result.venues_registered += 1
+        resolved.ids[game.game_id] = arena.cd
         result.venues_resolved += 1
-    return out
+    return resolved
 
 
 def send(
@@ -327,6 +347,7 @@ def send(
     club_ids: Mapping[str, str],
     fetched_at: str,
     venue_ids: Mapping[str, str] | None = None,
+    venues: Mapping[str, str] | None = None,
     collect: list[Mapping[str, object]] | None = None,
 ) -> int:
     """`POST /internal/games` で送る。**1リクエストの行数上限を守る**（詳細設計 3.4）。
@@ -347,6 +368,7 @@ def send(
             series_game_no=series,
             fetched_at=fetched_at,
             venue_ids=venue_ids or {},
+            venues=venues or {},
         )
         api.post("games", body)
         if collect is not None:
@@ -405,12 +427,14 @@ def run_upcoming(
             start, end, result)
         # **試合前に会場の公式IDを取る**（2026-10-09。運営者の指示）。
         # 既に取れている試合は取りに行かない（要件 5.2）
-        venue_ids = resolve_venues(
+        resolved = resolve_venues(
             client, games, known_venue_ids=known_venues, already=have_venue,
             result=result, log=log)
+        # 登録した会場は、同じ季の後続の試合では既知として扱う
+        known_venues |= set(resolved.venues)
         result.ingested += send(
             api, games, season=season, club_ids=club_ids, fetched_at=fetched_at,
-            venue_ids=venue_ids, collect=bodies)
+            venue_ids=resolved.ids, venues=resolved.venues, collect=bodies)
 
     # --- ステップ2。**D1 に送ったのと同じ本文から写す** ---
     if snapshot is not None and bodies:
@@ -640,8 +664,9 @@ def _mirror(
 
 # --- ステップ2: スナップショット更新（詳細設計 4.2 のステップ2） ---
 
-#: ステップ1b が触るテーブル。**書き直すのはこの2つだけ**（基本設計 2.2 の部分書き出し）。
-UPCOMING_TABLES = ("games", "team_games")
+#: ステップ1b が触るテーブル（基本設計 2.2 の部分書き出し）。**`venues` を含む** —
+#: 改称で新しい ArenaCD が振られた会場を試合前に登録する（`resolve_venues`）。
+UPCOMING_TABLES = ("games", "team_games", "venues")
 
 #: 行の同一性（詳細設計 4.2 のステップ1 の表。DDL の主キーと同じ）。
 KEYS: Mapping[str, tuple[str, ...]] = {
@@ -1302,6 +1327,7 @@ def main(argv: list[str] | None = None) -> int:
         # **会場の解決を別の行で出す。** 0件が続いたらページの構造が変わった疑い
         print(
             f"  会場: 取れた={result.venues_resolved}"
+            f" 登録={result.venues_registered}"
             f" ページに無い={result.venues_absent}"
             f" venues に無い={len(result.venues_unknown)}"
         )

@@ -650,6 +650,47 @@ def test_an_unknown_table_is_rejected() -> None:
         daily_ingest.apply_to_snapshot(ds, {"venues": [{"id": "x"}]})
 
 
+def test_the_venue_id_is_not_erased_when_the_body_has_none() -> None:
+    """**既に入っている会場IDを NULL で上書きしない**（詳細設計 3.4 / 4.2）。
+
+    **本番で実際に消えていた**（2026-10-09）。ステップ1b は「既に会場IDがある
+    試合は取りに行かない」ため（要件 5.2）、2回目以降の回は `venueId` に `None` を
+    送る。保護が無かったため、**11:56 JST に入った24件が 12:27 JST の回で
+    全部 NULL に戻っていた** — 画面は略称（「ゼビオ」）を出し続けた。
+
+    **座標140件で踏んだのと同じ形である**（基本設計 2.2 / 3.4 の `preserve`）。
+    あちらは本文に列が無いことで守られるが、`games` は**全列を送る**ため
+    保護が要る。
+    """
+    ds = snapshot_dataset()
+    games = ds.tables["games"]
+    games.loc[games["id"] == "g1", "venue_id"] = "47"
+    body = upcoming_games_payload(
+        [game("g1", "2026-10-06")], season=SEASON_REF,
+        club_ids={"703": "703", "704": "704"},
+        series_game_no={"g1": 1}, fetched_at="2026-10-05T00:00:00Z")
+    rows = body["games"]
+    assert isinstance(rows, list)
+    assert rows[0]["venueId"] is None, "本文は None を送る（前提）"
+    daily_ingest.apply_to_snapshot(ds, snapshot_rows(body))
+    row = ds.table("games").query("id == 'g1'").iloc[0]
+    assert str(row["venue_id"]) == "47"
+
+
+def test_the_venue_id_is_updated_when_the_body_has_one() -> None:
+    """**値が来れば更新する。** 保護は「NULL で消さない」であって「変えない」ではない。
+
+    試合後のステップ1 は `StadiumCD` を送る（詳細設計 1.2）。ここを止めると、
+    **試合前に取れなかった会場が永久に埋まらない**。
+    """
+    ds = snapshot_dataset()
+    games = ds.tables["games"]
+    games.loc[games["id"] == "g1", "venue_id"] = "47"
+    daily_ingest.apply_to_snapshot(ds, {"games": [{"id": "g1", "venue_id": "169"}]})
+    row = ds.table("games").query("id == 'g1'").iloc[0]
+    assert str(row["venue_id"]) == "169"
+
+
 def test_game_columns_match_the_ddl(db: sqlite3.Connection) -> None:
     """`GAME_COLUMNS` が DDL と一致すること。**二重管理を検査で止める。**
 

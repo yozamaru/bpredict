@@ -137,6 +137,18 @@ facts.post('/games', async (c) => {
     ...upsertStatements(c.env.DB, 'games', GAME_COLS, gameRows, {
       conflict: ['id'],
       update: GAME_COLS.filter((x) => x !== 'id'),
+      // **会場IDは NULL で上書きしない。** ステップ1b は「既に会場IDがある試合は
+      // 取りに行かない」ため（要件 5.2）、2回目以降の回は `venueId` に `null` を
+      // 送る。保護が無かったため**本番で24件が消えていた**（2026-10-09。11:56 JST
+      // に入り、12:27 JST の回で全滅して画面が略称に戻った）。
+      //
+      // **`venues` の座標と同じ形だが、守られ方が違う** — あちらは本文に列が
+      // 無いことでも守られるが、`games` は**全列を送る**ため保護が要る。
+      //
+      // **他の列は保護しない。** `home_score` / `finished_at` / `attendance` も
+      // ステップ1b では `null` だが、あちらは**未実施の試合しか送らない**。
+      // この不変条件が崩れたら、ここに足す（詳細設計 3.4）
+      preserve: ['venue_id'],
       extra: ["updated_at = datetime('now')"],
     }),
     ...upsertStatements(c.env.DB, 'team_games', TEAM_GAME_COLS, teamGameRows, {

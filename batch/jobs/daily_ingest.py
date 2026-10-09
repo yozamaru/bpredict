@@ -692,6 +692,20 @@ NEVER_UPDATE: Mapping[str, frozenset[str]] = {
     "venues": frozenset({"name"}),
 }
 
+#: **None では上書きしない列。** D1 の `preserve` とそろえる（詳細設計 3.4）。
+#:
+#: `games` は**全列を送る**ため、`venues` の座標のように「本文に無いから守られる」
+#: とはならない。**ステップ1b は「既に会場IDがある試合は取りに行かない」**（要件 5.2）
+#: ため、2回目以降の回は `venueId` に `None` を送る — 保護が無かったため
+#: **本番で24件が消えていた**（2026-10-09。11:56 JST に入り、12:27 JST の回で全滅）。
+#:
+#: **他の列は保護しない。** `home_score` / `finished_at` / `attendance` も
+#: ステップ1b では `None` だが、あちらは**未実施の試合しか送らない**（`pick_upcoming`）。
+#: この不変条件が崩れたら、ここに足す。
+PRESERVE: Mapping[str, frozenset[str]] = {
+    "games": frozenset({"venue_id"}),
+}
+
 
 def apply_to_snapshot(
     ds: Dataset, rows: Mapping[str, list[dict[str, object]]],
@@ -720,6 +734,7 @@ def apply_to_snapshot(
         current = ds.table(table)
         keys = list(KEYS[table])
         protect = NEVER_UPDATE.get(table, frozenset())
+        preserve = PRESERVE.get(table, frozenset())
 
         converted: dict[tuple[str, ...], dict[str, object]] = {}
         for row in incoming:
@@ -746,7 +761,10 @@ def apply_to_snapshot(
             if base is None:
                 merged.append(row)          # 新規。本文のまま入れる
             else:
-                patch = {c: v for c, v in row.items() if c not in protect}
+                patch = {
+                    c: v for c, v in row.items()
+                    if c not in protect and not (c in preserve and v is None)
+                }
                 merged.append({**base, **patch})
         ds.tables[table] = pd.concat(
             [kept, pd.DataFrame(merged)], ignore_index=True)[list(current.columns)]

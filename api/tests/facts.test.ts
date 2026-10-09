@@ -103,6 +103,49 @@ describe('送られてこない列を NULL で上書きしない（詳細設計 
     expect(row).toEqual({ prefecture: '東京都', lat: 35.6, lng: 139.7 });
   });
 
+  it('試合の会場IDが、次の回の NULL で消えない', async () => {
+    // **本番で実際に消えた**（2026-10-09）。ステップ1b は「既に会場IDがある試合は
+    // 取りに行かない」ため（要件 5.2）、2回目以降の回は `venueId` に `null` を送る。
+    // 保護が無かったため、**11:56 JST に入った24件が 12:27 JST の回で全滅した** —
+    // 画面は略称（「ゼビオ」）を出し続けた。**座標と同じ形である**（詳細設計 3.4）
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    const body = (venueId: string | null) => ({
+      venues: [{ id: 'v-tipoff', name: '架空アリーナ' }],
+      games: [{
+        id: s.gameId, seasonId: s.seasonId, league: 'PREMIER', competition: 'REGULAR',
+        gameDate: '2026-09-22', tipoffAt: '2099-01-01T10:05:00Z',
+        homeClubId: s.homeId, awayClubId: s.awayId, status: 'SCHEDULED', venueId,
+      }],
+    });
+    expect((await post('/internal/games', body('v-tipoff'))).status).toBe(200);
+    // 次の回は `already` なので取りに行かず、null を送る
+    expect((await post('/internal/games', body(null))).status).toBe(200);
+
+    const row = await env.DB.prepare('SELECT venue_id FROM games WHERE id = ?')
+      .bind(s.gameId).first<{ venue_id: string | null }>();
+    expect(row?.venue_id).toBe('v-tipoff');
+  });
+
+  it('会場IDを送れば更新される（試合後に StadiumCD で埋まる経路）', async () => {
+    // **保護は「NULL で消さない」であって「変えない」ではない。** ここを止めると、
+    // 試合前に取れなかった会場が永久に埋まらない（詳細設計 1.2）
+    const s = await seedGame({ tipoffAt: '2099-01-01T10:05:00Z' });
+    const body = (venueId: string) => ({
+      venues: [{ id: venueId, name: `架空${venueId}` }],
+      games: [{
+        id: s.gameId, seasonId: s.seasonId, league: 'PREMIER', competition: 'REGULAR',
+        gameDate: '2026-09-22', tipoffAt: '2099-01-01T10:05:00Z',
+        homeClubId: s.homeId, awayClubId: s.awayId, status: 'FINISHED', venueId,
+      }],
+    });
+    expect((await post('/internal/games', body('v-before'))).status).toBe(200);
+    expect((await post('/internal/games', body('v-after'))).status).toBe(200);
+
+    const row = await env.DB.prepare('SELECT venue_id FROM games WHERE id = ?')
+      .bind(s.gameId).first<{ venue_id: string | null }>();
+    expect(row?.venue_id).toBe('v-after');
+  });
+
   it('座標を送れば更新される（保護は NULL のときだけ効く）', async () => {
     await post('/internal/games', {
       venues: [{ id: 'v-2', name: '架空体育館', prefecture: '東京都', lat: 35.6, lng: 139.7 }],

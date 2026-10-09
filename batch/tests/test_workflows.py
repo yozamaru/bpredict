@@ -263,43 +263,61 @@ def test_backfill_carries_the_exclusion_list_home():
 
 # --- cron を置く条件（詳細設計 4.2） ---
 
+DAILY_SLOTS = ("17 2 * * *", "17 6 * * *", "17 10 * * *", "17 14 * * *")
+
+
+def _daily_crons() -> list[str]:
+    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
+    return re.findall(r"- cron: '([^']+)'", body)
+
+
 def test_daily_ingest_runs_four_times_a_day():
-    """**1日4回回す**（運営者の指示。2026-10-10 に時刻を変えた）。
+    """**1日4回回す**（運営者の指示。時刻は 2026-10-10 に変えた）。
 
     cron は UTC で書く（CLAUDE.md 時刻の扱い）。
-    **11:00 / 15:00 / 19:00 / 23:00 JST = 02:00 / 06:00 / 10:00 / 14:00 UTC。**
+    **11:17 / 15:17 / 19:17 / 23:17 JST = 02:17 / 06:17 / 10:17 / 14:17 UTC。**
     4つとも同じ UTC 日に収まるため、曜日指定のずらしは要らない。
     """
-    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    assert "cron: '0 2 * * *'" in body
-    assert "cron: '0 6,10,14 * * *'" in body
+    assert _daily_crons() == list(DAILY_SLOTS)
 
 
-def test_the_four_slots_are_not_one_cron_expression():
-    """**4つを1つの cron 式にまとめない。**
+def test_no_slot_is_on_the_hour():
+    """**分を `0` にしない。**
 
-    `github.event.schedule` は cron 式をそのまま返すため、
-    `0 2,6,10,14 * * *` と書くと**4スロットが同じ文字列になり、最初の
-    スロットを見分けられない** — ステップ1b の分岐が静かに全スロットで真になる。
+    GitHub の文書が「遅れを減らすには毎時0分以外の時刻に設定すること」と
+    勧めている。**実測で1日4回のうち2回しか発火していなかった**
+    （詳細設計 4.2）。`0` に戻す変更をここで止める。
     """
-    body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    crons = re.findall(r"- cron: '([^']+)'", body)
-    assert len(crons) == 2, crons
-    # ステップ1b を回すスロットの式は、時刻を1つしか持たないこと
-    gate = re.search(r"github\.event\.schedule == '([^']+)'", body)
-    assert gate is not None
-    assert gate.group(1) in crons, gate.group(1)
-    assert "," not in gate.group(1).split()[1], gate.group(1)
+    minutes = [c.split()[0] for c in _daily_crons()]
+    assert "0" not in minutes, minutes
+
+
+def test_each_slot_is_its_own_cron_expression():
+    """**4スロットを別々の式で書く。**
+
+    ① `github.event.schedule` は cron 式をそのまま返すため、1つの式に複数の
+       時刻を書くと**スロットが同じ文字列になり、ステップ1b の分岐が死ぬ**。
+    ② **実測で、単独の式は4日連続で発火し、3時刻を1つの式に書いた側は毎日
+       1回しか届いていなかった**（詳細設計 4.2）。
+    """
+    crons = _daily_crons()
+    assert len(crons) == 4, crons
+    for expr in crons:
+        minute, hour = expr.split()[0], expr.split()[1]
+        assert "," not in hour and "/" not in hour, expr
+        assert "," not in minute and "/" not in minute, expr
 
 
 def test_only_the_first_slot_walks_the_upcoming_schedule():
-    """**11:00 以外ではステップ1b を回さない**（日程の walk を1回節約する）。
+    """**最初のスロット以外ではステップ1b を回さない**（walk を1回節約する）。
 
     要件 5.2「取得は必要最小限のページに限る」。未実施の試合の追加・延期は
     1日1回の反映で足りる。
     """
     body = (WORKFLOW_DIR / "daily-ingest.yml").read_text(encoding="utf-8")
-    assert "github.event.schedule == '0 2 * * *'" in body
+    gate = re.search(r"github\.event\.schedule == '([^']+)'", body)
+    assert gate is not None
+    assert gate.group(1) == DAILY_SLOTS[0], gate.group(1)
 
 
 def test_the_schedule_run_turns_on_every_step():

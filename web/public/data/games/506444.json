@@ -22,8 +22,8 @@
    "status": "SCHEDULED",
    "tipoffAt": "2026-10-09T10:05:00Z",
    "venue": {
-    "isPrimary": null,
-    "name": "ちばアリ"
+    "isPrimary": true,
+    "name": "ちばぎんアリーナ"
    }
   },
   "modelAccuracy": null,
@@ -1307,6 +1307,6 @@
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-09T01:12:12Z"
+  "generatedAt": "2026-10-09T02:59:45Z"
  }
 }

@@ -10,8 +10,8 @@
      "shortName": "信州",
      "slug": "shinshu-brave-warriors"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 76,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506460",
     "home": {
@@ -20,17 +20,9 @@
      "shortName": "滋賀",
      "slug": "shiga-lakes"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5406731975981105,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.53533909671596,
-     "predHomeScore": 79.85578179064551
-    },
-    "status": "SCHEDULED",
+    "homeScore": 95,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-10-12T05:05:00Z"
    },
    {
@@ -40,8 +32,8 @@
      "shortName": "A東京",
      "slug": "alvark-tokyo"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 103,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506461",
     "home": {
@@ -50,17 +42,9 @@
      "shortName": "大阪",
      "slug": "osaka-evessa"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.14163927936210627,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 86.4681507855576,
-     "predHomeScore": 72.5954871981274
-    },
-    "status": "SCHEDULED",
+    "homeScore": 78,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-10-12T05:05:00Z"
    },
    {
@@ -70,8 +54,8 @@
      "shortName": "群馬",
      "slug": "gunma-crane-thunders"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 72,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506462",
     "home": {
@@ -80,17 +64,9 @@
      "shortName": "佐賀",
      "slug": "saga-ballooners"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.17332217929379956,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 85.62355157879199,
-     "predHomeScore": 73.45578256043183
-    },
-    "status": "SCHEDULED",
+    "homeScore": 61,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-10-12T05:05:00Z"
    },
    {
@@ -100,8 +76,8 @@
      "shortName": "千葉J",
      "slug": "chiba-jets"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 106,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506459",
     "home": {
@@ -110,17 +86,9 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5897584754975764,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.81780564088454,
-     "predHomeScore": 80.7517154653966
-    },
-    "status": "SCHEDULED",
+    "homeScore": 108,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-10-12T06:05:00Z"
    },
    {
@@ -130,8 +98,8 @@
      "shortName": "神戸",
      "slug": "kobe-storks"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 69,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506463",
     "home": {
@@ -140,22 +108,14 @@
      "shortName": "長崎",
      "slug": "nagasaki-velca"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5997842634918602,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.51121640590875,
-     "predHomeScore": 80.779536347287
-    },
-    "status": "SCHEDULED",
+    "homeScore": 85,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-10-12T06:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-11T19:00:42Z"
+  "generatedAt": "2026-10-12T09:20:36Z"
  }
 }

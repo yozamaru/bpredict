@@ -14,7 +14,7 @@
     },
     "games": {
       "rows": 6351,
-      "sha256": "8f4f83975742f8b121312972ff17550405f1cd8c562fe678d309d9ed74d36154"
+      "sha256": "22e0d1ae05f2dc04ed2b4b73fb999ba32001b572305e02a0a6073e0b4cc4b13d"
     },
     "player_game_stats": {
       "rows": 147863,
@@ -53,7 +53,7 @@
       "sha256": "65ab4d53d267d6070d83ed22ba7e80a0621e2142d9c71b9b6524f5f17023326d"
     }
   },
-  "generated_at": "2026-10-12T09:19:38Z",
+  "generated_at": "2026-10-13T09:29:36Z",
   "max_finished_at": "2026-10-12T08:05:00Z",
   "version": 1
 }

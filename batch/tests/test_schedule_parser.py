@@ -155,6 +155,37 @@ def test_explicit_postponed_cancelled_states(state, expected):
     assert page.games[0].status == expected
 
 
+def test_just_finished_is_the_same_as_final():
+    """`試合終了` は `FINAL` の手前の一時的なラベルである（詳細設計 4.4）。
+
+    2026-10-10 に本番で出て `ParseError` になり、**その回は1試合も取り込めなかった**
+    （日程ページ全体が落ちるため）。`506447` は 16:41 に `試合終了`、17:32 には
+    `FINAL` で、**約51分で切り替わった**。11シーズン6,300試合で出なかったのは
+    取り込みが常に試合終了から数時間後だったためで、cron を試合直後へ動かした
+    ことで初めて踏んだ。
+
+    **2つのラベルが同じ試合を述べることを検査する。** 状態だけが違う同じ行から
+    同じ `ScheduleGame` が出るなら、片方だけ扱いが変わる余地がない。
+    """
+    final = parse_schedule(body(HEADER, game_html(state="FINAL", home="103", away="109")),
+                           year=2026, event=2, clubs_by_name=CLUBS)
+    just = parse_schedule(body(HEADER, game_html(state="試合終了", home="103", away="109")),
+                          year=2026, event=2, clubs_by_name=CLUBS)
+    assert just.games[0].status == "FINISHED"
+    assert just.games == final.games
+
+
+def test_just_finished_still_requires_a_score():
+    """得点が無ければ落とす。**`FINAL` と同じ関門を通す**（詳細設計 4.4 の規則4）。
+
+    状態が「終わっている」と言っているのに得点が無いのは構造変更の疑いであり、
+    ここを緩めると終了した試合が静かに取り込まれなくなる。
+    """
+    with pytest.raises(ParseError, match="missing a score"):
+        parse_schedule(body(HEADER, game_html(state="試合終了", home="", away="")),
+                       year=2026, event=2, clubs_by_name=CLUBS)
+
+
 @pytest.mark.parametrize("state", ["LIVE", "3Q", "unknown", "見どころ LIVE"])
 def test_unknown_or_live_state_never_becomes_scheduled_or_finished(state):
     with pytest.raises(ParseError, match="state") as raised:

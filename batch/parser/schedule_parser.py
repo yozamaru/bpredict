@@ -34,9 +34,17 @@ _VOID_ELEMENTS = frozenset(
     {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
      "source", "track", "wbr"}
 )
+#: 日程ページの状態ラベル → `games.status`。
+#:
+#: **`試合終了` は `FINAL` の手前の一時的なラベルである**（2026-10-10 に本番で
+#: 出た。詳細設計 4.4）。`506447` は 16:41 に `試合終了`、17:32 には `FINAL` で、
+#: **約51分で切り替わった**。11シーズン6,300試合で一度も出なかったのは、
+#: 取り込みが常に試合終了から数時間後だったためで、cron を試合直後へ動かした
+#: ことで初めて踏んだ。**どちらも「試合は終わっている」ことを述べている。**
 _STATES = {
     "見どころ": "SCHEDULED",
     "FINAL": "FINISHED",
+    "試合終了": "FINISHED",
     "延期": "POSTPONED",
     "試合延期": "POSTPONED",
     "中止": "CANCELLED",

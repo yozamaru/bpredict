@@ -22,7 +22,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.6237326040500669,
+     "homeWinProb": 0.6237326040500671,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -66,6 +66,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-15T11:28:50Z"
+  "generatedAt": "2026-10-15T15:04:20Z"
  }
 }

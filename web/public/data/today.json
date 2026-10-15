@@ -1,10 +1,101 @@
 {
  "data": {
   "accuracy": null,
-  "gameDate": "2026-10-15",
-  "games": []
+  "gameDate": "2026-10-16",
+  "games": [
+   {
+    "away": {
+     "clubId": "712",
+     "name": "茨城ロボッツ",
+     "shortName": "茨城",
+     "slug": "ibaraki-robots"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506464",
+    "home": {
+     "clubId": "727",
+     "name": "川崎ブレイブサンダース",
+     "shortName": "川崎",
+     "slug": "kawasaki-brave-thunders"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5481454564987346,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.60297391551538,
+     "predHomeScore": 80.16709513684177
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-16T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "701",
+     "name": "琉球ゴールデンキングス",
+     "shortName": "琉球",
+     "slug": "ryukyu-golden-kings"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506465",
+    "home": {
+     "clubId": "694",
+     "name": "横浜ビー・コルセアーズ",
+     "shortName": "横浜BC",
+     "slug": "yokohama-b-corsairs"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.37378585068515835,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 81.46559720419947,
+     "predHomeScore": 77.30447184815768
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-16T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "702",
+     "name": "レバンガ北海道",
+     "shortName": "北海道",
+     "slug": "levanga-hokkaido"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506466",
+    "home": {
+     "clubId": "1638",
+     "name": "佐賀バルーナーズ",
+     "shortName": "佐賀",
+     "slug": "saga-ballooners"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.347160227972228,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 81.70368093374819,
+     "predHomeScore": 76.6225786324978
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-16T10:05:00Z"
+   }
+  ]
  },
  "meta": {
-  "generatedAt": "2026-10-15T11:28:50Z"
+  "generatedAt": "2026-10-15T15:04:20Z"
  }
 }

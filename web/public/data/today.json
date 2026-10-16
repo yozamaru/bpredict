@@ -10,8 +10,8 @@
      "shortName": "茨城",
      "slug": "ibaraki-robots"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 82,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506464",
     "home": {
@@ -20,9 +20,9 @@
      "shortName": "川崎",
      "slug": "kawasaki-brave-thunders"
     },
-    "homeScore": null,
+    "homeScore": 74,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-16T10:05:00Z"
    },
    {
@@ -32,8 +32,8 @@
      "shortName": "琉球",
      "slug": "ryukyu-golden-kings"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 85,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506465",
     "home": {
@@ -42,9 +42,9 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
-    "homeScore": null,
+    "homeScore": 87,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-16T10:05:00Z"
    },
    {
@@ -54,8 +54,8 @@
      "shortName": "北海道",
      "slug": "levanga-hokkaido"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 109,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506466",
     "home": {
@@ -64,14 +64,14 @@
      "shortName": "佐賀",
      "slug": "saga-ballooners"
     },
-    "homeScore": null,
+    "homeScore": 90,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-16T10:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-16T11:23:47Z"
+  "generatedAt": "2026-10-16T14:54:28Z"
  }
 }

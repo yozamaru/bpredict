@@ -8,8 +8,8 @@
     "shortName": "琉球",
     "slug": "ryukyu-golden-kings"
    },
-   "awayScore": null,
-   "competition": "REGULAR",
+   "awayScore": 85,
+   "competition": "PLAYOFF",
    "gameId": "506465",
    "home": {
     "clubId": "694",
@@ -17,9 +17,9 @@
     "shortName": "横浜BC",
     "slug": "yokohama-b-corsairs"
    },
-   "homeScore": null,
+   "homeScore": 87,
    "league": "PREMIER",
-   "status": "SCHEDULED",
+   "status": "FINISHED",
    "tipoffAt": "2026-10-16T10:05:00Z",
    "venue": {
     "isPrimary": true,
@@ -27,12 +27,979 @@
    }
   },
   "modelAccuracy": null,
-  "playerActuals": [],
+  "playerActuals": [
+   {
+    "box": {
+     "ast": 4,
+     "blk": 2,
+     "dreb": 3,
+     "efgPct": 0.5,
+     "fd": 6,
+     "fg": {
+      "a": 16,
+      "m": 7,
+      "pct": 0.4375
+     },
+     "fg2": {
+      "a": 9,
+      "m": 5,
+      "pct": 0.5555555555555556
+     },
+     "fg3": {
+      "a": 7,
+      "m": 2,
+      "pct": 0.2857142857142857
+     },
+     "ft": {
+      "a": 6,
+      "m": 5,
+      "pct": 0.8333333333333334
+     },
+     "oreb": 0,
+     "pf": 1,
+     "plusMinus": 0,
+     "stl": 2,
+     "tov": 0,
+     "tsPct": 0.5633047210300429
+    },
+    "clubId": "694",
+    "name": "アイザイア・リバース",
+    "playerId": "51000675",
+    "position": "SF",
+    "started": true,
+    "summary": {
+     "ast": 4,
+     "min": 31.3,
+     "pts": 21,
+     "reb": 3
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 7,
+     "efgPct": 0.46153846153846156,
+     "fd": 3,
+     "fg": {
+      "a": 13,
+      "m": 6,
+      "pct": 0.46153846153846156
+     },
+     "fg2": {
+      "a": 13,
+      "m": 6,
+      "pct": 0.46153846153846156
+     },
+     "fg3": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "ft": {
+      "a": 3,
+      "m": 3,
+      "pct": 1.0
+     },
+     "oreb": 6,
+     "pf": 4,
+     "plusMinus": -10,
+     "stl": 1,
+     "tov": 0,
+     "tsPct": 0.5237430167597765
+    },
+    "clubId": "701",
+    "name": "ジャック・クーリー",
+    "playerId": "26914",
+    "position": "C",
+    "started": true,
+    "summary": {
+     "ast": 0,
+     "min": 30.95,
+     "pts": 15,
+     "reb": 13
+    }
+   },
+   {
+    "box": {
+     "ast": 4,
+     "blk": 1,
+     "dreb": 6,
+     "efgPct": 0.6875,
+     "fd": 13,
+     "fg": {
+      "a": 16,
+      "m": 10,
+      "pct": 0.625
+     },
+     "fg2": {
+      "a": 13,
+      "m": 8,
+      "pct": 0.6153846153846154
+     },
+     "fg3": {
+      "a": 3,
+      "m": 2,
+      "pct": 0.6666666666666666
+     },
+     "ft": {
+      "a": 9,
+      "m": 6,
+      "pct": 0.6666666666666666
+     },
+     "oreb": 1,
+     "pf": 5,
+     "plusMinus": 4,
+     "stl": 1,
+     "tov": 2,
+     "tsPct": 0.7014028056112224
+    },
+    "clubId": "701",
+    "name": "デイビッド・ヌワバ",
+    "playerId": "51000416",
+    "position": "SG",
+    "started": true,
+    "summary": {
+     "ast": 4,
+     "min": 30.9,
+     "pts": 28,
+     "reb": 7
+    }
+   },
+   {
+    "box": {
+     "ast": 6,
+     "blk": 1,
+     "dreb": 9,
+     "efgPct": 0.6666666666666666,
+     "fd": 4,
+     "fg": {
+      "a": 12,
+      "m": 8,
+      "pct": 0.6666666666666666
+     },
+     "fg2": {
+      "a": 12,
+      "m": 8,
+      "pct": 0.6666666666666666
+     },
+     "fg3": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "ft": {
+      "a": 5,
+      "m": 3,
+      "pct": 0.6
+     },
+     "oreb": 4,
+     "pf": 2,
+     "plusMinus": 8,
+     "stl": 0,
+     "tov": 0,
+     "tsPct": 0.6690140845070423
+    },
+    "clubId": "694",
+    "name": "マイク・コッツァー",
+    "playerId": "51000394",
+    "position": "C",
+    "started": true,
+    "summary": {
+     "ast": 6,
+     "min": 30.75,
+     "pts": 19,
+     "reb": 13
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 4,
+     "efgPct": 0.7083333333333334,
+     "fd": 5,
+     "fg": {
+      "a": 12,
+      "m": 7,
+      "pct": 0.5833333333333334
+     },
+     "fg2": {
+      "a": 5,
+      "m": 4,
+      "pct": 0.8
+     },
+     "fg3": {
+      "a": 7,
+      "m": 3,
+      "pct": 0.42857142857142855
+     },
+     "ft": {
+      "a": 8,
+      "m": 6,
+      "pct": 0.75
+     },
+     "oreb": 1,
+     "pf": 0,
+     "plusMinus": -5,
+     "stl": 0,
+     "tov": 3,
+     "tsPct": 0.740979381443299
+    },
+    "clubId": "694",
+    "name": "ジェームズ・ベル",
+    "playerId": "51000172",
+    "position": null,
+    "started": null,
+    "summary": {
+     "ast": 0,
+     "min": 27.666666666666668,
+     "pts": 23,
+     "reb": 5
+    }
+   },
+   {
+    "box": {
+     "ast": 1,
+     "blk": 0,
+     "dreb": 2,
+     "efgPct": 0.3333333333333333,
+     "fd": 4,
+     "fg": {
+      "a": 3,
+      "m": 1,
+      "pct": 0.3333333333333333
+     },
+     "fg2": {
+      "a": 1,
+      "m": 1,
+      "pct": 1.0
+     },
+     "fg3": {
+      "a": 2,
+      "m": 0,
+      "pct": 0.0
+     },
+     "ft": {
+      "a": 7,
+      "m": 5,
+      "pct": 0.7142857142857143
+     },
+     "oreb": 1,
+     "pf": 3,
+     "plusMinus": 1,
+     "stl": 1,
+     "tov": 1,
+     "tsPct": 0.5756578947368421
+    },
+    "clubId": "694",
+    "name": "佐藤 卓磨",
+    "playerId": "15811",
+    "position": "SG",
+    "started": true,
+    "summary": {
+     "ast": 1,
+     "min": 27.35,
+     "pts": 7,
+     "reb": 3
+    }
+   },
+   {
+    "box": {
+     "ast": 3,
+     "blk": 0,
+     "dreb": 4,
+     "efgPct": 0.6,
+     "fd": 0,
+     "fg": {
+      "a": 5,
+      "m": 2,
+      "pct": 0.4
+     },
+     "fg2": {
+      "a": 1,
+      "m": 0,
+      "pct": 0.0
+     },
+     "fg3": {
+      "a": 4,
+      "m": 2,
+      "pct": 0.5
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 1,
+     "plusMinus": -11,
+     "stl": 0,
+     "tov": 0,
+     "tsPct": 0.6
+    },
+    "clubId": "701",
+    "name": "ケビン・ジョーンズ",
+    "playerId": "20017",
+    "position": "PF",
+    "started": true,
+    "summary": {
+     "ast": 3,
+     "min": 26.266666666666666,
+     "pts": 6,
+     "reb": 4
+    }
+   },
+   {
+    "box": {
+     "ast": 3,
+     "blk": 0,
+     "dreb": 2,
+     "efgPct": 0.5,
+     "fd": 0,
+     "fg": {
+      "a": 3,
+      "m": 1,
+      "pct": 0.3333333333333333
+     },
+     "fg2": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg3": {
+      "a": 3,
+      "m": 1,
+      "pct": 0.3333333333333333
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 1,
+     "pf": 4,
+     "plusMinus": 3,
+     "stl": 1,
+     "tov": 1,
+     "tsPct": 0.5
+    },
+    "clubId": "694",
+    "name": "森井 健太",
+    "playerId": "10851",
+    "position": "PG",
+    "started": null,
+    "summary": {
+     "ast": 3,
+     "min": 24.9,
+     "pts": 3,
+     "reb": 3
+    }
+   },
+   {
+    "box": {
+     "ast": 3,
+     "blk": 0,
+     "dreb": 0,
+     "efgPct": 0.3125,
+     "fd": 0,
+     "fg": {
+      "a": 8,
+      "m": 2,
+      "pct": 0.25
+     },
+     "fg2": {
+      "a": 2,
+      "m": 1,
+      "pct": 0.5
+     },
+     "fg3": {
+      "a": 6,
+      "m": 1,
+      "pct": 0.16666666666666666
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 1,
+     "pf": 3,
+     "plusMinus": -5,
+     "stl": 0,
+     "tov": 0,
+     "tsPct": 0.3125
+    },
+    "clubId": "701",
+    "name": "松脇 圭志",
+    "playerId": "30434",
+    "position": "SG",
+    "started": true,
+    "summary": {
+     "ast": 3,
+     "min": 23.333333333333332,
+     "pts": 5,
+     "reb": 1
+    }
+   },
+   {
+    "box": {
+     "ast": 3,
+     "blk": 0,
+     "dreb": 0,
+     "efgPct": 0.2777777777777778,
+     "fd": 1,
+     "fg": {
+      "a": 9,
+      "m": 2,
+      "pct": 0.2222222222222222
+     },
+     "fg2": {
+      "a": 2,
+      "m": 1,
+      "pct": 0.5
+     },
+     "fg3": {
+      "a": 7,
+      "m": 1,
+      "pct": 0.14285714285714285
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 3,
+     "plusMinus": -7,
+     "stl": 0,
+     "tov": 2,
+     "tsPct": 0.2777777777777778
+    },
+    "clubId": "701",
+    "name": "大浦 颯太",
+    "playerId": "30513",
+    "position": "PG",
+    "started": true,
+    "summary": {
+     "ast": 3,
+     "min": 22.666666666666668,
+     "pts": 5,
+     "reb": 0
+    }
+   },
+   {
+    "box": {
+     "ast": 1,
+     "blk": 0,
+     "dreb": 2,
+     "efgPct": 0.5,
+     "fd": 2,
+     "fg": {
+      "a": 7,
+      "m": 3,
+      "pct": 0.42857142857142855
+     },
+     "fg2": {
+      "a": 3,
+      "m": 2,
+      "pct": 0.6666666666666666
+     },
+     "fg3": {
+      "a": 4,
+      "m": 1,
+      "pct": 0.25
+     },
+     "ft": {
+      "a": 2,
+      "m": 2,
+      "pct": 1.0
+     },
+     "oreb": 1,
+     "pf": 1,
+     "plusMinus": 5,
+     "stl": 1,
+     "tov": 2,
+     "tsPct": 0.5710659898477157
+    },
+    "clubId": "701",
+    "name": "キーファー・ラベナ",
+    "playerId": "5100000062",
+    "position": "PG",
+    "started": null,
+    "summary": {
+     "ast": 1,
+     "min": 19.583333333333332,
+     "pts": 9,
+     "reb": 3
+    }
+   },
+   {
+    "box": {
+     "ast": 1,
+     "blk": 1,
+     "dreb": 1,
+     "efgPct": 0.0,
+     "fd": 4,
+     "fg": {
+      "a": 1,
+      "m": 0,
+      "pct": 0.0
+     },
+     "fg2": {
+      "a": 1,
+      "m": 0,
+      "pct": 0.0
+     },
+     "fg3": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "ft": {
+      "a": 2,
+      "m": 2,
+      "pct": 1.0
+     },
+     "oreb": 1,
+     "pf": 3,
+     "plusMinus": -13,
+     "stl": 1,
+     "tov": 1,
+     "tsPct": 0.5319148936170213
+    },
+    "clubId": "694",
+    "name": "カイル・リチャードソン",
+    "playerId": "9435",
+    "position": "C",
+    "started": null,
+    "summary": {
+     "ast": 1,
+     "min": 19.416666666666668,
+     "pts": 2,
+     "reb": 2
+    }
+   },
+   {
+    "box": {
+     "ast": 1,
+     "blk": 0,
+     "dreb": 0,
+     "efgPct": 0.42857142857142855,
+     "fd": 0,
+     "fg": {
+      "a": 7,
+      "m": 3,
+      "pct": 0.42857142857142855
+     },
+     "fg2": {
+      "a": 5,
+      "m": 3,
+      "pct": 0.6
+     },
+     "fg3": {
+      "a": 2,
+      "m": 0,
+      "pct": 0.0
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 3,
+     "plusMinus": 11,
+     "stl": 0,
+     "tov": 2,
+     "tsPct": 0.42857142857142855
+    },
+    "clubId": "694",
+    "name": "須藤 昂矢",
+    "playerId": "32956",
+    "position": "SG",
+    "started": true,
+    "summary": {
+     "ast": 1,
+     "min": 19.4,
+     "pts": 6,
+     "reb": 0
+    }
+   },
+   {
+    "box": {
+     "ast": 2,
+     "blk": 0,
+     "dreb": 1,
+     "efgPct": 0.2222222222222222,
+     "fd": 0,
+     "fg": {
+      "a": 9,
+      "m": 2,
+      "pct": 0.2222222222222222
+     },
+     "fg2": {
+      "a": 4,
+      "m": 2,
+      "pct": 0.5
+     },
+     "fg3": {
+      "a": 5,
+      "m": 0,
+      "pct": 0.0
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 1,
+     "plusMinus": 3,
+     "stl": 1,
+     "tov": 1,
+     "tsPct": 0.2222222222222222
+    },
+    "clubId": "701",
+    "name": "佐土原 遼",
+    "playerId": "5100000014",
+    "position": "SF",
+    "started": null,
+    "summary": {
+     "ast": 2,
+     "min": 19.233333333333334,
+     "pts": 4,
+     "reb": 1
+    }
+   },
+   {
+    "box": {
+     "ast": 7,
+     "blk": 0,
+     "dreb": 2,
+     "efgPct": 0.42857142857142855,
+     "fd": 2,
+     "fg": {
+      "a": 7,
+      "m": 3,
+      "pct": 0.42857142857142855
+     },
+     "fg2": {
+      "a": 6,
+      "m": 3,
+      "pct": 0.5
+     },
+     "fg3": {
+      "a": 1,
+      "m": 0,
+      "pct": 0.0
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 4,
+     "plusMinus": 6,
+     "stl": 0,
+     "tov": 0,
+     "tsPct": 0.42857142857142855
+    },
+    "clubId": "694",
+    "name": "並里 成",
+    "playerId": "9489",
+    "position": "PG",
+    "started": true,
+    "summary": {
+     "ast": 7,
+     "min": 15.65,
+     "pts": 6,
+     "reb": 2
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 1,
+     "efgPct": 1.0,
+     "fd": 0,
+     "fg": {
+      "a": 3,
+      "m": 2,
+      "pct": 0.6666666666666666
+     },
+     "fg2": {
+      "a": 1,
+      "m": 0,
+      "pct": 0.0
+     },
+     "fg3": {
+      "a": 2,
+      "m": 2,
+      "pct": 1.0
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 1,
+     "pf": 2,
+     "plusMinus": -1,
+     "stl": 1,
+     "tov": 2,
+     "tsPct": 1.0
+    },
+    "clubId": "701",
+    "name": "脇 真大",
+    "playerId": "51000116",
+    "position": "SG",
+    "started": null,
+    "summary": {
+     "ast": 0,
+     "min": 10.683333333333334,
+     "pts": 6,
+     "reb": 2
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 1,
+     "efgPct": 0.6666666666666666,
+     "fd": 1,
+     "fg": {
+      "a": 3,
+      "m": 2,
+      "pct": 0.6666666666666666
+     },
+     "fg2": {
+      "a": 3,
+      "m": 2,
+      "pct": 0.6666666666666666
+     },
+     "fg3": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "ft": {
+      "a": 1,
+      "m": 1,
+      "pct": 1.0
+     },
+     "oreb": 5,
+     "pf": 3,
+     "plusMinus": 8,
+     "stl": 1,
+     "tov": 0,
+     "tsPct": 0.7267441860465116
+    },
+    "clubId": "701",
+    "name": "川真田 紘也",
+    "playerId": "5100000015",
+    "position": "C",
+    "started": null,
+    "summary": {
+     "ast": 0,
+     "min": 9.05,
+     "pts": 5,
+     "reb": 6
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 0,
+     "efgPct": 0.0,
+     "fd": 1,
+     "fg": {
+      "a": 1,
+      "m": 0,
+      "pct": 0.0
+     },
+     "fg2": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg3": {
+      "a": 1,
+      "m": 0,
+      "pct": 0.0
+     },
+     "ft": {
+      "a": 2,
+      "m": 2,
+      "pct": 1.0
+     },
+     "oreb": 0,
+     "pf": 2,
+     "plusMinus": 4,
+     "stl": 0,
+     "tov": 1,
+     "tsPct": 0.5319148936170213
+    },
+    "clubId": "701",
+    "name": "小野寺 祥太",
+    "playerId": "8756",
+    "position": "PG",
+    "started": null,
+    "summary": {
+     "ast": 0,
+     "min": 7.333333333333333,
+     "pts": 2,
+     "reb": 0
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 0,
+     "efgPct": null,
+     "fd": 0,
+     "fg": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg2": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg3": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 1,
+     "plusMinus": -1,
+     "stl": 0,
+     "tov": 1,
+     "tsPct": null
+    },
+    "clubId": "694",
+    "name": "前野 幹太",
+    "playerId": "51000468",
+    "position": "SF",
+    "started": null,
+    "summary": {
+     "ast": 0,
+     "min": 3.5833333333333335,
+     "pts": 0,
+     "reb": 0
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 0,
+     "efgPct": null,
+     "fd": 0,
+     "fg": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg2": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg3": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 0,
+     "plusMinus": 0,
+     "stl": 0,
+     "tov": 0,
+     "tsPct": null
+    },
+    "clubId": "694",
+    "name": "ウィタカ ケンタ",
+    "playerId": "30443",
+    "position": "C",
+    "started": null,
+    "summary": {
+     "ast": 0,
+     "min": null,
+     "pts": 0,
+     "reb": 0
+    }
+   },
+   {
+    "box": {
+     "ast": 0,
+     "blk": 0,
+     "dreb": 0,
+     "efgPct": null,
+     "fd": 0,
+     "fg": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg2": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "fg3": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "ft": {
+      "a": 0,
+      "m": 0,
+      "pct": null
+     },
+     "oreb": 0,
+     "pf": 0,
+     "plusMinus": 0,
+     "stl": 0,
+     "tov": 0,
+     "tsPct": null
+    },
+    "clubId": "701",
+    "name": "山内 盛久",
+    "playerId": "8658",
+    "position": "PG",
+    "started": null,
+    "summary": {
+     "ast": 0,
+     "min": null,
+     "pts": 0,
+     "reb": 0
+    }
+   }
+  ],
   "playerPredictions": [],
   "prediction": null,
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-16T11:23:47Z"
+  "generatedAt": "2026-10-16T14:54:28Z"
  }
 }

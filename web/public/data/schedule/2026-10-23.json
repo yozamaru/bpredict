@@ -22,13 +22,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5199571286426963,
+     "homeWinProb": 0.5602377246202789,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.06151082618454,
-     "predHomeScore": 79.7085582261726
+     "predAwayScore": 78.40519328065099,
+     "predHomeScore": 80.36487577170615
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-23T10:05:00Z"
@@ -52,13 +52,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.171872103128129,
+     "homeWinProb": 0.15630349004305746,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 85.30870294637569,
-     "predHomeScore": 73.06756077572766
+     "predAwayScore": 85.86310079179242,
+     "predHomeScore": 72.80776703852996
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-23T10:05:00Z"
@@ -82,13 +82,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4432847611545799,
+     "homeWinProb": 0.4738666239710317,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.38695229512108,
-     "predHomeScore": 78.54267005251636
+     "predAwayScore": 79.74678628212395,
+     "predHomeScore": 78.89924032579556
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-23T10:35:00Z"
@@ -96,6 +96,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-17T07:02:42Z"
+  "generatedAt": "2026-10-17T10:44:31Z"
  }
 }

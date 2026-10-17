@@ -2,9 +2,250 @@
  "data": {
   "accuracy": null,
   "gameDate": "2026-10-24",
-  "games": []
+  "games": [
+   {
+    "away": {
+     "clubId": "720",
+     "name": "島根スサノオマジック",
+     "shortName": "島根",
+     "slug": "shimane-susanoo-magic"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506505",
+    "home": {
+     "clubId": "696",
+     "name": "富山グラウジーズ",
+     "shortName": "富山",
+     "slug": "toyama-grouses"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.508439915451902,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 79.29433123316107,
+     "predHomeScore": 79.56787528566082
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "697",
+     "name": "三遠ネオフェニックス",
+     "shortName": "三遠",
+     "slug": "san-en-neophoenix"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506506",
+    "home": {
+     "clubId": "718",
+     "name": "神戸ストークス",
+     "shortName": "神戸",
+     "slug": "kobe-storks"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.19705472533972584,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 84.9874501154538,
+     "predHomeScore": 73.96945586575067
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "702",
+     "name": "レバンガ北海道",
+     "shortName": "北海道",
+     "slug": "levanga-hokkaido"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506507",
+    "home": {
+     "clubId": "721",
+     "name": "広島ドラゴンフライズ",
+     "shortName": "広島",
+     "slug": "hiroshima-dragonflies"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5448603694426567,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.60236547818707,
+     "predHomeScore": 80.05929309455883
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "694",
+     "name": "横浜ビー・コルセアーズ",
+     "shortName": "横浜BC",
+     "slug": "yokohama-b-corsairs"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506500",
+    "home": {
+     "clubId": "693",
+     "name": "秋田ノーザンハピネッツ",
+     "shortName": "秋田",
+     "slug": "akita-northern-happinets"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.2671493710677035,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 83.5570958474645,
+     "predHomeScore": 75.52223829175932
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T06:00:00Z"
+   },
+   {
+    "away": {
+     "clubId": "2486",
+     "name": "アルティーリ千葉",
+     "shortName": "A千葉",
+     "slug": "altiri-chiba"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506501",
+    "home": {
+     "clubId": "712",
+     "name": "茨城ロボッツ",
+     "shortName": "茨城",
+     "slug": "ibaraki-robots"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5336969274783459,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.59869474450507,
+     "predHomeScore": 79.6920580086907
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "716",
+     "name": "信州ブレイブウォリアーズ",
+     "shortName": "信州",
+     "slug": "shinshu-brave-warriors"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506502",
+    "home": {
+     "clubId": "703",
+     "name": "宇都宮ブレックス",
+     "shortName": "宇都宮",
+     "slug": "utsunomiya-brex"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.6752695920715209,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 76.25735881233923,
+     "predHomeScore": 82.13376207502223
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "728",
+     "name": "シーホース三河",
+     "shortName": "三河",
+     "slug": "seahorses-mikawa"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506503",
+    "home": {
+     "clubId": "706",
+     "name": "アルバルク東京",
+     "shortName": "A東京",
+     "slug": "alvark-tokyo"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5750533726540175,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.20766133632343,
+     "predHomeScore": 80.65454518249847
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "692",
+     "name": "仙台89ERS",
+     "shortName": "仙台",
+     "slug": "sendai-89ers"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506504",
+    "home": {
+     "clubId": "727",
+     "name": "川崎ブレイブサンダース",
+     "shortName": "川崎",
+     "slug": "kawasaki-brave-thunders"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.28554774087238,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 83.20142721944607,
+     "predHomeScore": 75.87790691977774
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-24T06:05:00Z"
+   }
+  ]
  },
  "meta": {
-  "generatedAt": "2026-10-16T18:10:27Z"
+  "generatedAt": "2026-10-17T07:02:42Z"
  }
 }

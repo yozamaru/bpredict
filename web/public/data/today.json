@@ -10,8 +10,8 @@
      "shortName": "島根",
      "slug": "shimane-susanoo-magic"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 78,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506471",
     "home": {
@@ -20,17 +20,9 @@
      "shortName": "千葉J",
      "slug": "chiba-jets"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5467323803269448,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.8007073788166,
-     "predHomeScore": 80.3187066550641
-    },
-    "status": "SCHEDULED",
+    "homeScore": 97,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-10-17T04:05:00Z"
    },
    {
@@ -51,15 +43,7 @@
      "slug": "sendai-89ers"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5324684763020445,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.89368817178192,
-     "predHomeScore": 79.94710191720716
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-17T05:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "akita-northern-happinets"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.33341088313502526,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 82.0813606888716,
-     "predHomeScore": 76.51522035543897
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-17T05:05:00Z"
    },
@@ -111,15 +87,7 @@
      "slug": "altiri-chiba"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.21354769109424193,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 84.6123996386776,
-     "predHomeScore": 74.34450634252687
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-17T05:05:00Z"
    },
@@ -141,15 +109,7 @@
      "slug": "gunma-crane-thunders"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.4220469511488669,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.65634631051658,
-     "predHomeScore": 78.11372274184056
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-17T06:05:00Z"
    },
@@ -186,6 +146,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-16T18:10:27Z"
+  "generatedAt": "2026-10-17T07:02:42Z"
  }
 }

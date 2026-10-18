@@ -10,8 +10,8 @@
      "shortName": "三河",
      "slug": "seahorses-mikawa"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 99,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506475",
     "home": {
@@ -20,9 +20,9 @@
      "shortName": "富山",
      "slug": "toyama-grouses"
     },
-    "homeScore": null,
+    "homeScore": 56,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-18T05:05:00Z"
    },
    {
@@ -32,8 +32,8 @@
      "shortName": "佐賀",
      "slug": "saga-ballooners"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 70,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506476",
     "home": {
@@ -42,9 +42,9 @@
      "shortName": "京都",
      "slug": "kyoto-hannaryz"
     },
-    "homeScore": null,
+    "homeScore": 115,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-18T05:35:00Z"
    },
    {
@@ -54,8 +54,8 @@
      "shortName": "大阪",
      "slug": "osaka-evessa"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 63,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506473",
     "home": {
@@ -64,9 +64,9 @@
      "shortName": "茨城",
      "slug": "ibaraki-robots"
     },
-    "homeScore": null,
+    "homeScore": 98,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-18T06:05:00Z"
    },
    {
@@ -76,8 +76,8 @@
      "shortName": "北海道",
      "slug": "levanga-hokkaido"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 109,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506474",
     "home": {
@@ -86,14 +86,14 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
-    "homeScore": null,
+    "homeScore": 78,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-18T06:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-18T07:18:30Z"
+  "generatedAt": "2026-10-18T11:04:51Z"
  }
 }

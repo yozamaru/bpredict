@@ -2,9 +2,70 @@
  "data": {
   "accuracy": null,
   "gameDate": "2026-10-25",
-  "games": []
+  "games": [
+   {
+    "away": {
+     "clubId": "704",
+     "name": "千葉ジェッツ",
+     "shortName": "千葉J",
+     "slug": "chiba-jets"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506509",
+    "home": {
+     "clubId": "700",
+     "name": "大阪エヴェッサ",
+     "shortName": "大阪",
+     "slug": "osaka-evessa"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.22972569614361443,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 84.18535346424444,
+     "predHomeScore": 74.62107700438175
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-25T07:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "729",
+     "name": "名古屋ダイヤモンドドルフィンズ",
+     "shortName": "名古屋D",
+     "slug": "nagoya-diamond-dolphins"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506508",
+    "home": {
+     "clubId": "726",
+     "name": "東京サンロッカーズ",
+     "shortName": "東京SR",
+     "slug": "tokyo-sunrockers"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.41973274055893056,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 80.70743552983326,
+     "predHomeScore": 78.08830286967263
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-10-25T08:05:00Z"
+   }
+  ]
  },
  "meta": {
-  "generatedAt": "2026-10-17T17:18:41Z"
+  "generatedAt": "2026-10-18T07:18:30Z"
  }
 }

@@ -68,5 +68,45 @@
   "homeScore": "61",
   "reason": "状態欄が空で得点がある（不戦敗の形）",
   "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "大阪",
+  "awayScore": "31",
+  "gameDate": "2026-10-18",
+  "gameId": "506473",
+  "home": "茨城",
+  "homeScore": "46",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "北海道",
+  "awayScore": "53",
+  "gameDate": "2026-10-18",
+  "gameId": "506474",
+  "home": "横浜BC",
+  "homeScore": "40",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "三河",
+  "awayScore": "92",
+  "gameDate": "2026-10-18",
+  "gameId": "506475",
+  "home": "富山",
+  "homeScore": "50",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "佐賀",
+  "awayScore": "55",
+  "gameDate": "2026-10-18",
+  "gameId": "506476",
+  "home": "京都",
+  "homeScore": "86",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
  }
 ]

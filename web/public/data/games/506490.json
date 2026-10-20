@@ -1383,7 +1383,7 @@
      "value": "未発表"
     }
    ],
-   "homeWinProb": 0.17672426830691837,
+   "homeWinProb": 0.17672426830691848,
    "isFinal": false,
    "isProvisional": true,
    "modelVersion": "winner-v1.2026.1009",
@@ -1409,6 +1409,6 @@
   "recentForm": null
  },
  "meta": {
-  "generatedAt": "2026-10-20T15:08:54Z"
+  "generatedAt": "2026-10-20T18:33:17Z"
  }
 }

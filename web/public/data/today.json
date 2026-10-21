@@ -21,15 +21,7 @@
      "slug": "levanga-hokkaido"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.8109783058810518,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.69934117975336,
-     "predHomeScore": 85.09639721975253
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -51,15 +43,7 @@
      "slug": "utsunomiya-brex"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.2857544177556188,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 83.19749609984784,
-     "predHomeScore": 75.88183803937598
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "chiba-jets"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.3369284930861633,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 81.99010487518763,
-     "predHomeScore": 76.54877615967152
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -111,15 +87,7 @@
      "slug": "kawasaki-brave-thunders"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.6793279315173475,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 76.37372597788037,
-     "predHomeScore": 82.39634307447677
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -141,15 +109,7 @@
      "slug": "shinshu-brave-warriors"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.17672426830691837,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 85.47702486438087,
-     "predHomeScore": 73.4798811168236
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -171,15 +131,7 @@
      "slug": "shiga-lakes"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.6156037211558001,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.24509818326636,
-     "predHomeScore": 81.0456545699294
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -201,15 +153,7 @@
      "slug": "hiroshima-dragonflies"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.8244070964613054,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.43902389829611,
-     "predHomeScore": 85.49267605539742
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -231,15 +175,7 @@
      "slug": "saga-ballooners"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.3547282578884667,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 81.94826054700532,
-     "predHomeScore": 77.1310735922185
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:05:00Z"
    },
@@ -261,21 +197,13 @@
      "slug": "ryukyu-golden-kings"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.8206182158874271,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.4523839489988,
-     "predHomeScore": 85.31768510335834
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-21T10:35:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-21T07:45:03Z"
+  "generatedAt": "2026-10-21T11:48:28Z"
  }
 }

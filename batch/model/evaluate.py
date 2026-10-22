@@ -38,6 +38,17 @@ class EvaluationError(ValueError):
 
 @dataclass(frozen=True)
 class Fold:
+    """1 fold の結果。**予測と実績をそのまま持つ。**
+
+    集約した数値（Brier など）を fold ごとに持って後で平均しない — 件数の違う
+    fold が同じ重みになり、n の小さい fold のノイズが効きすぎる
+    （`Evaluation.brier` を参照）。
+
+    `best_iteration` は**最終モデルの `num_boost_round` を決めるために要る**。
+    全 fold の中央値に固定し、early stopping なしで全データを学習する
+    （基本設計 2.3 / `final.median_iteration`）。
+    """
+
     test_season: str
     train_seasons: tuple[str, ...]
     valid_season: str
@@ -51,23 +62,51 @@ class Fold:
 
     @property
     def brier(self) -> float:
+        """この fold だけの Brier。**採用判定には使わない**（`Evaluation.brier` が正）。
+
+        fold ごとの推移を見るための値である。
+        """
         return brier(self.probs, self.actual)
 
 
 @dataclass(frozen=True)
 class Evaluation:
+    """walk-forward の全 fold をまとめた結果。
+
+    **分類と回帰で共用する。** 分割器を2つ作らないためで（基本設計 2.3）、
+    片方だけ直したときに比較が成立しなくなるのを避ける。その代わり
+    `_require_binary` が**回帰の結果に分類の指標を呼ばせない** — 呼べると
+    意味のない数字が黙って返る。
+
+    **したがって `probs` という名前は分類の側から来ている。** 回帰では
+    「予測値」が入る（`mae` / `residual_sigma` がそれを使う）。
+
+    `folds` が空なら、集計値は `nan`（回帰）か例外（分類）になる。
+    """
+
     folds: tuple[Fold, ...] = field(default_factory=tuple)
 
     @property
     def probs(self) -> Floats:
+        """全 fold の予測を1本に繋げたもの。**平均しない**（`Fold` を参照）。
+
+        回帰では確率ではなく予測値である（クラスの説明を参照）。
+        """
         return np.concatenate([f.probs for f in self.folds]) if self.folds else np.empty(0)
 
     @property
     def actual(self) -> Floats:
+        """全 fold の実績を1本に繋げたもの。`probs` と同じ並びである。"""
         return np.concatenate([f.actual for f in self.folds]) if self.folds else np.empty(0)
 
     @property
     def n(self) -> int:
+        """評価に使えた件数。**採用判定の第1条件がこれを見る。**
+
+        `n < 500` ではいかなる比較も行わず現行モデルを継続する（要件 6.5）。
+        理想モデルとベースラインの Accuracy 差の SD は n=200 で 0.041 あり、
+        その規模では差がノイズと区別できない。
+        """
         return int(self.probs.size)
 
     @property
@@ -79,16 +118,37 @@ class Evaluation:
 
     @property
     def accuracy(self) -> float:
+        """的中率。**表示専用であり、採用ゲート・モデル比較・アラートに使わない**
+        （要件 6.4）。
+
+        差が統計的に識別できない — 理想モデルとベースラインの差の SD は n=200 で
+        0.041 で、`+0.03` という基準は 1SD の内側に収まる。**理想モデルですら
+        8.5% の確率でその基準を落ちる。**
+        """
         self._require_binary("accuracy")
         return accuracy(self.probs, self.actual)
 
     @property
     def log_loss(self) -> float:
+        """対数損失。**学習時の目的関数であり、画面には出さない**（要件 6.4）。
+
+        二値の結果に対しては Brier とほぼ同じ質を同じ向きに測るため、折りたたみに
+        2つ並べても読者の判断が変わらない（基本設計 5.2 の v1.55）。
+        記録（`model_versions.cv_logloss`）には残す。
+        """
         self._require_binary("log_loss")
         return log_loss(self.probs, self.actual)
 
     @property
     def ece(self) -> float | None:
+        """較正誤差。**1ビン50件を満たせないときは None を返す**（`metrics.ece`）。
+
+        **閾値を固定値にしない。** 完全に較正されたモデルでもサンプリングノイズで
+        有限の値を取り、その大きさは n に強く依存する。判定は
+        `max(ece_noise_floor(...) × 1.5, 0.01)` で行う（要件 6.4）。
+
+        None は「較正が完璧」ではなく「測れない」である。
+        """
         self._require_binary("ece")
         return ece(self.probs, self.actual)
 
@@ -112,6 +172,11 @@ class Evaluation:
 
     @property
     def best_iterations(self) -> list[int]:
+        """各 fold の `best_iteration`。**中央値を最終モデルの木の本数にする。**
+
+        `final.median_iteration` が使う（基本設計 2.3）。ロジスティック回帰では
+        木の概念がないため、この値は使われない。
+        """
         return [f.best_iteration for f in self.folds]
 
     def _require_binary(self, name: str) -> None:

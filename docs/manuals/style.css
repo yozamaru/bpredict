@@ -1,0 +1,74 @@
+/* PDF 用のスタイル。画面のトークン（基本設計 6.1 のライト側）に合わせる。
+   Web フォントを読み込まない（要件 8.1）— 見出しは明朝、本文はサンセリフ、
+   数値は等幅のシステムフォントを使う。 */
+@page { size: A4; margin: 18mm 16mm 20mm; }
+
+:root {
+  --ink: #0E1217; --ink-2: #2B323C; --ink-3: #4C5564;
+  --rule: #D5DBE4; --strip: #CAD2DD; --panel-sub: #EFF2F7;
+  --home: #1D5FA8; --away: #9A4700;
+  --f-serif: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --f-sans: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --f-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+body {
+  font-family: var(--f-sans); color: var(--ink-2);
+  font-size: 9.6pt; line-height: 1.75; margin: 0;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+/* 表紙 */
+.cover { page-break-after: always; padding-top: 60mm; }
+.cover h1 {
+  font-family: var(--f-serif); font-size: 26pt; color: var(--ink);
+  margin: 0 0 6mm; border: 0; letter-spacing: .02em;
+}
+.cover .sub { font-size: 12pt; color: var(--ink-3); margin-bottom: 24mm; }
+.cover .meta { font-family: var(--f-mono); font-size: 9pt; color: var(--ink-3); }
+.cover .note {
+  margin-top: 30mm; padding: 4mm 5mm; background: var(--panel-sub);
+  font-size: 8.6pt; color: var(--ink-3); line-height: 1.7;
+}
+
+h1, h2, h3 { font-family: var(--f-serif); color: var(--ink); page-break-after: avoid; }
+h1 { font-size: 16pt; margin: 0 0 5mm; padding-bottom: 2mm;
+     border-bottom: 2px solid var(--strip); page-break-before: always; }
+.cover + h1 { page-break-before: avoid; }
+h2 { font-size: 12.5pt; margin: 8mm 0 3mm; }
+h3 { font-size: 10.5pt; margin: 6mm 0 2mm; color: var(--ink-2); }
+
+p, ul, ol { margin: 0 0 3mm; }
+li { margin-bottom: 1mm; }
+strong { color: var(--ink); font-weight: 700; }
+
+table {
+  border-collapse: collapse; width: 100%; margin: 3mm 0 5mm;
+  font-size: 8.8pt; page-break-inside: avoid;
+}
+th, td { border: .4pt solid var(--rule); padding: 1.6mm 2.4mm; text-align: left;
+         vertical-align: top; }
+th { background: var(--panel-sub); color: var(--ink); font-weight: 700; }
+td:has(> code), .num { font-variant-numeric: tabular-nums; }
+
+code {
+  font-family: var(--f-mono); font-size: .9em;
+  background: var(--panel-sub); padding: .3mm 1mm; border-radius: 1pt;
+}
+pre {
+  font-family: var(--f-mono); font-size: 8.2pt; line-height: 1.55;
+  background: var(--panel-sub); border-left: 2pt solid var(--strip);
+  padding: 3mm 4mm; margin: 3mm 0 5mm; overflow-wrap: break-word;
+  white-space: pre-wrap; page-break-inside: avoid;
+}
+pre code { background: none; padding: 0; }
+
+blockquote {
+  margin: 3mm 0 5mm; padding: 2.5mm 4mm;
+  border-left: 2pt solid var(--home); background: var(--panel-sub);
+  font-size: 9pt; color: var(--ink-3);
+}
+blockquote p { margin: 0; }
+
+hr { border: 0; border-top: .4pt solid var(--rule); margin: 7mm 0; }
+a { color: var(--home); text-decoration: none; }

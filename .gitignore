@@ -42,3 +42,8 @@ venv/
 .vscode/
 .idea/
 pytest.log
+
+# 説明書の PDF（生成物）。出典は `docs/manuals/*.md` で、
+# `python3 scripts/build_manuals.py` が作る。**バイナリを履歴に積まない** —
+# 1 冊 1〜5 MB あり、作り直すたびに全体が差し替わる（public リポジトリである）
+docs/manuals/pdf/

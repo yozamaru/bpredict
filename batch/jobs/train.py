@@ -239,6 +239,15 @@ def load_cached(cache: Path, digest: str) -> TrainingData | None:
 
 
 def save_cache(cache: Path, digest: str, data: TrainingData) -> None:
+    """学習行列を parquet に保存し、**何から作ったか**を添える。
+
+    鍵は3つ — スナップショットの `MANIFEST` の digest / 特徴量コードの digest /
+    特徴量の一覧である（`load_cached` が全部照合する）。
+
+    **特徴量の一覧を鍵に含めるのは、含めずに踏んだからである。** 列を1つ足しても
+    `MANIFEST` と特徴量コードが同じなら古い行列が読まれ、**足した列が無いまま
+    学習が通る**（詳細設計 1.60）。
+    """
     frame = data.features.copy()
     frame["home_win"] = data.home_win
     frame["margin"] = data.margin
@@ -267,6 +276,13 @@ def training_data(
     *, snapshot: Path = DEFAULT_SNAPSHOT, cache: Path = DEFAULT_CACHE,
     refresh: bool = False, log: Callable[[str], None] = print,
 ) -> TrainingData:
+    """学習行列を用意する。**キャッシュが使えるなら作り直さない。**
+
+    全期間の特徴量生成は実データで約5分かかる（6,270試合）。鍵が一致したときだけ
+    再利用し、一致しなければ作り直して保存する（`save_cache` の鍵を参照）。
+
+    **入力はスナップショットだけである**（絶対ルール3）。D1 は読まない。
+    """
     digest = manifest_digest(snapshot)
     if not refresh:
         cached = load_cached(cache, digest)
@@ -286,6 +302,18 @@ def training_data(
 
 @dataclass(frozen=True)
 class Report:
+    """勝敗モデルの評価と判定の一式。
+
+    **ベースライン3段を同じ `Evaluation` の形で持つ**（要件 6.4）— `home`
+    （ホーム必勝）/ `elo`（Elo単体ロジスティック回帰）/ `lightgbm`。採用の相手は
+    **`elo` である**（A-09）。`difference` もその差であり、**現行モデルとの差では
+    ない** — そちらは `current` 側が持つ。
+
+    `comparison_blocked` が入っているときは「比較しない」ではなく
+    **「比較できない」**であり、採用しない（詳細設計 4.6）。基準未達は設計どおりの
+    結果だが、これは設定の誤りなので終了コードを分ける。
+    """
+
     n: int
     seasons: list[str]
     test_seasons: list[str]
@@ -321,6 +349,11 @@ class Report:
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
+        """`model_versions.notes` と標準出力に残す形へ畳む。
+
+        **ベースラインも同じ形で並べる** — 後から「何と比べて採用したのか」を
+        辿れるようにするためで、門にしない比較も記録はする（要件 6.5）。
+        """
         def summarize(name: str, ev: Evaluation) -> dict[str, object]:
             return {
                 "name": name, "n": ev.n, "brier": ev.brier,
@@ -722,6 +755,11 @@ def evaluate_all(
 
 
 def render(report: Report) -> str:
+    """評価結果を人が読む形にする。**運用者がこのジョブの結果を見る唯一の窓である。**
+
+    落ちた条件を全部並べる（最初の1つで打ち切らない）— 直す側は全部知りたい
+    （詳細設計 4.6）。
+    """
     lines = [
         (f"評価 n={report.n:,}  シーズン {len(report.seasons)}  "
         f"テスト fold {len(report.test_seasons)}（{' / '.join(report.test_seasons)}）"
@@ -897,6 +935,17 @@ def exit_code(report: Report, *, log: Callable[[str], None] = print) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """学習・評価・登録を行う。**終了コードの意味を分ける**（詳細設計 4.6）。
+
+    - `0` — 登録した。**または基準未達で登録しなかった**（設計どおりの結果であり、
+      要件 6.5 は見逃す方向に倒すのを意図している。**毎月オオカミ少年をやると
+      本当の失敗が読み飛ばされる**）
+    - `1` — **比較できなかった**（設定の誤り。人の対応が要る）、artifact が
+      1.5MB を超えた、登録が失敗した
+
+    **`--register` を付けたときだけ D1 に書く。** 評価は何度でもやり直せるべきで、
+    登録は書き込み枠を使う（詳細設計 4.5.1）。
+    """
     parser = argparse.ArgumentParser(description="勝敗モデルを評価する（登録はしない）")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
@@ -1014,10 +1063,16 @@ class RateReport:
 
     @property
     def adopt(self) -> bool:
+        """30本すべてが判定を通ったか。**1本でも落ちたら33本とも登録しない。**
+
+        個人スタッツはチーム予測に整合化してから保存するため、一部だけ世代を
+        入れ替えると**整合化の両側が別の世代のモデルから出る**（詳細設計 4.5.1）。
+        """
         return all(d.adopt for d in self.decisions.values())
 
     @property
     def failures(self) -> list[str]:
+        """落ちた本と理由。**どれが落ちたか分かる形で返す**（名前を添える）。"""
         return [
             f"{name}: {' / '.join(d.failures)}"
             for name, d in sorted(self.decisions.items()) if not d.adopt
@@ -1110,6 +1165,12 @@ def evaluate_rate_models(
 
 
 def render_rates(report: RateReport) -> str:
+    """30本の評価を人が読む形にする。
+
+    **成功率3項目は実現値（`made / att`）に対する値を出す**（詳細設計 2.3.1）。
+    シュリンク済みの目的変数に対する MAE は `k` を上げるだけで下がるため、
+    そちらを記録に残してはならない。
+    """
     lines = ["", "30本の判定", "-" * 60]
     for name, decision in sorted(report.decisions.items()):
         mark = "採用" if decision.adopt else "未達"

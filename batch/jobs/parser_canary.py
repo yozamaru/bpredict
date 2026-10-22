@@ -33,6 +33,15 @@ def _baseline(name: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """実サイトの試合詳細1枚だけを取得してパースする（基本設計 7.2）。
+
+    **fixture はスナップショットであるため、定義上サイト構造の変更を検知できない。**
+    これが唯一の早期検知手段である。
+
+    見るのは3つ — 本文から JSON が取り出せる / 対応表の必須フィールドが揃う /
+    `PeriodCategory` に 18（試合通算）が含まれる。**サイトが JSON 配信をやめて
+    HTML の表に戻った場合も1つ目で落ちて検知できる。**
+    """
     ap = argparse.ArgumentParser(description="終了済みボックススコア1件の構造を確認する")
     ap.add_argument("--game-id", default="505497", help="確認済みの終了試合の公式ID")
     ap.add_argument("--event", type=int, choices=(2, 3), default=2, help="2: リーグ戦、3: CS")

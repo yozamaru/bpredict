@@ -137,6 +137,15 @@ def _log(api: InternalApi, status: str, rows: int) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """会場の名称・収容人数の履歴を全期間再計算する（詳細設計 4.9）。
+
+    **`team_ratings` と同じ「派生テーブルの洗い替え」である。** 入力は
+    スナップショットの `games` と手入力の CSV 1本で、D1 を入力として読まない。
+
+    **自動で解決せず止めて報告するものが3つある** — CSV の `valid_from` が
+    どの区間にも一致しない（中止）/ 同一シーズン内の名称変更（**表記ゆれの疑い。
+    名寄せの規則を推測で作らない**）/ 区間が1つもない会場（フォールバックを記録）。
+    """
     parser = argparse.ArgumentParser(description="会場の履歴を構築して書き出す")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--dry-run", action="store_true", help="D1 には書かない")

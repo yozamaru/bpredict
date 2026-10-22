@@ -74,6 +74,13 @@ class Result:
 
 @dataclass
 class Outcome:
+    """照合の結果。**「照合した数」と「集計に使った数」を別に持つ。**
+
+    同じ数が並んでいたら**全件を読めていない疑いがある** — v1.127 までの実装は
+    その回に照合した分だけで `accuracy_summary` を洗い替えており、**通算が毎朝
+    上書きされる**状態だった（詳細設計 4.12）。
+    """
+
     results: list[Result] = field(default_factory=list)
     #: 的中率の集計に使った**全件**の数（この回に照合した数ではない。4.12）
     summarized: int = 0
@@ -210,6 +217,16 @@ def evaluate(
 
 @dataclass(frozen=True)
 class Summary:
+    """`accuracy_summary` の1行（詳細設計 1.6）。
+
+    **`model_version` に NULL を入れない。** SQLite は主キー列の NULL 重複を許すため、
+    モデル横断の4スコープは**空文字**を入れる。
+
+    **`BUCKET` 行だけ `accuracy` の意味が違う** — 「予想した確率の平均」であり、
+    その帯の的中率は `hit_rate` が持つ。較正曲線が `accuracy` を横軸に読むため
+    こうなっている（列名と中身が一致しない唯一の箇所）。
+    """
+
     scope: str
     scope_key: str
     model_version: str
@@ -479,6 +496,21 @@ def _log(api: InternalApi, status: str, rows: int) -> None:
 
 def run(*, api: InternalApi, snapshot_dir: Path = DEFAULT_SNAPSHOT,
         limit: int = 200) -> Outcome:
+    """確定予測を実績と照合し、的中率を集計する（詳細設計 4.12）。
+
+    **実績はスナップショットから引く** — `predictions/pending` は予測の側しか
+    返さない。D1 の `games` は読まない（絶対ルール3）。
+
+    **集計は照合済みの全件に対して行う。** `GET /internal/results` で読み直し、
+    メモリ上で重ねてから集計する — `accuracy_summary` は全スコープを洗い替える
+    設計なので、その回の分だけで畳むと通算が消える。
+
+    **`POST` してから読み直す案は採らない** — `--dry-run` で挙動が変わる
+    （書いていないため新しい分が読めず、集計が静かに古くなる）。
+
+    **状態を推測しない。** スナップショットと D1 で `status` が食い違う行は
+    飛ばし、件数と試合IDを出す。
+    """
     pending = api.get("predictions/pending", {"limit": str(limit)})
     if not isinstance(pending, dict):
         raise EvaluateError("照合対象の応答が不正")
@@ -530,6 +562,11 @@ def _report(outcome: Outcome) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """単体で流す入口。**冪等である**（`pending` は未評価のものだけを返す）。
+
+    `daily_ingest` のステップ3からも呼ばれる。そちらで失敗しても Elo と推論へ
+    進む — 互いに依存せず、どちらも1日分の遅れで済む（詳細設計 4.2）。
+    """
     parser = argparse.ArgumentParser(description="確定予測を実績と照合する")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--limit", type=int, default=200)

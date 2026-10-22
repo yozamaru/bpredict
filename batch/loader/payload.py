@@ -35,6 +35,12 @@ class PayloadError(ValueError):
 
 @dataclass(frozen=True)
 class SeasonRef:
+    """取り込み時に使うシーズンの参照。
+
+    `games.league` を非正規化して持つため（API 応答と一致させる。詳細設計 1.3）、
+    試合1件ごとに `seasons` を引き直さずに済む。
+    """
+
     season_id: str
     label: str
     league: str

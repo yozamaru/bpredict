@@ -206,6 +206,7 @@ class TeamRateData:
 
     @property
     def seasons(self) -> list[str]:
+        """出現順のシーズン。**並べ替えない** — 時系列分割の順序がこれで決まる。"""
         seen: list[str] = []
         for season in self.season_ids:
             if season not in seen:
@@ -394,6 +395,7 @@ class PlayerMinutesData:
 
     @property
     def seasons(self) -> list[str]:
+        """出現順のシーズン。**並べ替えない** — 時系列分割の順序がこれで決まる。"""
         seen: list[str] = []
         for season in self.season_ids:
             if season not in seen:
@@ -452,6 +454,7 @@ class PlayerAvailData:
 
     @property
     def seasons(self) -> list[str]:
+        """出現順のシーズン。**並べ替えない** — 時系列分割の順序がこれで決まる。"""
         seen: list[str] = []
         for season in self.season_ids:
             if season not in seen:
@@ -649,6 +652,7 @@ class PlayerRateData:
 
     @property
     def seasons(self) -> list[str]:
+        """出現順のシーズン。**並べ替えない** — 時系列分割の順序がこれで決まる。"""
         seen: list[str] = []
         for season in self.season_ids:
             if season not in seen:

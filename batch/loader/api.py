@@ -49,10 +49,21 @@ class RejectedError(LoaderError):
 
 @dataclass(frozen=True)
 class Response:
+    """内部APIの応答。**本文を持ち回るのはここまでである。**
+
+    例外には入れない（絶対ルール4）— D1 REST API の URL にはアカウントIDと
+    DB ID が含まれ、`ingestion_logs` と `/api/v1/health` から漏れる。
+    """
+
     status: int
     body: str
 
     def data(self) -> object:
+        """`{ data, meta }` の `data` を返す（詳細設計 3.1）。
+
+        本文が JSON でない・オブジェクトでない場合は `LoaderError` にする。
+        **本文そのものは例外に入れない。**
+        """
         try:
             payload = json.loads(self.body)
         except ValueError:
@@ -89,7 +100,10 @@ class Poster(Protocol):
     ジョブごとに同じ Protocol を書くと**定義が増えるだけ**である。
     """
 
-    def post(self, path: str, payload: Mapping[str, object]) -> object: ...
+    def post(self, path: str, payload: Mapping[str, object]) -> object:
+        """書き込む。`dry_run` では送らずに件数だけ記録する。"""
+        ...
+
 
 
 class InternalApi:

@@ -55,9 +55,15 @@ class Fetcher(Protocol):
     黙って渡せないようにするためである。
     """
 
-    def verify_policy(self, terms_reporter: TermsReporter | None = ...) -> None: ...
+    def verify_policy(self, terms_reporter: TermsReporter | None = ...) -> None:
+        """robots.txt と利用規約のハッシュを照合する（絶対ルール6）。"""
+        ...
 
-    def get(self, url: str) -> str: ...
+
+    def get(self, url: str) -> str:
+        """1ページ取る。間隔・日次上限・サイズ上限は実装側が強制する。"""
+        ...
+
 
 
 class RosterJobError(RuntimeError):
@@ -75,6 +81,16 @@ class Pair:
 
 @dataclass
 class Result:
+    """登録選手一覧の取り込みの結果（詳細設計 4.13）。
+
+    **「落とした選手」と「ポジション未登録」を別に数える。** 前者は5値のどれでも
+    ない値（表記が変わった疑い）、後者は**サイト側で未登録**である（本番に実在
+    した）。**未登録は NULL で残す** — 落とすと登録選手が候補一覧から消え、
+    第1段の目的を損なう。
+
+    **全員が未登録になったら**（表記が変わって空になる形の事故）ログで分かる。
+    """
+
     status: str = "SUCCESS"
     pairs: int = 0
     fetched: int = 0
@@ -88,6 +104,7 @@ class Result:
     reasons: Counter[str] = field(default_factory=Counter)
 
     def line(self) -> str:
+        """要約を1行にする。**このジョブの結果を運用者が見る唯一の窓である。**"""
         return (
             f"ingest_rosters: {self.status} 組={self.pairs} 取得={self.fetched} "
             f"選手={self.players} 断面={self.seasons} "
@@ -251,6 +268,14 @@ def _mirror(bodies: list[dict[str, object]], snapshot_dir: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """登録選手一覧を取り込む。**1回だけ行う**（日次ジョブには入れない）。
+
+    取得量は238リクエスト（クラブ×シーズンの実在する組）で、日次上限3,000の8%
+    である。`--season` で分けて流せる。
+
+    **parquet は artifact で持ち帰る**（詳細設計 4.13）。「手元で流し直す」経路は
+    採らない — **同じ238ページを2回取ることになり**、要件 5.2 に反する。
+    """
     parser = argparse.ArgumentParser(description="登録選手一覧を取り込む")
     parser.add_argument("--season", help="シーズンID（例 2026-27-PREMIER）。省略すると全季")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)

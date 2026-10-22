@@ -57,6 +57,17 @@ def merge(
 
 
 def save(rows: list[dict[str, object]], path: Path = DEFAULT_PATH) -> None:
+    """取り込まない試合の一覧を書く（要件 5.3 / 詳細設計 4.4）。
+
+    **静かに消えるのは、この設計が最も避けたい壊れ方である。** 不戦敗は学習
+    データに入れないが、**一覧には必ず残す** — 後で「学習データに含めていない」と
+    注釈するための出典になる。
+
+    `sort_keys` と固定の `indent` で書くのは、**差分が実行ごとに動かないため**である。
+
+    **置き場は `batch/exclusions/` であり `batch/snapshot/` ではない** — あちらは
+    学習入力の唯一の源であり（絶対ルール3）、入力でないファイルを混ぜると意味が濁る。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(rows, ensure_ascii=False, indent=1, sort_keys=True) + "\n",

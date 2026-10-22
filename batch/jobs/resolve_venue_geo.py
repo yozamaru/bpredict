@@ -47,6 +47,15 @@ type Geocoder = Callable[[str], list[Candidate]]
 
 @dataclass
 class Result:
+    """座標の解決の結果。**埋められないときは埋めない。**
+
+    住所が無い・候補が返らない・候補の都道府県が住所と食い違う場合は飛ばし、
+    **座標は NULL のままにする**（詳細設計 4.10）。#16（移動距離）は検証区分で
+    あり、当該会場で欠損するだけである。
+
+    `skipped` に理由を添えるのは**件数だけでは調査ができない**ためである。
+    """
+
     resolved: int = 0
     kept: int = 0
     #: (venue_id, 理由)。**件数だけでは調査ができない**（詳細設計 4.4 と同じ方針）
@@ -72,6 +81,14 @@ def read_csv(path: Path = CSV_PATH) -> dict[str, dict[str, str]]:
 
 
 def write_csv(rows: dict[str, dict[str, str]], path: Path = CSV_PATH) -> None:
+    """`venues_geo.csv` に書き出す。**1回だけ解決して固定するための出力である。**
+
+    実行時に外部サービスへ依存しない（詳細設計 1.2）。会場は一度確定すれば
+    動かないため、日次バッチで国土地理院に依存する理由がない。
+
+    **自動でコミットしない。** ジオコーディングの結果は目で見てから固定する
+    （基本設計 7.1 — artifact で取り出し、人が確かめてからコミットする）。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(COLUMNS))
@@ -131,6 +148,19 @@ def resolve(
     path: Path = CSV_PATH,
     dry_run: bool = False,
 ) -> Result:
+    """会場の住所を取り、国土地理院で座標を解決する（詳細設計 4.10）。
+
+    **取り込みが全部終わってから流す。** 会場は取り込みとともに増えるため、
+    途中で流すと同じ会場を二度取りに行く。
+
+    **国土地理院への間隔は1秒である**（公式サイト向けの3秒＋ジッタを無条件に
+    適用しない）。無料・APIキー不要で、政府標準利用規約のもとで提供されている —
+    **出典表記が条件である。**
+
+    **都道府県が住所に無いことがある**（実測で149会場のうち14件）。その場合は
+    候補の `title` から読むが、**住所の先頭の市区町村が候補に含まれることを
+    確認してから採る** — 1件目を無条件に採ると別の市区町村の座標が入る。
+    """
     result = Result()
 
     client.verify_policy(
@@ -271,6 +301,17 @@ def load(api: InternalApi, path: Path = CSV_PATH) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """モードで経路を切る（詳細設計 4.10）。
+
+    - 既定 — 取得して CSV を作る（スクレイピングの関門を通る）
+    - `--sync-snapshot` — **CSV をスナップショットに反映する。D1 を要しない**
+      （出典はコミット済みの CSV で、適用は決定論的である）
+    - `--load` — 上に加えて D1 にも送る
+
+    **スナップショットへの反映を飛ばすと、座標は特徴量から見えない。**
+    唯一の入力はスナップショットであり（絶対ルール3）、D1 は表示用の複製である —
+    **2026-10-03 までこの段が無く、D1 に140件あるのにスナップショットは0件だった。**
+    """
     parser = argparse.ArgumentParser(description="会場の座標を1回だけ解決する")
     parser.add_argument("--dry-run", action="store_true", help="解決するが CSV に書かない")
     parser.add_argument("--load", action="store_true", help="反映して D1 にも送る（取得しない）")

@@ -43,6 +43,16 @@ class SeedError(Exception):
 
 @dataclasses.dataclass(frozen=True)
 class Season:
+    """`seasons` の1行（詳細設計 1.1）。
+
+    **`id` にリーグを含める**（`2026-27-PREMIER`）。`2026-27` 単独では同一シーズンの
+    PREMIER と ONE を同時に持てず、B.ONE 拡張時に主キー変更＝全ファクトテーブルの
+    FK 移行になる。
+
+    **開始日・終了日は CSV に固定した値である**（当季の9月1日〜翌年6月30日）。
+    日程一覧から導出する方式は CS を取りこぼし、**実在する試合日が404になった**。
+    """
+
     id: str
     label: str
     league: str
@@ -52,6 +62,13 @@ class Season:
 
 @dataclasses.dataclass(frozen=True)
 class Club:
+    """`clubs` の1行。**恒久エンティティであり、改称でも変わらない。**
+
+    `slug` は運営者が決めた値で、**改称しても変えない**（URL の安定を優先する。
+    詳細設計 1.1）。`name` は現在の表示名で、各季の表示名は `club_seasons.name` が
+    持つ — したがって `703` の slug と現在の表示名が一致しない状態が生じうる。
+    """
+
     id: str
     slug: str
     name: str
@@ -59,6 +76,16 @@ class Club:
 
 @dataclasses.dataclass(frozen=True)
 class ClubSourceId:
+    """公式サイトのチームID → `club_id` の対応（詳細設計 1.2）。
+
+    **公式の `TeamID` はシーズン・改称・リーグ再編をまたいで不変である**
+    （Phase 0 で確認）ため本ソースでは1:1になるが、**ID 体系が変わったときの
+    継ぎ目として維持する。**
+
+    `valid_from` / `valid_to` で期間を持つのは、将来 ID が振り直されたときに
+    期間で解決できるようにするためである。
+    """
+
     source_id: str
     club_id: str
     valid_from: str
@@ -83,6 +110,12 @@ def _date(value: str, where: str) -> str:
 
 
 def load_seasons(seed_dir: pathlib.Path = SEED_DIR) -> list[Season]:
+    """`seasons.csv` を読む。**DDL の CHECK と同じことを投入前に確かめる。**
+
+    `league` が CHECK 制約の集合外、`start_date > end_date`、`id` の重複はいずれも
+    `SeedError` で落とす — **D1 に送ってから落ちるより手元で落ちる方がよい**
+    （送れば書き込み枠を使い、枠は 00:00 UTC にしか戻らない）。
+    """
     out = []
     for r in _rows(seed_dir / "seasons.csv"):
         if r["league"] not in LEAGUES:
@@ -99,6 +132,7 @@ def load_seasons(seed_dir: pathlib.Path = SEED_DIR) -> list[Season]:
 
 
 def load_clubs(seed_dir: pathlib.Path = SEED_DIR) -> list[Club]:
+    """`clubs.csv` を読む。**`slug` の形式と重複をここで確かめる**（詳細設計 1.1）。"""
     out = []
     for r in _rows(seed_dir / "clubs.csv"):
         if not SLUG_RE.match(r["slug"]):
@@ -114,6 +148,11 @@ def load_clubs(seed_dir: pathlib.Path = SEED_DIR) -> list[Club]:
 
 
 def load_club_source_ids(seed_dir: pathlib.Path = SEED_DIR) -> list[ClubSourceId]:
+    """`club_source_ids.csv` を読む。**`source_id` の重複を落とす。**
+
+    重複を通すと同じ公式IDが2つのクラブに解決しうる状態になり、取り込みが
+    どちらを選ぶかで `team_ratings` が分断される。
+    """
     out = []
     for r in _rows(seed_dir / "club_source_ids.csv"):
         out.append(ClubSourceId(
@@ -129,6 +168,7 @@ def load_club_source_ids(seed_dir: pathlib.Path = SEED_DIR) -> list[ClubSourceId
 
 
 def load_all(seed_dir: pathlib.Path = SEED_DIR) -> tuple[list[Season], list[Club], list[ClubSourceId]]:
+    """3つの CSV をまとめて読む。**どれか1つでも壊れていれば何も送らない。**"""
     seasons, clubs, source_ids = (
         load_seasons(seed_dir), load_clubs(seed_dir), load_club_source_ids(seed_dir))
     known = {c.id for c in clubs}
@@ -160,6 +200,15 @@ def build_payload(
 
 
 def post(payload: dict, *, base_url: str, token: str, dry_run: bool = False) -> None:
+    """`POST /internal/masters` へ送る。**D1 REST API を直接叩かない**（絶対ルール3）。
+
+    **User-Agent を明示する。** urllib の既定（`Python-urllib/3.12`）は Cloudflare に
+    403 で弾かれる。403 は Worker のコードが返さない値であるため、アプリのログにも
+    `ingestion_logs` にも原因が残らず、**「トークンが違う」と誤診しやすい**
+    （詳細設計 1.20）。
+
+    `dry_run` のときは件数だけを出して送らない。
+    """
     counts = {k: len(v) for k, v in payload.items()}
     if dry_run:
         print(f"[dry-run] POST /internal/masters {counts}")
@@ -187,6 +236,12 @@ def post(payload: dict, *, base_url: str, token: str, dry_run: bool = False) -> 
 
 
 def main(argv: list[str] | None = None) -> int:
+    """マスタを投入する。**冪等である**（`ON CONFLICT DO UPDATE`）。
+
+    71行すべてが1リクエスト（5文）に収まる（詳細設計 3.4）。運用手順では
+    backfill の前に毎回流すため（`club_source_ids` が無いとクラブを解決できない）、
+    何度流しても同じ結果になることが要る。
+    """
     import argparse
 
     ap = argparse.ArgumentParser(description="マスタを投入する（冪等）")

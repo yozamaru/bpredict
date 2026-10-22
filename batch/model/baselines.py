@@ -30,6 +30,11 @@ class FitError(ValueError):
 
 
 def sigmoid(z: Floats) -> Floats:
+    """ロジスティック関数。**正負で式を分けてオーバーフローを避ける。**
+
+    素朴な `1 / (1 + exp(-z))` は `z` が大きく負のとき `exp` が溢れる。
+    整合化のシフト量は ±50 まで動くため、実際に届く範囲である（詳細設計 2.4）。
+    """
     # オーバーフローを避けるため、正負で式を分ける
     out = np.empty_like(z)
     positive = z >= 0
@@ -47,6 +52,11 @@ class Logistic:
     coefficients: Floats
 
     def predict(self, features: Floats) -> Floats:
+        """確率を返す。**列数が学習時と違えば落とす。**
+
+        照合しないと、特徴量を1つ足したあとに古い係数で推論が**通ってしまう** —
+        通ってしまうのが最も悪い壊れ方である（詳細設計 4.2）。
+        """
         matrix = np.asarray(features, dtype=np.float64)
         if matrix.ndim != 2 or matrix.shape[1] != self.coefficients.size:
             raise FitError("特徴量の列数が学習時と違う")

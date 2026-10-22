@@ -26,6 +26,7 @@ def previous_game(context: Context, club_id: str) -> dict[str, object] | None:
 
 
 def previous_result(context: Context, club_id: str) -> float | None:
+    """前戦の勝敗（1 / 0）。**未実施や履歴なしでは None を返す**（0 で埋めない。規約5）。"""
     previous = previous_game(context, club_id)
     if previous is None or previous["result"] is None:
         return None
@@ -33,6 +34,7 @@ def previous_result(context: Context, club_id: str) -> float | None:
 
 
 def previous_margin(context: Context, club_id: str) -> float | None:
+    """前戦の得点差。**#10（連戦の何戦目か）と組み合わせて機能する**（要件 6.2）。"""
     previous = previous_game(context, club_id)
     if previous is None or previous["margin"] is None:
         return None

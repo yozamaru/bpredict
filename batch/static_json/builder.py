@@ -38,6 +38,13 @@ class ClubInput:
 
 @dataclass(frozen=True)
 class PredictionInput:
+    """静的JSON に書く予測。**この回の推論の出力から作る。**
+
+    D1 から読み戻さない — `daily_ingest` は最も早い開始時刻より前に走るため、
+    窓の全試合がその回で推論される（詳細設計 4.2 のステップ5）。
+    `gameday_update` は読み戻しが要り、**そのときに口を決める。**
+    """
+
     home_win_prob: float
     pred_home_score: float | None
     pred_away_score: float | None
@@ -50,6 +57,16 @@ class PredictionInput:
 
 @dataclass(frozen=True)
 class ReasonInput:
+    """なぜこの予測になったか（要因グループ単位）。
+
+    **`contribution` はログオッズ空間の値**で、そのままは出さず段階値に畳む
+    （`%` は勝率専用。要件 6.9）。
+
+    **現在の21列では2件しか出ない** — `VENUE` に該当列が無く、`PLAYER` の3列は
+    `game_entries` が空で定数のため寄与が厳密に 0 である。**受け入れ基準 A-01
+    （3件以上）は満たしていない**（詳細設計 2.7.1）。
+    """
+
     group_key: str
     label_ja: str
     value_text: str
@@ -144,6 +161,16 @@ class ActualInput:
 
 @dataclass(frozen=True)
 class EvaluationInput:
+    """試合後の対比。**判定が無くてもスコアは出す。**
+
+    終了しても照合がすぐには付かない（freeze は毎時、照合は日次）。
+    `is_correct` を **`false` で埋めない** — null は「まだ照合していない」であり
+    「外した」ではない（詳細設計 3.3）。
+
+    `bucket_*` は「68%と予想した試合はこれまで何件中何件が的中したか」の根拠で、
+    **外れた試合でも同じ形で出す**（要件 8.3）。
+    """
+
     is_correct: bool | None
     score_error: float | None
     outcome: str
@@ -154,6 +181,8 @@ class EvaluationInput:
 
 @dataclass(frozen=True)
 class AccuracyInput:
+    """一覧カードに出す的中率。**`n` を必ず持つ**（母数なしの率を出さない。要件 8.3）。"""
+
     accuracy: float
     brier: float
     n: int

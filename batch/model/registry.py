@@ -147,6 +147,10 @@ def load_logistic_means(artifact_text: str, feature_list: list[str]) -> Any:
 
 
 def artifact_sha256(artifact_text: str) -> str:
+    """artifact の SHA256。**取得後に照合するためにある**（詳細設計 3.4）。
+
+    一覧（メタ）と本体を別の口で返すため、**取り違えに気づける手段が要る。**
+    """
     return hashlib.sha256(artifact_text.encode("utf-8")).hexdigest()
 
 

@@ -92,6 +92,15 @@ class TeamStat:
 
 @dataclass
 class Outcome:
+    """実績の集計の結果（詳細設計 4.14）。
+
+    **保存するのは合計だけで、1試合平均は API が導出する** — 導出値を冗長に持つと
+    不整合の余地が生まれる（詳細設計 1.9）。
+
+    `recent_players` は `/players/[id]` の静的生成に使う一覧で、**直近3シーズンに
+    出場した選手**に限る（要件 8.2。実測557人）。
+    """
+
     players: list[PlayerStat] = field(default_factory=list)
     teams: list[TeamStat] = field(default_factory=list)
     #: 静的生成する選手（直近3シーズンに出場）
@@ -369,6 +378,18 @@ def build(snapshot_dir: Path = DEFAULT_SNAPSHOT,
 def run(*, api: InternalApi, snapshot_dir: Path = DEFAULT_SNAPSHOT,
         seasons_csv: Path = DEFAULT_SEASONS_CSV,
         player_index: Path = DEFAULT_PLAYER_INDEX) -> Outcome:
+    """実績を集計して D1 へ送る。**実行時に集計しないための前計算である。**
+
+    1選手の通算を `player_game_stats` から引くと1ページ約1,200行を読み、
+    **D1 の読取枠は1日4,000ページ閲覧で尽きる**（基本設計 3.2）。
+
+    **洗い替えず upsert だけで更新する。** 約4,650行は1リクエスト（160行）に
+    収まらず、分割すると**後のリクエストの DELETE が前の INSERT を消す**。
+    足りる根拠は**取り込みが試合を削除しないこと**で、古い行が取り残される経路が
+    ない。途中で失敗しても**前の値が残る。**
+
+    入力はスナップショットだけである（絶対ルール3）。
+    """
     outcome = build(snapshot_dir, seasons_csv)
     if outcome.players or outcome.teams:
         send(api, outcome)
@@ -391,6 +412,11 @@ def _report(outcome: Outcome) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """単体で流す入口。**冪等である**（upsert）。
+
+    `daily_ingest` のステップ6b からも呼ばれる。**失敗しても予測は出る** —
+    この2表を読むのは画面だけで、特徴量も推論も読まない（詳細設計 4.2）。
+    """
     parser = argparse.ArgumentParser(description="実績を集計して D1 へ送る")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--seasons", type=Path, default=DEFAULT_SEASONS_CSV)

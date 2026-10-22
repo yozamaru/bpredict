@@ -7,6 +7,16 @@ const prob = z.number().min(0).max(1);
 const nonNeg = z.number().min(0);
 const zeroOne = z.union([z.literal(0), z.literal(1)]);
 
+/**
+ * 整合化の目標値（`prediction_team_targets`。要件 6.8.5）。
+ *
+ * **「成功数」ではなく「試投数 + 成功率」で持つ。** 成功数を直接持つと約2%の確率で
+ * `成功数 > 試投数` という**実行不能な目標**が生まれ、どんなアルゴリズムでも到達
+ * できない。率（0〜1）と試投数（非負）の積なら `成功数 <= 試投数` が構造的に成り立つ。
+ *
+ * **ここに入るのは `reconcile_team_targets()` を通した後の値である** — TeamRates の
+ * 生出力では導出得点が予想スコアと一致しない（詳細設計 2.4 の前段）。
+ */
 export const teamTargetSchema = z
   .object({
     clubId: ID,
@@ -18,6 +28,15 @@ export const teamTargetSchema = z
   })
   .strict();
 
+/**
+ * 選手1人の予測（整合化**後**の値）。
+ *
+ * **成功数・得点・リバウンド合計の列を持たない。** すべて率と試投数から導出できる
+ * （詳細設計 1.5）。列として持つと、整合化の後に恒等式が崩れても検出できない。
+ *
+ * **`plusMinus` を予測しない**（要件 6.8.3）。1試合の個人プラスマイナスは
+ * MAE 9〜12点規模で、「チーム得点差 × 出場時間シェア」以上の情報を持たない。
+ */
 export const playerPredictionSchema = z
   .object({
     playerId: ID,
@@ -37,6 +56,15 @@ export const playerPredictionSchema = z
   })
   .strict();
 
+/**
+ * なぜこの予測になったか（`prediction_reasons`。要件 6.9）。
+ *
+ * **要因グループ単位に集約した寄与**であり、個別の列は出さない。`contribution` は
+ * **ログオッズ空間の値**で、`%` を付けて画面に出さない（`%` は勝率専用）。
+ *
+ * `factorSchema`（この予測に使った項目）とは別物である — あちらは「何を見たか」で、
+ * 有利不利を主張しない（詳細設計 2.7.2）。
+ */
 export const reasonSchema = z
   .object({
     rank: z.number().int().min(1).max(20),
@@ -72,6 +100,13 @@ export const factorSchema = z
   })
   .strict();
 
+/**
+ * 推論に使ったモデル一式（`prediction_model_bundle`。詳細設計 1.6）。
+ *
+ * **`predictions.model_version` だけでは出自を復元できない。** 1本の予測は
+ * Winner / Margin / Total / TeamRate×14 / PlayerAvail / PlayerMin / PlayerRate×14 の
+ * 合成で、単一の列にはチームモデルの版しか書けない。**最大33行**になる。
+ */
 export const bundleSchema = z
   .object({
     modelType: z.enum([
@@ -82,6 +117,16 @@ export const bundleSchema = z
   })
   .strict();
 
+/**
+ * `POST /internal/predictions` の本文。**1リクエスト1試合。**
+ *
+ * この口が守る関門（詳細設計 3.4）— Bearer の定数時間比較 / Zod の型と値域 /
+ * **`tipoff_at <= now` の試合を 409 で拒否** / `is_final = 1` を UPDATE しない /
+ * 旧行の非活性化と新行の挿入を**単一 `batch()`** に入れる。
+ *
+ * **`teamTargets` は2件か0件である**（`refine` が要求する）。1件は片側だけ
+ * 整合化した状態であり、原理的に誤りである。
+ */
 export const predictionBody = z
   .object({
     gameId: ID,

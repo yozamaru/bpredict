@@ -61,13 +61,38 @@ export const fetchGameDetail = (gameId: string) =>
 export const fetchGameFromApi = (gameId: string) =>
   load<GameDetail>(`/api/v1/games/${gameId}`);
 
+/**
+ * 鮮度と運用状態。**全画面が読む**（遅延バナーの判定材料がここにしかない）。
+ *
+ * **静的JSON である。** 無料枠が枯れても読めなければ、遅延しているのかどうかを
+ * 画面が言えなくなる（要件 4.2）。
+ */
 export const fetchMeta = () => load<Meta>('/data/meta.json');
 
+/**
+ * 終了した試合と予測の対比。**公開APIへ行く**（静的JSON に無い）。
+ *
+ * 見る日は `Meta.latestResultDate` が決める — **画面は時計を見ない**（詳細設計 3.7）。
+ * `VOID`（中止・延期）は返らない。
+ */
 export const fetchResults = (date: string) =>
   load<ResultsByDate>(`/api/v1/results?date=${date}`);
 
+/**
+ * 的中率。**`accuracy_summary` を単一テーブルから読む**（詳細設計 3.3）。
+ *
+ * 実行時に `prediction_results` を走査しない — 日次バッチが畳んである。
+ * **1試合も照合していない間は `overall` が null** であり、画面は空状態を出す
+ * （要件 8.5 の「照合した試合がまだない」）。
+ */
 export const fetchAccuracy = () => load<AccuracySummary>('/api/v1/accuracy');
 
+/**
+ * クラブ別（要件 F-10）。**予測履歴と、シーズン別・通算の実績の集計が返る。**
+ *
+ * 実績は**実行時に集計しない** — 1選手の通算を `player_game_stats` から引くと
+ * 1ページ約1,200行を読み、D1 の読取枠が1日4,000ページ閲覧で尽きる（基本設計 3.2）。
+ */
 export const fetchTeam = (slug: string) => load<Team>(`/api/v1/teams/${slug}`);
 
 /**
@@ -94,6 +119,13 @@ export type ClubShape = {
   shortName: string | null;
 };
 
+/**
+ * 予測の表示に要る値。
+ *
+ * **`awayWinProb` を持たない**（`1 - homeWinProb` で導出できる冗長値）。ただし
+ * **画面では必ず両チーム分を表示する** — 圧縮カードでも省略しない（要件 8.3）。
+ * 導出はクライアントで行う。
+ */
 export type PredictionShape = {
   homeWinProb: number;
   predHomeScore: number;
@@ -128,6 +160,11 @@ export type GameShape = {
   evaluation?: { isCorrect: boolean | null; scoreError: number | null } | null;
 };
 
+/**
+ * 一覧カードに出す的中率。**null は「まだ照合していない」である**（エラーではない）。
+ *
+ * **`n` を必ず持つ。** 母数なしの率を画面に出さない（要件 8.3）。
+ */
 export type AccuracyShape = {
   accuracy: number;
   brier: number;
@@ -288,6 +325,14 @@ export type Team = {
 /**
  * 実績の集計（詳細設計 1.9 / 3.3）。**合計ではなく1試合平均が返る** — 導出は
  * API が行い、クライアントで計算しない（実装ごとにずれる）。
+ */
+/**
+ * 成功数・試投数・率。**率は常に分数と併記して出す**（要件 8.3）。
+ *
+ * **`pct` が null になる理由は2つあり、意味が違う。**
+ *
+ * - 予測値 — 試投数が閾値未満（存在しない精度を主張しない。詳細設計 3.3）
+ * - 実績値 — **試投数が 0**。実績に閾値は設けない（`6 / 13` は丸めのない事実である）
  */
 export type Shots = { m: number | null; a: number | null; pct: number | null };
 

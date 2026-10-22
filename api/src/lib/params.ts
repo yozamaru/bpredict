@@ -20,6 +20,13 @@ const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const EARLIEST_YEAR = 2016;
 const LATEST_YEAR = 2100;
 
+/**
+ * 日付を検証する。**不一致は null を返し、呼び出し側が 400 にする。**
+ *
+ * **D1 に触れる前の段である**（3段構えの1〜2段目。詳細設計 3.3）。形式・実在日付・
+ * 粗い絶対範囲までをここで見て、シーズン範囲の判定（3段目）だけが `seasons` へ
+ * 1クエリ投げる。**順序を崩すと、URL 空間を有限に保つ関門が D1 の後ろに下がる。**
+ */
 export function parseDate(value: string | undefined): string | null {
   if (value === undefined) return null;
   const matched = DATE.exec(value);
@@ -45,6 +52,7 @@ export function parseDate(value: string | undefined): string | null {
 /** `^[a-z0-9-]{1,40}$`（詳細設計 3.2）。`clubs.slug` の形式と同じ */
 const SLUG = /^[a-z0-9-]{1,40}$/;
 
+/** クラブの `slug`（`^[a-z0-9-]{1,40}$`）。形式は詳細設計 1.1 が定める。 */
 export function parseSlug(value: string | undefined): string | null {
   if (value === undefined || !SLUG.test(value)) return null;
   return value;
@@ -99,6 +107,7 @@ export async function latestSeasonId(db: D1Database): Promise<string | null> {
  */
 const PLAYER_ID = /^\d{1,16}$/;
 
+/** 選手ID。公式の採番は数字列である（詳細設計 3.3）。 */
 export function parsePlayerId(value: string | undefined): string | null {
   if (value === undefined || !PLAYER_ID.test(value)) return null;
   return value;

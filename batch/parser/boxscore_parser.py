@@ -23,18 +23,35 @@ from .validators import possessions, validate_counts, validate_scoring_total
 
 
 def required(row: Mapping[str, object], key: str) -> object:
+    """対応表の必須キーを取り出す。**キーが無ければ落とす。**
+
+    **「キーが無い」と「キーはあるが空」を分ける**（詳細設計 4.4）。前者は
+    構造が変わった疑いで `ParseError`、後者は `normalize` が None にして保持する。
+    混ぜると、サイトが項目を消したことに気づけない。
+    """
     if key not in row:
         raise ParseError(f"必須フィールドがない: {key}")
     return row[key]
 
 
 def object_row(value: object) -> dict[str, object]:
+    """記録1行がオブジェクトであることを確かめる。
+
+    キーが文字列でないものも落とす — 埋め込み JSON は配列やリテラルを返すことが
+    あり、そのまま `Mapping` として扱うと後続が分かりにくい形で落ちる。
+    """
     if not isinstance(value, dict) or any(not isinstance(k, str) for k in value):
         raise ParseError("記録がオブジェクトでない")
     return value
 
 
 def required_text(value: object) -> str:
+    """空を許さない文字列として読む。
+
+    `assert` は `normalize.text` が `optional=False` のとき None を返さないという
+    約束に依っている（空なら例外を投げる）。**型を狭めるためだけの `assert`** で
+    あり、検証はこの関数ではなく `text` が持つ。
+    """
     result = text(value)
     assert result is not None
     return result

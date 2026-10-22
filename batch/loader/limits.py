@@ -89,6 +89,15 @@ def _column_counts() -> dict[str, int]:
 
 
 def column_count(table: str) -> int:
+    """DDL の**全列数**を返す（詳細設計 3.4）。
+
+    **`DEFAULT` を持つ列を除かない。** 「INSERT 文に含めない前提」で除くと、
+    実装が明示指定に変わった瞬間に上限を超える。**上限は最も厳しい側で固定し、
+    実装の書き方に依存させない。**
+
+    出典は `db/migrations/*.sql` である — 手で書いた表を持つと、列を1つ増やした
+    ときに定数だけ古いまま残る（v1.3 では3テーブルでずれていた）。
+    """
     counts = _column_counts()
     if table not in counts:
         raise LimitError(table)
@@ -101,6 +110,15 @@ def rows_per_statement(table: str) -> int:
 
 
 def max_rows_per_request(table: str) -> int:
+    """1リクエストに入れてよい行数。**`floor(100 / 列数) × 40`**（詳細設計 3.4）。
+
+    D1 Free は**1 Worker 呼び出しあたり50クエリ**で、これがこのプロダクトで最初に
+    当たる制約である。係数40は、残り10を非活性化・ログ・整合性確認の余裕として
+    残すためである。
+
+    **一律500件にしない。** `player_predictions` は31列あり、500件で167文が必要
+    になる（上限の3倍を超える）。
+    """
     return rows_per_statement(table) * STATEMENTS_BUDGET
 
 

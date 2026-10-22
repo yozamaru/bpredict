@@ -50,6 +50,11 @@ class Dataset:
     tables: dict[str, pd.DataFrame]
 
     def table(self, name: str) -> pd.DataFrame:
+        """スナップショットの1表を返す。**無ければ落とす**（空の表を返さない）。
+
+        空を返すと特徴量が「履歴が無い」として既定値を出し、**壊れていることが
+        精度の低下としてしか現れない。**
+        """
         if name not in self.tables:
             raise SnapshotError(f"スナップショットに {name} がない")
         return self.tables[name]

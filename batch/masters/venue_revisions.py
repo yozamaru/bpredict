@@ -33,6 +33,16 @@ class VenueRevisionError(RuntimeError):
 
 @dataclass(frozen=True)
 class Revision:
+    """会場の名称・収容人数の1区間（詳細設計 4.9）。
+
+    **名称は `games.venue_name_at_game` からの派生である。** `venues.name` は
+    初出で固定されるため（過去試合の会場表示が遡って変わらないように）、
+    **試合行に当時の名称を残さないと履歴を作る入力が取り込みの瞬間にしか
+    存在しない。**
+
+    `capacity` は手入力の CSV から後入れする（公式サイトに無い）。
+    """
+
     venue_id: str
     valid_from: str
     valid_to: str
@@ -42,6 +52,15 @@ class Revision:
 
 @dataclass
 class BuildResult:
+    """全期間を再計算した結果。**`team_ratings` と同じ「洗い替える派生」である。**
+
+    止めて報告するもの（CSV の `valid_from` がどの区間にも一致しない）と、
+    報告だけするもの（**同一シーズン内の名称変更** — 命名権の変更はシーズン境界で
+    起きるのが通例で、シーズン内は表記ゆれの疑いがある）を分ける。
+
+    **表記ゆれを自動で名寄せしない**（規則を推測で作らない。詳細設計 4.9）。
+    """
+
     revisions: list[Revision] = field(default_factory=list)
     #: 名称が1つも取れず、`venues.name` へのフォールバックになる会場
     fallback_venue_ids: list[str] = field(default_factory=list)

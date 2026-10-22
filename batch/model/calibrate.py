@@ -56,6 +56,11 @@ class Platt:
     b: float
 
     def apply(self, probs: Floats) -> Floats:
+        """較正を当てる。**ロジット空間の1次変換である**（要件 6.7 / 詳細設計 2.3.1）。
+
+        `p` そのものの1次変換にしない — `[0,1]` を出てクリップが必要になり、
+        **整合化がクリップを禁じているのと同じ理由**で避ける。
+        """
         return _sigmoid(self.a * _logit(probs) + self.b)
 
 

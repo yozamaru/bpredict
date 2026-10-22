@@ -34,6 +34,15 @@ class GeocodeError(RuntimeError):
 
 @dataclass(frozen=True)
 class Candidate:
+    """国土地理院の住所検索が返す候補1件。
+
+    **`title` には都道府県を含む完全な住所が入る。** 公式サイトの住所が都道府県を
+    省いている場合（実測で149会場のうち14件）、**ここから読む**（詳細設計 4.10）。
+
+    **1件目を無条件に採らない。** 候補は関連度順に並ぶが、住所の先頭の市区町村が
+    `title` に含まれることを確認してから採る — 確認しないと別の市区町村の座標が入る。
+    """
+
     title: str
     lat: float
     lng: float
@@ -97,4 +106,13 @@ def candidates(address: str, *, fetch: Fetch | None = None) -> list[Candidate]:
 
 
 def sleep_between_requests(sleep: Callable[[float], None] = time.sleep) -> None:
+    """国土地理院への間隔を空ける。
+
+    **公式サイト向けの3秒＋ジッタを無条件に適用しない**（詳細設計 4.10）。
+    こちらは無料・APIキー不要で政府標準利用規約のもとで提供されており、
+    このジョブは1回しか流さず総リクエスト数は会場数（120件前後）である。
+
+    **1秒は運営者の判断として置いた値で、実測に基づくものではない。**
+    公式サイト向けの値と混ぜないため `batch/geocode/` に別の定数として持つ。
+    """
     sleep(REQUEST_INTERVAL_SECONDS)

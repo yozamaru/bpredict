@@ -108,6 +108,16 @@ class Inputs:
 
 @dataclass(frozen=True)
 class Decision:
+    """採用判定の結果。**真偽値だけを返さない。**
+
+    `bool` だけだと「基準未達のため有効化しない」が**どの条件で落ちたのかを
+    残さない**（詳細設計 4.6）。落ちた条件は**最初の1つで打ち切らず全部並べる** —
+    直す側は全部知りたい。
+
+    `notes` は落ちてはいないが残すべきこと（既知の定数列、ECE を課さなかった
+    事実とその実測値など）。
+    """
+
     adopt: bool
     #: 落ちた条件。1件でもあれば `adopt` は False
     failures: list[str] = field(default_factory=list)
@@ -116,6 +126,7 @@ class Decision:
 
     @property
     def summary(self) -> str:
+        """1行にまとめる。`model_versions.notes` と標準出力に出す。"""
         if self.adopt:
             tail = f"（注記: {' / '.join(self.notes)}）" if self.notes else ""
             return f"採用基準を満たした{tail}"

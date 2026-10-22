@@ -483,6 +483,10 @@ class Finished:
         self.skipped.append((game_id, type(error).__name__, str(error)))
 
     def degrade(self, note: str) -> None:
+        """`PARTIAL` に下げ、理由を残す。**exit 1 で終える**（詳細設計 4.3）。
+
+        exit 0 だと Actions の失敗通知に乗らず、**誰も気づかないまま数日放置される。**
+        """
         self.status = "PARTIAL"
         self.notes.append(note)
 
@@ -1237,6 +1241,19 @@ def _client() -> RateLimitedClient:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """日次の取り込みと推論。**ステップを明示的に選ばせる**（詳細設計 4.2）。
+
+    設計は12ステップを定めるが実装は順に足しており、**実装していないステップを
+    黙って飛ばさない** — 既定の動作を持たせると「日次ジョブを回したつもりで
+    半分しか動いていない」が起きる。
+
+    **定期実行では `inputs` が空になる。** 真偽値の入力も `''` になるため、
+    `github.event_name == 'schedule'` を先に見て全ステップを回す（そうしないと
+    **全ステップが false になり、定期実行が静かに何もしない**）。
+
+    **外部アクセスの失敗が内部処理を巻き添えにしない。** 429/503 で中止するのは
+    取得区間だけで、照合・Elo・推論・書き出しは実行して `PARTIAL` で終わる。
+    """
     parser = argparse.ArgumentParser(description="日次の取り込み（詳細設計 4.2）")
     parser.add_argument(
         "--only-results", action="store_true",

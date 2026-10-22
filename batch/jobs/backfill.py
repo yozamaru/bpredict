@@ -66,6 +66,16 @@ DEFAULT_STATE_PATH = Path("batch/.scraper-state/state.json")
 
 @dataclass
 class Result:
+    """1回の backfill の結果。**飛ばした行を理由ごとに別に数える。**
+
+    件数だけ出して理由を混ぜるのは、**黙って取りこぼすのと調査可能性の点で
+    ほとんど同じである**（詳細設計 4.4）。実際に2度踏んだ — 2020-21 で128件が
+    「非リーグ戦」に混ざり（中身は日付不明）、2021-22 で 502 の10件が
+    「不正」と報告された（データの欠陥ではなく相手側の事情である）。
+
+    **`status` は `SUCCESS` から下げる方向にしか動かない**（`degrade`）。
+    """
+
     status: str = "SUCCESS"
     ingested: int = 0
     skipped_existing: int = 0
@@ -103,6 +113,11 @@ class Result:
         self.skipped.append((game_id, type(error).__name__, str(error)))
 
     def degrade(self, status: str, note: str) -> None:
+        """状態を下げ、理由を残す。**`PARTIAL` は exit 1 で終える**（詳細設計 4.3）。
+
+        exit 0 で終えると GitHub Actions の失敗通知に乗らず、**誰も気づかないまま
+        数日放置される。**
+        """
         self.status = status
         self.notes.append(note)
 
@@ -146,6 +161,17 @@ def run(
     api: InternalApi,
     limit: int | None = None,
 ) -> Result:
+    """1シーズンを取り込む。**再開可能である**（詳細設計 4.8）。
+
+    `GET /internal/games/ingested` で取得済みを得て飛ばす。判定は
+    **「試合行があるか」ではなく「スタッツまで入っているか」**である — 間で失敗
+    すると試合行だけが残り、「済み」と見なされて**スタッツが永久に欠ける。**
+    しかもその欠落は `取り込み` にも `不正` にも出ない。
+
+    **個別試合の失敗ではジョブ全体を落とさない**（要件 5.2 / 設計 4.3）。ただし
+    取得失敗とパース失敗を合わせて連続3件で中止する — 非200が続くのは遮断の
+    疑いであり、叩き続けるのは絶対ルール6 に反する。
+    """
     season, year = _season(season_id)
     club_ids = {row.source_id: row.club_id for row in load_club_source_ids()}
     result = Result()
@@ -293,6 +319,15 @@ def _finish(api: InternalApi, season_id: str, result: Result) -> Result:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """手動で流す入口。**1日の上限は書き込み行数で管理する**（詳細設計 4.8）。
+
+    「1日1シーズン」にすると**枠の34%を毎日捨てることになる**（1シーズンは実測
+    約65,800行で枠の66%）。端数のシーズンには `--limit` を渡し、**枠に当たる前に
+    `SUCCESS` で止める。**
+
+    `--dry-run` では**マスタ投入も流さない** — 診断のたびに当日の書き込み枠を
+    削っていた（1回約200行＝3試合ぶん）。
+    """
     parser = argparse.ArgumentParser(description="過去シーズンの一括取得（1日1シーズン）")
     parser.add_argument("--season", required=True, help="seasons.csv の id（例: 2016-17-B1）")
     parser.add_argument("--limit", type=int, default=None, help="取り込む試合数の上限（確認用）")

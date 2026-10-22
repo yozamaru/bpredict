@@ -46,6 +46,9 @@ class WriteResult:
     indexed: int = 0
 
     def summary(self) -> str:
+        """要約を1行にする。**索引の件数も出す** — 溜まる一方なので、増えていない
+        回があれば気づける（詳細設計 3.7）。
+        """
         return (
             f"静的JSON: 書き出し={len(self.written)} 削除={len(self.removed)} "
             f"索引={self.indexed}件"

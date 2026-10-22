@@ -80,6 +80,12 @@ class InfeasibleTargetError(ValueError):
 
 
 def logit(p: float) -> float:
+    """ロジット。**`[EPS, 1-EPS]` に寄せてから取る。**
+
+    ロジットは `(0,1)` を `(-∞,∞)` に写すため**クリップが原理的に不要になる** —
+    これが整合化で成功率を倍率スケールしない理由である（要件 6.8.5）。
+    ただし 0 と 1 ちょうどは定義されないため、入口だけ寄せる。
+    """
     value = min(max(float(p), EPS), 1.0 - EPS)
     return float(np.log(value / (1.0 - value)))
 

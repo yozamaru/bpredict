@@ -52,6 +52,13 @@ class TeamRateError(ValueError):
 
 
 def is_pct(target: str) -> bool:
+    """成功率3項目か（カウント11項目ではないか）。
+
+    **扱いが違う**（要件 6.8.4）— 成功率は per-minute にせず、学習重みを試投数に
+    し、出力を `[0.01, 0.99]` に収める。**14項目にない名前は落とす** —
+    層をまたいで定数を共有しないため目的変数の集合が2箇所にあり、食い違うと
+    整合化が成立しない。
+    """
     if target not in TARGETS:
         raise TeamRateError(f"目的変数が14項目にない: {target}")
     return target in PCT_NAMES

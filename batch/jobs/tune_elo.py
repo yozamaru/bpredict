@@ -58,6 +58,16 @@ class TuneError(RuntimeError):
 
 @dataclass(frozen=True)
 class Trial:
+    """Elo のパラメータ1組と、その結果。
+
+    **目的関数は Elo単体ロジスティック回帰の Brier である**（詳細設計 2.5 の段1）。
+    他の特徴量を混ぜると Elo の欠点を他の列が補い、**Elo のパラメータの良否が
+    見えなくなる。**
+
+    `defaulted` は Elo の行が無く 1500 で埋めた試合の数で、**多ければその組の
+    Brier は Elo をあまり測っていない。**
+    """
+
     params: EloParams
     brier: float
     accuracy: float
@@ -66,6 +76,9 @@ class Trial:
     defaulted: int
 
     def as_dict(self) -> dict[str, object]:
+        """記録に残す形へ畳む。**探索の全組を残す** — 選んだ組だけでは、
+        次に範囲を広げるべきかが判断できない。
+        """
         return {
             "k": self.params.k,
             "home_advantage": self.params.home_advantage,
@@ -167,6 +180,9 @@ def search(
 
 
 def render(trials: list[Trial], *, top: int = 10) -> str:
+    """上位の組を人が読む形にする。**端が選ばれていないかを見るためである**
+    （選ばれていれば最適はグリッドの外にありうる）。
+    """
     best = trials[0]
     initial = next(
         (t for t in trials if t.params == DEFAULT_PARAMS),
@@ -198,6 +214,15 @@ def render(trials: list[Trial], *, top: int = 10) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Elo のパラメータを探索する（詳細設計 2.5 の段1）。
+
+    **モデルのパラメータと同じループで回さない。** Elo を変えると `team_ratings` が
+    変わり、それを読む特徴量も変わるため、**組み合わせごとに特徴量の再生成が要る** —
+    素朴に回すと 300通り × 21分で105時間になる。段1は特徴量を作らない。
+
+    **ここで決めた Elo を固定し、段2はモデル側だけを動かす。** 同じデータで2回
+    選ぶと、選択の自由度が二重に効いて過学習する。
+    """
     parser = argparse.ArgumentParser(description="Elo のパラメータを探索する（段1）")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--max-folds", type=int, default=MAX_FOLDS)

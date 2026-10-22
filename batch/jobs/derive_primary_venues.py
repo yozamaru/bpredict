@@ -181,6 +181,14 @@ def _report(result: BuildResult) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """本拠会場を導出して CSV に固定する（詳細設計 4.11）。
+
+    **`--load` を既定にしない。** 「1回だけ確定して CSV に固定する」扱いであり、
+    **人が CSV を見てからコミットする。**
+
+    **当季の手入力の行は上書きしない** — 開幕前に調べて入れた値がシーズン途中で
+    勝手に変わる。
+    """
     parser = argparse.ArgumentParser(description="本拠会場を導出して CSV に固定する")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--csv", type=Path, default=PRIMARY_VENUE_CSV)

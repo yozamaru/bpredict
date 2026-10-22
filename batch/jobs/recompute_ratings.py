@@ -43,6 +43,14 @@ ROWS_PER_REQUEST = max_rows_per_request("team_ratings")
 
 @dataclass
 class Result:
+    """Elo 再計算の結果。
+
+    **計算は常に全期間を replay する。** `--from-date` が絞るのは D1 への書き込み
+    範囲だけである — 途中から始めると開始状態を保存済みの値から拾うことになり、
+    **丸め差が世代を追って蓄積する**（詳細設計 2.5）。8,000試合の replay は
+    数十ミリ秒で終わる。
+    """
+
     status: str = "SUCCESS"
     rows: int = 0
     requests: int = 0
@@ -218,6 +226,15 @@ def _log(api: InternalApi, result: Result) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Elo を再計算してスナップショットと D1 に書く。
+
+    **順序を守る** — `recompute()` → `team_ratings.parquet` → `/internal/ratings`
+    （基本設計 2.2）。特徴量が読むのはスナップショット側で、D1 は公開APIの
+    表示用の複製である。
+
+    **同じ `as_of_date` を2リクエストに分けない**（詳細設計 2.5）。この口は
+    期間 DELETE → INSERT であり、跨ぐと**後の DELETE が前の INSERT を消す。**
+    """
     parser = argparse.ArgumentParser(description="Elo を再計算して書き出す")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--full", action="store_true", help="全期間を洗い替える")

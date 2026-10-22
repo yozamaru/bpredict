@@ -33,6 +33,20 @@ class PrimaryVenueError(RuntimeError):
 
 @dataclass(frozen=True)
 class PrimaryVenue:
+    """クラブ・シーズンごとの本拠会場（詳細設計 1.2 / 4.11）。
+
+    **過去シーズンは取り込み済みの試合から1回だけ導出し、CSV に固定する。**
+    当季は手入力である（まだ試合が無い）。
+
+    **承知しておく — これは事前の事実を事後のデータから復元している。** 本拠は
+    開幕前に公表される事実だが、その公表を取る経路がこちらに無い。
+    **運営者が承知のうえで許容した判断である。**
+
+    `share`（占有率）を残すのは**判断の材料を捨てないため**で、実測の最小は
+    0.367 である（その組で「最も多く使った会場」を本拠と呼べるかは疑わしい）。
+    **閾値は設けない** — 設計文書に根拠のない定数を増やさない。
+    """
+
     season_id: str
     club_id: str
     venue_id: str
@@ -45,11 +59,26 @@ class PrimaryVenue:
 
     @property
     def is_manual(self) -> bool:
+        """手入力の行か（`source` に出典URLがあるか）。
+
+        **手入力の行を導出で置き換えない** — 開幕前に調べて入れた値が
+        シーズン途中で勝手に変わる（詳細設計 4.11）。
+        """
         return bool(self.source)
 
 
 @dataclass
 class BuildResult:
+    """導出の結果。**止めて報告するものと、報告だけするものを分ける。**
+
+    `conflicts`（手入力と導出の食い違い）と `ties`（同数）は**報告のみでジョブは
+    継続する** — どちらかが誤りであり、**黙って上書きすると過去の本拠が遡って
+    変わる**（詳細設計 4.9 の会場名と同じ扱い）。
+
+    `ties` は実データでは1件も起きない（225組）。**それでも数える** — 決まって
+    いない規則を実装に残すと、将来データが変わったときに実行ごとに値が変わる。
+    """
+
     rows: list[PrimaryVenue] = field(default_factory=list)
     #: ホーム試合が1件もない、または `venue_id` が全件 NULL だった組
     skipped: list[tuple[str, str]] = field(default_factory=list)

@@ -21,15 +21,7 @@
      "slug": "sendai-89ers"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.7110634306155155,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 75.78756269952204,
-     "predHomeScore": 82.9825063528351
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-22T10:05:00Z"
    },
@@ -51,21 +43,13 @@
      "slug": "alvark-tokyo"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.8533831648942504,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 72.59046436478069,
-     "predHomeScore": 86.17960468757646
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-22T10:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-22T07:41:27Z"
+  "generatedAt": "2026-10-22T11:51:37Z"
  }
 }

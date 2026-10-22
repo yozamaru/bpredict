@@ -198,5 +198,25 @@
   "homeScore": "51",
   "reason": "状態欄が空で得点がある（不戦敗の形）",
   "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "横浜BC",
+  "awayScore": "61",
+  "gameDate": "2026-10-22",
+  "gameId": "506495",
+  "home": "仙台",
+  "homeScore": "79",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "茨城",
+  "awayScore": "59",
+  "gameDate": "2026-10-22",
+  "gameId": "506496",
+  "home": "A東京",
+  "homeScore": "58",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
  }
 ]

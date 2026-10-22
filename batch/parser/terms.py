@@ -42,6 +42,13 @@ class FingerprintError(RuntimeError):
 
 @dataclass(frozen=True)
 class Section:
+    """利用規約の1節と、その可視テキストのハッシュ。
+
+    **見出しの文言はリポジトリに保存しない**（要件 4.5.2）。`heading` は実行時に
+    生きたページから読んだ値で、報告（「第3節『〜』が変わった」）に使うためだけに
+    持つ。保存するのは連番とハッシュだけである。
+    """
+
     index: int
     #: 実行時にだけ持つ。**保存しない**
     heading: str
@@ -87,6 +94,11 @@ def build_fingerprint(html: str, approved_visible_text_sha256: str) -> dict[str,
 
 
 def load_fingerprint(path: Path | None = None) -> dict[str, object]:
+    """保存済みの節ごとの指紋を読む。
+
+    **無い・壊れているときは落とす。** 指紋が読めないまま節の比較をすると
+    「変わっていない節が変わった」と出て、判断を誤らせる（詳細設計 4.3）。
+    """
     # **既定値を引数に書かない。** 引数の既定は import 時に束縛されるため、
     # `FINGERPRINT_PATH` を差し替えても効かない（テストで実際に空振りした）
     path = FINGERPRINT_PATH if path is None else path
@@ -164,6 +176,12 @@ def report_terms_change(approved_visible_text_sha256: str) -> TermsReporter:
     """
 
     def report(html: str) -> None:
+        """変わった節を標準出力に出す。**例外を投げない。**
+
+        関門はすでに止めている。ここで落ちると「規約が変わった」という本来の
+        理由が見えなくなる（詳細設計 4.3）。**本文は出さない** — 公開ログに
+        サイトの文言を流さない（絶対ルール4 / 要件 4.5.2）。
+        """
         print("利用規約が変わっている。どの節が変わったか:")
         try:
             for line in describe_change(html, approved_visible_text_sha256):

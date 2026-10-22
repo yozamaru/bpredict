@@ -54,6 +54,15 @@ _STATES = {
 
 @dataclass(frozen=True)
 class ScheduleGame:
+    """日程ページの1行。**取り込みに必要な事実だけを持つ。**
+
+    `status` は `_STATES` を通した `games.status` の値で、**ラベルそのものは
+    残さない**（詳細設計 1.3）。`home_source_id` / `away_source_id` は
+    **公式の `TeamID`** であり、`club_source_ids` で `club_id` に解決してから
+    保存する — クラブ名で絞ると実在の試合を落とす（行が略称のことがあり、
+    2020-21 で128試合を落とした。詳細設計 4.4）。
+    """
+
     game_id: str
     competition: str
     game_date: str
@@ -97,6 +106,18 @@ class ExcludedGame:
 
 @dataclass(frozen=True)
 class SchedulePage:
+    """日程ページ1枚の読み取り結果。
+
+    **飛ばした行を理由ごとに別に数える。** 1つの counter に混ぜると出力から原因が
+    切り分けられない — 2020-21 で `非リーグ戦=128` と出たとき、実際には2つの理由が
+    足されていた（詳細設計 4.4）。件数だけ出して理由を混ぜるのは、**黙って
+    取りこぼすのと調査可能性の点でほとんど同じである。**
+
+    `next_index` が None ならそのページが最後である。**空の `topics` と
+    `index=null` の組だけを終端とみなす** — 進行を必須にした実装は 2016-17 の
+    チャンピオンシップ（15試合 / 単一ページ）を1件も取り込めなかった。
+    """
+
     games: tuple[ScheduleGame, ...]
     next_index: int | None
     last_date: str | None
@@ -121,11 +142,23 @@ class SchedulePage:
 
 @dataclass
 class _Node:
+    """HTML の要素1つ。**必要な操作だけを持つ最小の木である。**
+
+    外部の HTML ライブラリを入れていない（CLAUDE.md「依存を追加するとき」）。
+    `has_class` / `text` / `descendants` の3つで日程ページを読めており、
+    セレクタの仕組みは要らない。
+
+    `has_class` は class 属性を空白で分けて突き合わせる — 部分一致にしないのは、
+    `data-game` が `data-game-foo` に一致してしまうのを避けるためである。
+    `descendants` は自分を含めず、子孫を先行順で返す。
+    """
+
     tag: str
     attrs: dict[str, str | None] = field(default_factory=dict)
     children: list[_Node | str] = field(default_factory=list)
 
     def has_class(self, name: str) -> bool:
+        """class 属性に `name` があるか。**部分一致しない**（空白で分けて突き合わせる）。"""
         return name in (self.attrs.get("class") or "").split()
 
     def text(self) -> str:
@@ -139,6 +172,7 @@ class _Node:
                        if not (isinstance(child, _Node) and child.tag in ("script", "style")))
 
     def descendants(self) -> Iterator[_Node]:
+        """子孫を先行順で返す。**自分は含まない。**"""
         for child in self.children:
             if isinstance(child, _Node):
                 yield child
@@ -146,6 +180,21 @@ class _Node:
 
 
 class _Document(HTMLParser):
+    """HTML を `_Node` の木へ組み立てる。
+
+    `handle_starttag` / `handle_startendtag` / `handle_endtag` / `handle_data` は
+    `HTMLParser` が呼ぶ約束であり、こちらから呼ばない。
+
+    **閉じ忘れた要素で木が崩れないようにする。** 空要素（`<br>` など）は
+    `_VOID_ELEMENTS` は stack に積まず、終了タグは**対応する開始タグが stack に
+    あるときだけ**閉じる — 日程ページは閉じ忘れを含むことがあり、素朴に `pop()` すると
+    以後の行がすべて別の親の下に入る。
+
+    **入れ子の深さに上限（256）を置く。** 閉じ忘れが積み上がった本文で木が
+    無制限に深くなるのを止める。入力が信用できないパイプラインであり
+    （基本設計 2.1）、深さは本文から決まる値である。
+    """
+
     def __init__(self, html: str) -> None:
         super().__init__(convert_charrefs=True)
         self.root = _Node("root")

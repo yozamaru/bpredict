@@ -29,12 +29,32 @@ PREFECTURES = (
 
 @dataclass(frozen=True)
 class ArenaAddress:
+    """会場詳細ページから読めた住所と、そこから決まる都道府県。
+
+    **2つを組で返す理由は、使い道が別だからである**（詳細設計 4.10）。住所は
+    国土地理院へ渡すジオコーディングの入力で、都道府県は**返ってきた候補が
+    別の場所でないことを照合する**ために使う。
+
+    **収容人数はこのページに無い**（手入力。詳細設計 1.2）ので、ここには入らない。
+    """
+
     address: str
     #: 住所の先頭から決まる都道府県。読めなければ None（推測で埋めない）
     prefecture: str | None
 
 
 def prefecture_of(address: str) -> str | None:
+    """住所の先頭から都道府県を決める。読めなければ None。
+
+    **47件の固定の集合と突き合わせるだけで、推定していない。** 末尾の字
+    （`都` / `道` / `府` / `県`）で切る規則にしないのは、**`北海道` がその形に
+    当てはまらない**ことと、`京都市`（市）を `京都府` と読みうることの2つがある。
+
+    **None は実在する。** 公式サイトの住所は都道府県を省くことがあり、2026-10-01
+    の実測で149会場のうち**14件**がそうだった（`渋谷区神南2-1-1` など）。その場合は
+    `municipality_of` で照合し、**都道府県は国土地理院の候補から読む** —
+    市区町村名から推測しない（同名の市区町村が複数の県にある。詳細設計 4.10）。
+    """
     for name in PREFECTURES:
         if address.startswith(name):
             return name
@@ -68,7 +88,12 @@ def municipality_of(address: str) -> str | None:
 
 
 class _AddressReader(HTMLParser):
-    """住所の見出しを見つけたら、次の `dd.definition-content` の文字を集める。"""
+    """住所の見出しを見つけたら、次の `dd.definition-content` の文字を集める。
+
+    `handle_starttag` / `handle_endtag` / `handle_data` は `HTMLParser` が呼ぶ
+    約束であり、こちらから呼ばない。`_depth` を数えるのは、住所の `dd` の中に
+    入れ子の要素があっても**その `dd` が閉じるまで集め続ける**ためである。
+    """
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)

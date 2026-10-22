@@ -6,6 +6,19 @@ from .models import Counts, PlayerStats
 
 
 def validate_counts(stats: Counts, rebound_total: int | None) -> None:
+    """カウント値の恒等式と大小関係を確かめる（詳細設計 1.3 / 4.4）。
+
+    見るのは3つ。`成功数 <= 試投数` / `pts = 2fgm×2 + 3fgm×3 + ftm` /
+    `reb = oreb + dreb`。
+
+    **揃っている値だけを確かめ、欠損から数値を捏造しない。** どの検査も
+    `is not None` で守ってある — 片方が欠けていれば**その検査は行わない**。
+    したがって項目が欠ける旧年度の行では検証が弱くなるが、**埋めて検証を通すより
+    弱いまま通す方を採る**（0 で埋めると「記録なし」が「0回」になる）。
+
+    違反は `ValidationError` であり `ParseError` ではない — 前者はデータの欠陥で
+    当該試合だけを飛ばし、後者は構造変更の疑いで連続3件でジョブを止める（4.3）。
+    """
     for made, attempted in ((stats.fg2m, stats.fg2a), (stats.fg3m, stats.fg3a),
                             (stats.ftm, stats.fta)):
         if made is not None and attempted is not None and made > attempted:

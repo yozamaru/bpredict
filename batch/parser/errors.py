@@ -52,12 +52,28 @@ class ParseErrorStreak(ParseError):
 
 @dataclass
 class ParseFailureTracker:
+    """パース失敗の**連続**回数を数え、3件でジョブを止める（詳細設計 4.3）。
+
+    **総数ではなく連続で数える。** 単発の失敗はその試合のデータの欠陥であり、
+    飛ばして続けるのが正しい（11シーズンで十数件ある）。一方**連続して失敗するのは
+    サイト構造が変わった疑い**で、叩き続けても同じ結果になる。
+
+    `success()` が 0 に戻すため、**間に成功が挟まれば止まらない。** これは意図で
+    あって妥協ではない — 飛ばした試合IDと理由は呼び出し側が出力に出すので、
+    黙って取りこぼすことにはならない（詳細設計 4.4）。
+
+    **取得失敗（非200・通信失敗）も同じ counter で数える。** 非200が続くのは
+    遮断の疑いであり、叩き続けるのは絶対ルール6 に反する。
+    """
+
     consecutive: int = 0
 
     def success(self) -> None:
+        """1件パースできた。連続回数を 0 に戻す。"""
         self.consecutive = 0
 
     def failure(self) -> None:
+        """1件失敗した。**3件続いたら `ParseErrorStreak` を投げる。**"""
         self.consecutive += 1
         if self.consecutive >= 3:
             raise ParseErrorStreak("パース失敗が連続3件")

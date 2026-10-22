@@ -8,11 +8,26 @@ const LEAGUES = ['B1', 'B2', 'B3', 'PREMIER', 'ONE', 'NEXT'] as const;
 
 /** 取り込むのはリーグ戦とチャンピオンシップだけ（要件 5.3）。 */
 export const COMPETITIONS = ['REGULAR', 'PLAYOFF'] as const;
+/**
+ * 中止と延期を分ける（詳細設計 1.3）。**予測の扱いが違う** — どちらも的中率の
+ * 母数から外す（`VOID`）が、延期は `rescheduled_to` で延期先を指し、旧行は
+ * `POSTPONED` のまま残す。1つに畳むとゴースト試合の予測が母数を汚染する。
+ */
 export const STATUSES = ['SCHEDULED', 'FINISHED', 'POSTPONED', 'CANCELLED'] as const;
 
 const int = (min: number, max: number) => z.number().int().min(min).max(max);
 const zeroOne = z.union([z.literal(0), z.literal(1)]);
 
+/**
+ * 試合1件。**この口は2つの経路が共有する**（詳細設計 3.4）。
+ *
+ * 1. 取り込み（`backfill` / `daily_ingest` のステップ1）— 全列を送る
+ * 2. 未実施の試合（ステップ1b）— スコアと `finishedAt` を持たない
+ *
+ * そのため多くの列が `optional` である。**`venueId` は `preserve` で守る** —
+ * ステップ1b は「既に会場IDがある試合は取りに行かない」ため `null` を送り、
+ * 保護が無いと**本番で24件が消えた**（2026-10-09。詳細設計 3.4）。
+ */
 export const gameSchema = z
   .object({
     id: ID,
@@ -45,6 +60,16 @@ export const gameSchema = z
   .strict()
   .refine((g) => g.homeClubId !== g.awayClubId, { message: '同一クラブ同士の試合は入らない' });
 
+/**
+ * チーム視点の試合行（詳細設計 3.2）。
+ *
+ * **`games` への JOIN を消すために存在する。** `home_club_id = ? OR away_club_id = ?`
+ * は OR の両辺にインデックスが効かず全件スキャンになり、日程系の特徴量が
+ * ほぼすべてこの経路を通る。`competition` をここにも持つのは、区分で絞るたびに
+ * JOIN が復活して表の存在理由が失われるのを避けるためである。
+ *
+ * `result` / `margin` が `null` なら未実施である。
+ */
 export const teamGameSchema = z
   .object({
     gameId: ID,
@@ -75,10 +100,18 @@ export const venueSchema = z
   })
   .strict();
 
+/** 公式の会場ID（`StadiumCD`）→ 内部ID。`club_source_ids` と同じ役割（詳細設計 1.1）。 */
 export const venueSourceKeySchema = z
   .object({ sourceCode: ID, venueId: ID })
   .strict();
 
+/**
+ * 人物マスタ。試合データの `PlayerID` / `PlayerNameJ` から作る。
+ *
+ * **`heightCm` は送られてこない**（要件 5.3 — 使う特徴量が無く、個人情報の
+ * ページを取りに行かない）。列はあるため、`preserve` で守って**将来入れたときに
+ * 取り込みが消さないようにしてある**（詳細設計 3.4）。
+ */
 export const playerSchema = z
   .object({
     id: ID,
@@ -87,6 +120,16 @@ export const playerSchema = z
   })
   .strict();
 
+/**
+ * クラブの年度断面（詳細設計 1.2）。**名称は試合データから作る。**
+ *
+ * 公式サイトに年度別のクラブ一覧ページが無く、過去シーズンの正式名称を取る経路が
+ * `TeamNameJ`（その試合時点の名称）しかない。`703` は 2016-17 で `栃木ブレックス`
+ * である。
+ *
+ * `primaryVenueId` と色は**この経路では送られてこない**（別のジョブが入れる）ため
+ * `preserve` で守る（詳細設計 3.4 / 4.11）。
+ */
 export const clubSeasonSchema = z
   .object({
     clubId: ID,
@@ -100,6 +143,17 @@ export const clubSeasonSchema = z
   })
   .strict();
 
+/**
+ * `POST /internal/games` の本文。**試合と、試合データから導かれるマスタを一緒に受ける。**
+ *
+ * 別リクエストに分けないのは、FK の順序と原子性のためである（詳細設計 3.4）。
+ * 単一 `batch()` に **`venues` → `venueSourceKeys` → `players` → `clubSeasons`
+ * → `games` → `team_games`** の順で入れる — 分けると「試合はあるが会場がない」
+ * 状態が残りうる。
+ *
+ * **テーブル名を引数に取る汎用の口にはしない。** 任意のテーブルへ書ける口を作ると、
+ * Zod 検証・認可・`is_final` 保護という関門の意味が失われる。
+ */
 export const gamesBody = z
   .object({
     // **`games` は省略できる**（詳細設計 3.4）。会場の座標だけを送る経路
@@ -131,6 +185,13 @@ export const gamesBody = z
 
 const countable = int(0, 250).nullable().optional();
 
+/**
+ * チームのボックススコア。**公式の合計行（`Category=3`）である**（詳細設計 4.4）。
+ *
+ * `possessions` の上限を 300 と緩く取ってあるのは、**値域（50〜120）の判定を
+ * バッチ側が持つ**ためである — 外れたら `null` にして試合そのものは取り込む
+ * （中断・不成立の短い試合が実在する。詳細設計 1.3）。
+ */
 export const teamStatSchema = z
   .object({
     gameId: ID,
@@ -149,6 +210,15 @@ export const teamStatSchema = z
   })
   .strict();
 
+/**
+ * 選手のボックススコア。
+ *
+ * **カウント値はすべて `nullable`。** サイトは値が無いとき 0 ではなく空文字を返し、
+ * 旧年度は `plusMinus` のキーそのものが欠ける。**0 で埋めない** — 「記録なし」が
+ * 「0回」になると平均の分母に入って集計が狂う（詳細設計 4.4 の正規化3）。
+ *
+ * `minutes` 0〜60 と `pf` 0〜6 は DDL の CHECK にそろえた（詳細設計 1.3）。
+ */
 export const playerStatSchema = z
   .object({
     gameId: ID,
@@ -170,6 +240,12 @@ export const playerStatSchema = z
   })
   .strict();
 
+/**
+ * `POST /internal/stats` の本文。チームと選手を単一 `batch()` で入れる。
+ *
+ * **1試合を `games` と一体にしない。** この口は `daily_ingest`（結果だけが後から
+ * 付く）でも使うため、一体にすると日次側の経路が歪む（詳細設計 4.8）。
+ */
 export const statsBody = z
   .object({
     teamGameStats: z.array(teamStatSchema).optional(),
@@ -178,6 +254,10 @@ export const statsBody = z
   .strict()
   .refine((b) => b.teamGameStats ?? b.playerGameStats, { message: 'どちらか1つは必要' });
 
+/**
+ * 試合ごとの出場登録。`source` が `ESTIMATED` の行が1件でも残る試合は `暫定` である
+ * （要件 5.5）。
+ */
 export const entrySchema = z
   .object({
     gameId: ID,
@@ -200,6 +280,17 @@ export const entriesBody = z
     message: 'entries の gameId が本文の gameId と一致していない',
   });
 
+/**
+ * 試合日ごとの Elo ほかのスナップショット。**1行はその試合日の「終了時点」の値**
+ * （詳細設計 1.4）。
+ *
+ * **行の意味と絞り込みの不等号は対で決まっている。** 開始前の値を書くと前日の結果が
+ * 反映されず、「終了時点」の行を `as_of_date <= 対象試合日` で読むと当日の結果が
+ * 混入する（リーク）。
+ *
+ * `offRating` / `defRating` / `pace` は**集計窓が設計で未定義のため NULL のまま**で
+ * ある（詳細設計 2.5）。特徴量は `team_game_stats` から直接集計する。
+ */
 export const ratingSchema = z
   .object({
     clubId: ID,
@@ -213,10 +304,6 @@ export const ratingSchema = z
   })
   .strict();
 
-/**
- * Elo は差分更新せず対象期間を再計算して洗い替える（CLAUDE.md 冪等性）。
- * 期間の DELETE と INSERT は単一 `batch()` に入れる。
- */
 /**
  * 会場の名称・収容人数の履歴（詳細設計 4.9）。
  *
@@ -254,6 +341,13 @@ export const venueRevisionsBody = z
     { message: '(venueId, validFrom) が重複している' },
   );
 
+/**
+ * Elo は差分更新せず対象期間を再計算して洗い替える（CLAUDE.md 冪等性）。
+ * 期間の DELETE と INSERT は単一 `batch()` に入れる。
+ *
+ * **同じ `as_of_date` を2リクエストに分けない。** 期間 DELETE が前のリクエストで
+ * 入れた行を消す（詳細設計 2.5）。1日の行数は最大26で、上限480に対して十分小さい。
+ */
 export const ratingsBody = z
   .object({ fromDate: DATE, toDate: DATE, ratings: z.array(ratingSchema) })
   .strict()

@@ -4,6 +4,14 @@ import { z } from 'zod';
 const ID = z.string().min(1).max(128);
 const zeroOne = z.union([z.literal(0), z.literal(1)]);
 
+/**
+ * 照合1件（`prediction_results` の1行。詳細設計 4.12）。
+ *
+ * **`VOID` の列は NULL にする。** `refine` が `actualHomeWin` の混入を拒否する —
+ * **0 は「ホームが負けた」という意味を持ってしまう**（受け入れ基準 A-04）。
+ *
+ * `probBucket` は 0〜9。`p = 1.0` を10番目にしない（`min(floor(p × 10), 9)`）。
+ */
 export const resultSchema = z
   .object({
     predictionId: ID,
@@ -26,10 +34,22 @@ export const resultSchema = z
     message: 'VOID の行に actualHomeWin を入れない',
   });
 
+/** `POST /internal/evaluate` の本文。`prediction_results` へ upsert するため冪等である。 */
 export const evaluateBody = z
   .object({ results: z.array(resultSchema).min(1) })
   .strict();
 
+/**
+ * `accuracy_summary` の1行（詳細設計 1.6）。
+ *
+ * **`modelVersion` に NULL を入れない。** SQLite は主キー列の NULL 重複を許すため、
+ * モデル横断の4スコープ（`OVERALL` / `SEASON` / `BUCKET` / `PROVISIONAL`）は
+ * **空文字**を入れる。
+ *
+ * **`BUCKET` 行だけ `accuracy` 列の意味が違う** — 「予想した確率の平均」であり、
+ * その帯の的中率は `hitRate` が持つ。列名と中身が一致しない唯一の箇所である
+ * （2026-10-08 に本番で的中率が逆に出た原因）。
+ */
 export const summarySchema = z
   .object({
     scope: z.enum(['OVERALL', 'SEASON', 'MODEL', 'BUCKET', 'PROVISIONAL']),
@@ -67,6 +87,13 @@ export const summaryBody = z
   .object({ rows: z.array(summarySchema) })
   .strict();
 
+/**
+ * `ingestion_logs` の1行。
+ *
+ * **例外オブジェクトをそのまま入れない**（絶対ルール4）。D1 REST API の URL には
+ * アカウントIDと DB ID が含まれ、`/api/v1/health` から漏れる。入れるのは型名と
+ * 自前の短いメッセージだけである。
+ */
 export const logBody = z
   .object({
     id: ID,
@@ -106,6 +133,13 @@ const counts = {
   fd: z.number().int().min(0),
 };
 
+/**
+ * 選手の実績の集計1行（詳細設計 1.9）。**保存するのは合計で、1試合平均は API が導出する。**
+ *
+ * **`plusMinus` を持たない。** 旧年度のレスポンスは `PLUSMINUS` のキーを欠くため、
+ * 合計すると**欠けた試合が黙って無視される**（母数が「出場した試合数」なのに
+ * 分子が「キーがあった試合の合計」になる）。
+ */
 export const playerStatSchema = z
   .object({
     playerId: ID,
@@ -132,6 +166,13 @@ export const playerStatSchema = z
     message: '成功数が試投数を超えている',
   });
 
+/**
+ * クラブの実績の集計1行。**母数を2つ持つ**（詳細設計 1.9）。
+ *
+ * `games` は勝敗と得点の母数（`team_games` 由来）、`statGames` はボックススコアの
+ * 母数（`team_game_stats` 由来）である。**取り込みがスタッツまで届いていない試合が
+ * 実在する**ため、1つに畳むと母数が嘘になる。
+ */
 export const teamStatSchema = z
   .object({
     clubId: ID,

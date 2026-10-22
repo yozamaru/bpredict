@@ -15,6 +15,17 @@ const ID = z.string().min(1).max(64);
 /** `seasons.league` の CHECK 制約と同じ集合。 */
 export const LEAGUES = ['B1', 'B2', 'B3', 'PREMIER', 'ONE', 'NEXT'] as const;
 
+/**
+ * シーズン1件。
+ *
+ * **`id` にリーグを含める**（`2026-27-PREMIER`。詳細設計 1.1）。`2026-27` 単独では
+ * 同一シーズンの PREMIER と ONE を同時に持てず、B.ONE 拡張時に主キー変更
+ * ＝全ファクトテーブルの FK 移行になる。
+ *
+ * **開始日・終了日は「当季の9月1日〜翌年6月30日」に固定する。** 範囲は取り込む
+ * 試合日の上位集合でよく、**狭いと実在する試合日が404になる**（日程一覧からの導出は
+ * CS を取りこぼし、実際に20日ぶんが範囲外だった）。
+ */
 export const seasonSchema = z
   .object({
     id: ID,
@@ -28,6 +39,13 @@ export const seasonSchema = z
     message: 'startDate が endDate より後になっている',
   });
 
+/**
+ * 恒久的なクラブ。**名称変更・リーグ移動があっても不変である。**
+ *
+ * **`slug` は手で決め、改称でも変えない**（詳細設計 1.1）。英語名からの機械導出は
+ * 2016-17 で `TeamNameE` が空だった実例があり、改称のたびに URL が変わる。
+ * 表示名は `club_seasons.name` が持つ。
+ */
 export const clubSchema = z
   .object({
     id: ID,
@@ -37,6 +55,13 @@ export const clubSchema = z
   })
   .strict();
 
+/**
+ * 公式サイトのチームID → `club_id` の対応（詳細設計 1.2）。
+ *
+ * **取り込み時にここで解決してから保存する。** 旧IDのまま保存すると
+ * `team_ratings.club_id` が分断され、**旧B1の Elo を新リーグへ引き継げず**
+ * コールドスタート対策が実装不能になる。
+ */
 export const clubSourceIdSchema = z
   .object({
     sourceId: ID,

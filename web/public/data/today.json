@@ -21,15 +21,7 @@
      "slug": "shiga-lakes"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5145671024087334,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.14893424731366,
-     "predHomeScore": 79.62113480504348
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-23T10:05:00Z"
    },
@@ -51,15 +43,7 @@
      "slug": "osaka-evessa"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.09741578228256591,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 87.81889408708076,
-     "predHomeScore": 71.05743390019072
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-23T10:05:00Z"
    },
@@ -81,21 +65,13 @@
      "slug": "ryukyu-golden-kings"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5478158118266255,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.60835449543131,
-     "predHomeScore": 80.16171455692583
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-23T10:35:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-23T07:38:14Z"
+  "generatedAt": "2026-10-23T11:38:22Z"
  }
 }

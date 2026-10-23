@@ -1,9 +1,9 @@
 {
  "data": {
   "dataAsOf": "2026-10-22T12:05:00Z",
-  "generatedAt": "2026-10-22T18:38:59Z",
+  "generatedAt": "2026-10-23T07:38:14Z",
   "lastRunStatus": "SUCCESS",
-  "lastSuccessAt": "2026-10-22T18:38:59Z",
+  "lastSuccessAt": "2026-10-23T07:38:14Z",
   "latestResultDate": "2026-10-22",
   "modelVersions": [
    "margin-v1.2026.1009",
@@ -12,6 +12,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-22T18:38:59Z"
+  "generatedAt": "2026-10-23T07:38:14Z"
  }
 }

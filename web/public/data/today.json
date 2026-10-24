@@ -10,8 +10,8 @@
      "shortName": "島根",
      "slug": "shimane-susanoo-magic"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 79,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506505",
     "home": {
@@ -20,9 +20,9 @@
      "shortName": "富山",
      "slug": "toyama-grouses"
     },
-    "homeScore": null,
+    "homeScore": 82,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T05:05:00Z"
    },
    {
@@ -32,8 +32,8 @@
      "shortName": "三遠",
      "slug": "san-en-neophoenix"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 91,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506506",
     "home": {
@@ -42,9 +42,9 @@
      "shortName": "神戸",
      "slug": "kobe-storks"
     },
-    "homeScore": null,
+    "homeScore": 89,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T05:05:00Z"
    },
    {
@@ -54,8 +54,8 @@
      "shortName": "北海道",
      "slug": "levanga-hokkaido"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 96,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506507",
     "home": {
@@ -64,9 +64,9 @@
      "shortName": "広島",
      "slug": "hiroshima-dragonflies"
     },
-    "homeScore": null,
+    "homeScore": 93,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T05:05:00Z"
    },
    {
@@ -76,8 +76,8 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 86,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506500",
     "home": {
@@ -86,9 +86,9 @@
      "shortName": "秋田",
      "slug": "akita-northern-happinets"
     },
-    "homeScore": null,
+    "homeScore": 95,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T06:00:00Z"
    },
    {
@@ -98,8 +98,8 @@
      "shortName": "A千葉",
      "slug": "altiri-chiba"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 87,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506501",
     "home": {
@@ -108,9 +108,9 @@
      "shortName": "茨城",
      "slug": "ibaraki-robots"
     },
-    "homeScore": null,
+    "homeScore": 102,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    },
    {
@@ -120,8 +120,8 @@
      "shortName": "信州",
      "slug": "shinshu-brave-warriors"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 80,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506502",
     "home": {
@@ -130,9 +130,9 @@
      "shortName": "宇都宮",
      "slug": "utsunomiya-brex"
     },
-    "homeScore": null,
+    "homeScore": 87,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    },
    {
@@ -142,8 +142,8 @@
      "shortName": "三河",
      "slug": "seahorses-mikawa"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 91,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506503",
     "home": {
@@ -152,9 +152,9 @@
      "shortName": "A東京",
      "slug": "alvark-tokyo"
     },
-    "homeScore": null,
+    "homeScore": 82,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    },
    {
@@ -164,8 +164,8 @@
      "shortName": "仙台",
      "slug": "sendai-89ers"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 93,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506504",
     "home": {
@@ -174,14 +174,14 @@
      "shortName": "川崎",
      "slug": "kawasaki-brave-thunders"
     },
-    "homeScore": null,
+    "homeScore": 82,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-24T07:24:50Z"
+  "generatedAt": "2026-10-24T10:59:48Z"
  }
 }

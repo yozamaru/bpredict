@@ -21,15 +21,7 @@
      "slug": "toyama-grouses"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5478584099787521,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.60765922329055,
-     "predHomeScore": 80.16240982906659
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T05:05:00Z"
    },
@@ -51,15 +43,7 @@
      "slug": "kobe-storks"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.1526314646216794,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 86.10596839326419,
-     "predHomeScore": 72.85093758794028
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T05:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "hiroshima-dragonflies"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.615641636302879,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.38384084097044,
-     "predHomeScore": 81.18568026531071
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T05:05:00Z"
    },
@@ -111,15 +87,7 @@
      "slug": "akita-northern-happinets"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.39818180045328083,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 81.09931434757918,
-     "predHomeScore": 77.76289217124271
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T06:00:00Z"
    },
@@ -141,15 +109,7 @@
      "slug": "ibaraki-robots"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.616769566781958,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.51109053085845,
-     "predHomeScore": 81.35111598796344
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    },
@@ -171,15 +131,7 @@
      "slug": "utsunomiya-brex"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.6767979626862316,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 76.22987134243762,
-     "predHomeScore": 82.16124954492385
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    },
@@ -201,15 +153,7 @@
      "slug": "alvark-tokyo"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.43889843043316246,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.34096459805244,
-     "predHomeScore": 78.35295815948732
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    },
@@ -231,21 +175,13 @@
      "slug": "kawasaki-brave-thunders"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.24380198597681532,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 84.08022233153316,
-     "predHomeScore": 75.10584381017118
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-24T06:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-23T18:28:55Z"
+  "generatedAt": "2026-10-24T07:24:50Z"
  }
 }

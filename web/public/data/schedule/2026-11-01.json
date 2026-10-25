@@ -1,0 +1,401 @@
+{
+ "data": {
+  "accuracy": null,
+  "gameDate": "2026-11-01",
+  "games": [
+   {
+    "away": {
+     "clubId": "721",
+     "name": "広島ドラゴンフライズ",
+     "shortName": "広島",
+     "slug": "hiroshima-dragonflies"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506543",
+    "home": {
+     "clubId": "720",
+     "name": "島根スサノオマジック",
+     "shortName": "島根",
+     "slug": "shimane-susanoo-magic"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.3301212436954643,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 82.24488231009892,
+     "predHomeScore": 76.56154815852727
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T04:55:00Z"
+   },
+   {
+    "away": {
+     "clubId": "726",
+     "name": "東京サンロッカーズ",
+     "shortName": "東京SR",
+     "slug": "tokyo-sunrockers"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506532",
+    "home": {
+     "clubId": "692",
+     "name": "仙台89ERS",
+     "shortName": "仙台",
+     "slug": "sendai-89ers"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5235088820479856,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.9134598509533,
+     "predHomeScore": 79.6757851622142
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "2486",
+     "name": "アルティーリ千葉",
+     "shortName": "A千葉",
+     "slug": "altiri-chiba"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506533",
+    "home": {
+     "clubId": "693",
+     "name": "秋田ノーザンハピネッツ",
+     "shortName": "秋田",
+     "slug": "akita-northern-happinets"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5268784377777413,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.75968764048565,
+     "predHomeScore": 79.63143324687582
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "696",
+     "name": "富山グラウジーズ",
+     "shortName": "富山",
+     "slug": "toyama-grouses"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506536",
+    "home": {
+     "clubId": "704",
+     "name": "千葉ジェッツ",
+     "shortName": "千葉J",
+     "slug": "chiba-jets"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5344813403953764,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.91782499031197,
+     "predHomeScore": 80.03670298348231
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "699",
+     "name": "京都ハンナリーズ",
+     "shortName": "京都",
+     "slug": "kyoto-hannaryz"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506539",
+    "home": {
+     "clubId": "716",
+     "name": "信州ブレイブウォリアーズ",
+     "shortName": "信州",
+     "slug": "shinshu-brave-warriors"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.22256600961505177,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 84.4144809486026,
+     "predHomeScore": 74.54242503260187
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "2488",
+     "name": "長崎ヴェルカ",
+     "shortName": "長崎",
+     "slug": "nagasaki-velca"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506542",
+    "home": {
+     "clubId": "718",
+     "name": "神戸ストークス",
+     "shortName": "神戸",
+     "slug": "kobe-storks"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.41717105338975863,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 80.73699986068378,
+     "predHomeScore": 78.03306919167336
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T05:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "702",
+     "name": "レバンガ北海道",
+     "shortName": "北海道",
+     "slug": "levanga-hokkaido"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506534",
+    "home": {
+     "clubId": "712",
+     "name": "茨城ロボッツ",
+     "shortName": "茨城",
+     "slug": "ibaraki-robots"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.4018582841797956,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 81.03779763524537,
+     "predHomeScore": 77.82440888357652
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "700",
+     "name": "大阪エヴェッサ",
+     "shortName": "大阪",
+     "slug": "osaka-evessa"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506535",
+    "home": {
+     "clubId": "713",
+     "name": "群馬クレインサンダーズ",
+     "shortName": "群馬",
+     "slug": "gunma-crane-thunders"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.9208318664533409,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 70.17227946514588,
+     "predHomeScore": 88.41116082558149
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "703",
+     "name": "宇都宮ブレックス",
+     "shortName": "宇都宮",
+     "slug": "utsunomiya-brex"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506537",
+    "home": {
+     "clubId": "706",
+     "name": "アルバルク東京",
+     "shortName": "A東京",
+     "slug": "alvark-tokyo"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.7824308383360091,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 74.33992817009404,
+     "predHomeScore": 84.4301408822631
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "1638",
+     "name": "佐賀バルーナーズ",
+     "shortName": "佐賀",
+     "slug": "saga-ballooners"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506540",
+    "home": {
+     "clubId": "728",
+     "name": "シーホース三河",
+     "shortName": "三河",
+     "slug": "seahorses-mikawa"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.8969965984768806,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 71.11653417190038,
+     "predHomeScore": 87.46690611882698
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "698",
+     "name": "滋賀レイクス",
+     "shortName": "滋賀",
+     "slug": "shiga-lakes"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506541",
+    "home": {
+     "clubId": "729",
+     "name": "名古屋ダイヤモンドドルフィンズ",
+     "shortName": "名古屋D",
+     "slug": "nagoya-diamond-dolphins"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.821463813957973,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 73.41794195884138,
+     "predHomeScore": 85.32505992614996
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T06:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "697",
+     "name": "三遠ネオフェニックス",
+     "shortName": "三遠",
+     "slug": "san-en-neophoenix"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506544",
+    "home": {
+     "clubId": "701",
+     "name": "琉球ゴールデンキングス",
+     "shortName": "琉球",
+     "slug": "ryukyu-golden-kings"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.5359888526236521,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 78.80107181786599,
+     "predHomeScore": 79.96899723449116
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T09:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "694",
+     "name": "横浜ビー・コルセアーズ",
+     "shortName": "横浜BC",
+     "slug": "yokohama-b-corsairs"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506538",
+    "home": {
+     "clubId": "727",
+     "name": "川崎ブレイブサンダース",
+     "shortName": "川崎",
+     "slug": "kawasaki-brave-thunders"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.4697046333794881,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 79.8764185738907,
+     "predHomeScore": 78.89365047846644
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-01T10:05:00Z"
+   }
+  ]
+ },
+ "meta": {
+  "generatedAt": "2026-10-25T07:41:05Z"
+ }
+}

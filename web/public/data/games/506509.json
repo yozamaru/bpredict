@@ -1,0 +1,38 @@
+{
+ "data": {
+  "evaluation": null,
+  "game": {
+   "away": {
+    "clubId": "704",
+    "name": "千葉ジェッツ",
+    "shortName": "千葉J",
+    "slug": "chiba-jets"
+   },
+   "awayScore": null,
+   "competition": "REGULAR",
+   "gameId": "506509",
+   "home": {
+    "clubId": "700",
+    "name": "大阪エヴェッサ",
+    "shortName": "大阪",
+    "slug": "osaka-evessa"
+   },
+   "homeScore": null,
+   "league": "PREMIER",
+   "status": "SCHEDULED",
+   "tipoffAt": "2026-10-25T07:05:00Z",
+   "venue": {
+    "isPrimary": true,
+    "name": "おおきにアリーナ舞洲"
+   }
+  },
+  "modelAccuracy": null,
+  "playerActuals": [],
+  "playerPredictions": [],
+  "prediction": null,
+  "recentForm": null
+ },
+ "meta": {
+  "generatedAt": "2026-10-25T07:41:05Z"
+ }
+}

@@ -298,5 +298,25 @@
   "homeScore": "71",
   "reason": "状態欄が空で得点がある（不戦敗の形）",
   "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "A千葉",
+  "awayScore": "44",
+  "gameDate": "2026-10-30",
+  "gameId": "506519",
+  "home": "秋田",
+  "homeScore": "38",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "滋賀",
+  "awayScore": "57",
+  "gameDate": "2026-10-30",
+  "gameId": "506521",
+  "home": "名古屋D",
+  "homeScore": "91",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
  }
 ]

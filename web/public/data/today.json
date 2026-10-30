@@ -21,15 +21,7 @@
      "slug": "shinshu-brave-warriors"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.22256600961505177,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 84.4144809486026,
-     "predHomeScore": 74.54242503260187
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-30T10:05:00Z"
    },
@@ -51,15 +43,7 @@
      "slug": "akita-northern-happinets"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5268784377777413,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.75968764048565,
-     "predHomeScore": 79.63143324687582
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-30T10:30:00Z"
    },
@@ -81,21 +65,13 @@
      "slug": "nagoya-diamond-dolphins"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.821463813957973,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.41794195884138,
-     "predHomeScore": 85.32505992614996
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-10-30T10:35:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-30T08:44:50Z"
+  "generatedAt": "2026-10-30T12:55:01Z"
  }
 }

@@ -1,10 +1,10 @@
 {
  "data": {
-  "dataAsOf": "2026-10-30T12:35:00Z",
-  "generatedAt": "2026-10-30T19:30:46Z",
+  "dataAsOf": "2026-10-31T07:05:00Z",
+  "generatedAt": "2026-10-31T08:32:33Z",
   "lastRunStatus": "SUCCESS",
-  "lastSuccessAt": "2026-10-30T19:30:46Z",
-  "latestResultDate": "2026-10-30",
+  "lastSuccessAt": "2026-10-31T08:32:33Z",
+  "latestResultDate": "2026-10-31",
   "modelVersions": [
    "margin-v1.2026.1009",
    "total-v1.2026.1009",
@@ -12,6 +12,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-10-30T19:30:46Z"
+  "generatedAt": "2026-10-31T08:32:33Z"
  }
 }

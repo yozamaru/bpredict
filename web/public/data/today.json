@@ -252,8 +252,8 @@
      "shortName": "三遠",
      "slug": "san-en-neophoenix"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 96,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506544",
     "home": {
@@ -262,9 +262,9 @@
      "shortName": "琉球",
      "slug": "ryukyu-golden-kings"
     },
-    "homeScore": null,
+    "homeScore": 86,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-01T09:05:00Z"
    },
    {
@@ -274,8 +274,8 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 77,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506538",
     "home": {
@@ -284,22 +284,14 @@
      "shortName": "川崎",
      "slug": "kawasaki-brave-thunders"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.4640891624306635,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.96772790813122,
-     "predHomeScore": 78.80234114422592
-    },
-    "status": "SCHEDULED",
+    "homeScore": 66,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-01T10:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-01T09:22:50Z"
+  "generatedAt": "2026-11-01T13:22:31Z"
  }
 }

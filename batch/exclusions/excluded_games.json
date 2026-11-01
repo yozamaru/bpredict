@@ -338,5 +338,15 @@
   "homeScore": "35",
   "reason": "状態欄が空で得点がある（不戦敗の形）",
   "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "三遠",
+  "awayScore": "7",
+  "gameDate": "2026-11-01",
+  "gameId": "506544",
+  "home": "琉球",
+  "homeScore": "12",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
  }
 ]

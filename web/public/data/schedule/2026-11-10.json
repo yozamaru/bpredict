@@ -2,9 +2,100 @@
  "data": {
   "accuracy": null,
   "gameDate": "2026-11-10",
-  "games": []
+  "games": [
+   {
+    "away": {
+     "clubId": "700",
+     "name": "大阪エヴェッサ",
+     "shortName": "大阪",
+     "slug": "osaka-evessa"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506566",
+    "home": {
+     "clubId": "704",
+     "name": "千葉ジェッツ",
+     "shortName": "千葉J",
+     "slug": "chiba-jets"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.8225616021987332,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 73.40423816100434,
+     "predHomeScore": 85.3658308913528
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-10T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "716",
+     "name": "信州ブレイブウォリアーズ",
+     "shortName": "信州",
+     "slug": "shinshu-brave-warriors"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506567",
+    "home": {
+     "clubId": "728",
+     "name": "シーホース三河",
+     "shortName": "三河",
+     "slug": "seahorses-mikawa"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.8663607771123913,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 72.29441368826585,
+     "predHomeScore": 86.63728626542769
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-10T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "726",
+     "name": "東京サンロッカーズ",
+     "shortName": "東京SR",
+     "slug": "tokyo-sunrockers"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506568",
+    "home": {
+     "clubId": "718",
+     "name": "神戸ストークス",
+     "shortName": "神戸",
+     "slug": "kobe-storks"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.14357874268248141,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 86.35915500264665,
+     "predHomeScore": 72.59775097855783
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-11-10T10:05:00Z"
+   }
+  ]
  },
  "meta": {
-  "generatedAt": "2026-11-02T22:50:45Z"
+  "generatedAt": "2026-11-03T09:39:50Z"
  }
 }

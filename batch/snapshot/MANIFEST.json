@@ -2,7 +2,7 @@
   "files": {
     "club_seasons": {
       "rows": 238,
-      "sha256": "2e162b745e20c6aa84ad8fe2f2158d932920b1d18efc23c8794fddb4e8529f31"
+      "sha256": "08c25f4429737c0b16ffff572f917b820b8e7bf0799ec7dae2b22baa4a41b64b"
     },
     "clubs": {
       "rows": 30,
@@ -14,11 +14,11 @@
     },
     "games": {
       "rows": 6450,
-      "sha256": "62bae1f62a73188c3aba5e8cda7f5dc747abbf61deb8316dddafef9904cdeaa7"
+      "sha256": "7cb4ee6fb7fa4e5a33bc1307bbf3887d8177f21cf52efd358c1719d6afe90943"
     },
     "player_game_stats": {
-      "rows": 149433,
-      "sha256": "685dfc3a59bc4ea9ea0a288db297799922f34dbd5a54d378e7b6868af7937b07"
+      "rows": 149579,
+      "sha256": "d695a04cea6c443ffd5e1414c92dc022a650a83733c4862dce9cbd5b71e64bf8"
     },
     "player_seasons": {
       "rows": 3495,
@@ -26,23 +26,23 @@
     },
     "players": {
       "rows": 1053,
-      "sha256": "ddf2ef261b8e4b047f2798083ceb4538be8ce3f87d40e2d9e7617ff9e78d1130"
+      "sha256": "32c0b674996cec1f9ef1f91c63d3b04c393e62bb00239662c278e01aa79d834e"
     },
     "seasons": {
       "rows": 11,
       "sha256": "5dae518f7338af4406c45c9a2e3b322f825a43cdb0aa4885b4418618c8567a1d"
     },
     "team_game_stats": {
-      "rows": 12792,
-      "sha256": "4b6952ec23e365879d46fb7683c4c2ac5d6eb76069da35123faaa929375efc9d"
+      "rows": 12804,
+      "sha256": "fbeaeb27b40e0fa94a276d4c5367ebc8da682a54cdfe4fdd78f71c4836659ca7"
     },
     "team_games": {
       "rows": 12900,
-      "sha256": "a0498114f6b39205b6583ecb6a37a02b5e8737cd6d0dbf77a515559f3e1e908c"
+      "sha256": "e567ba442823db1b18bee8344d010eea8a0d94fcd50e722e0625ded00f52bd2a"
     },
     "team_ratings": {
-      "rows": 12784,
-      "sha256": "b58ff442235b3fb8cb5b612f3096b968488028a496b5818f6125a6ec272ae194"
+      "rows": 12796,
+      "sha256": "fb62769352f54ccf24891898ee19f6eb7c02d3540956a6ecad5f81d5e8d556ab"
     },
     "venue_revisions": {
       "rows": 177,
@@ -50,10 +50,10 @@
     },
     "venues": {
       "rows": 153,
-      "sha256": "52f1fcff3d514332e4ecbfa31c30eb7bcc60c1d12edea4bafe70d6a09c23335f"
+      "sha256": "7b5c98eea171c657569bbb1295d3891d1ac8d522de70f39bb8906858e8c0bfb1"
     }
   },
-  "generated_at": "2026-11-06T09:29:55Z",
-  "max_finished_at": "2026-11-01T12:05:00Z",
+  "generated_at": "2026-11-06T14:16:55Z",
+  "max_finished_at": "2026-11-06T12:05:00Z",
   "version": 1
 }

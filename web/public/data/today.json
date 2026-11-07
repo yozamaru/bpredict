@@ -21,15 +21,7 @@
      "slug": "yokohama-b-corsairs"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.6225254121174153,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.17785053376498,
-     "predHomeScore": 81.21327035359649
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-07T06:05:00Z"
    },
@@ -51,15 +43,7 @@
      "slug": "toyama-grouses"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.2111231110962,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 84.66643346325459,
-     "predHomeScore": 74.29047251794988
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-07T06:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "utsunomiya-brex"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.27782943955032385,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 83.23488730920906,
-     "predHomeScore": 75.61577160666857
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-07T07:00:00Z"
    },
@@ -111,15 +87,7 @@
      "slug": "osaka-evessa"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.12290601193592027,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 86.99414384385811,
-     "predHomeScore": 71.9889161458939
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-07T07:05:00Z"
    },
@@ -141,21 +109,13 @@
      "slug": "tokyo-sunrockers"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.6234095420180369,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.35227743070998,
-     "predHomeScore": 81.41779162164717
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-07T08:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-06T20:30:41Z"
+  "generatedAt": "2026-11-07T08:53:49Z"
  }
 }

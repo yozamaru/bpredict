@@ -348,5 +348,35 @@
   "homeScore": "12",
   "reason": "状態欄が空で得点がある（不戦敗の形）",
   "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "琉球",
+  "awayScore": "48",
+  "gameDate": "2026-11-07",
+  "gameId": "506551",
+  "home": "宇都宮",
+  "homeScore": "54",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "京都",
+  "awayScore": "38",
+  "gameDate": "2026-11-07",
+  "gameId": "506552",
+  "home": "東京SR",
+  "homeScore": "33",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "茨城",
+  "awayScore": "73",
+  "gameDate": "2026-11-07",
+  "gameId": "506555",
+  "home": "大阪",
+  "homeScore": "58",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
  }
 ]

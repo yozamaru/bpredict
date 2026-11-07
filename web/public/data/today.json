@@ -10,8 +10,8 @@
      "shortName": "神戸",
      "slug": "kobe-storks"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 87,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506553",
     "home": {
@@ -20,9 +20,9 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
-    "homeScore": null,
+    "homeScore": 70,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-07T06:05:00Z"
    },
    {
@@ -32,8 +32,8 @@
      "shortName": "名古屋D",
      "slug": "nagoya-diamond-dolphins"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 93,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506554",
     "home": {
@@ -42,9 +42,9 @@
      "shortName": "富山",
      "slug": "toyama-grouses"
     },
-    "homeScore": null,
+    "homeScore": 80,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-07T06:05:00Z"
    },
    {
@@ -54,8 +54,8 @@
      "shortName": "琉球",
      "slug": "ryukyu-golden-kings"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 76,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506551",
     "home": {
@@ -64,9 +64,9 @@
      "shortName": "宇都宮",
      "slug": "utsunomiya-brex"
     },
-    "homeScore": null,
+    "homeScore": 79,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-07T07:00:00Z"
    },
    {
@@ -76,8 +76,8 @@
      "shortName": "茨城",
      "slug": "ibaraki-robots"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 86,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506555",
     "home": {
@@ -86,9 +86,9 @@
      "shortName": "大阪",
      "slug": "osaka-evessa"
     },
-    "homeScore": null,
+    "homeScore": 68,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-07T07:05:00Z"
    },
    {
@@ -98,8 +98,8 @@
      "shortName": "京都",
      "slug": "kyoto-hannaryz"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 87,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506552",
     "home": {
@@ -108,14 +108,14 @@
      "shortName": "東京SR",
      "slug": "tokyo-sunrockers"
     },
-    "homeScore": null,
+    "homeScore": 92,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-07T08:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-07T08:53:49Z"
+  "generatedAt": "2026-11-07T13:00:51Z"
  }
 }

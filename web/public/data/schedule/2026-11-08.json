@@ -22,13 +22,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.476535730722758,
+     "homeWinProb": 0.4795049971667363,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.75709708872277,
-     "predHomeScore": 78.99622011392567
+     "predAwayScore": 79.70890932512074,
+     "predHomeScore": 79.0444078775277
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-08T05:05:00Z"
@@ -52,13 +52,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.8617479358371851,
+     "homeWinProb": 0.8606927308665936,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 72.3502951742846,
-     "predHomeScore": 86.41977387807255
+     "predAwayScore": 72.38112577247732,
+     "predHomeScore": 86.38894327987983
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-08T06:05:00Z"
@@ -82,13 +82,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4738270425419491,
+     "homeWinProb": 0.4724838865443258,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.80945027021876,
-     "predHomeScore": 78.96061878213838
+     "predAwayScore": 79.83126441267578,
+     "predHomeScore": 78.93880463968136
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-08T08:05:00Z"
@@ -112,13 +112,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4628397088356898,
+     "homeWinProb": 0.4638672821402839,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.14269213984932,
-     "predHomeScore": 78.9366419993745
+     "predAwayScore": 80.12597056390437,
+     "predHomeScore": 78.95336357531944
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-08T08:05:00Z"
@@ -126,6 +126,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-07T08:53:49Z"
+  "generatedAt": "2026-11-07T13:00:51Z"
  }
 }

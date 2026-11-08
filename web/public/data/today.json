@@ -32,8 +32,8 @@
      "shortName": "滋賀",
      "slug": "shiga-lakes"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 91,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506558",
     "home": {
@@ -42,9 +42,9 @@
      "shortName": "三河",
      "slug": "seahorses-mikawa"
     },
-    "homeScore": null,
+    "homeScore": 96,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-08T06:05:00Z"
    },
    {
@@ -54,8 +54,8 @@
      "shortName": "三遠",
      "slug": "san-en-neophoenix"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 67,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506557",
     "home": {
@@ -64,9 +64,9 @@
      "shortName": "A東京",
      "slug": "alvark-tokyo"
     },
-    "homeScore": null,
+    "homeScore": 88,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-08T08:05:00Z"
    },
    {
@@ -76,8 +76,8 @@
      "shortName": "千葉J",
      "slug": "chiba-jets"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 111,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506559",
     "home": {
@@ -86,14 +86,14 @@
      "shortName": "佐賀",
      "slug": "saga-ballooners"
     },
-    "homeScore": null,
+    "homeScore": 103,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-08T08:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-08T09:06:04Z"
+  "generatedAt": "2026-11-08T13:24:52Z"
  }
 }

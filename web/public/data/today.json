@@ -10,8 +10,8 @@
      "shortName": "信州",
      "slug": "shinshu-brave-warriors"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 101,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506556",
     "home": {
@@ -20,17 +20,9 @@
      "shortName": "秋田",
      "slug": "akita-northern-happinets"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.47950499716673617,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.70890932512074,
-     "predHomeScore": 79.0444078775277
-    },
-    "status": "SCHEDULED",
+    "homeScore": 96,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-08T05:05:00Z"
    },
    {
@@ -51,15 +43,7 @@
      "slug": "seahorses-mikawa"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.8606927308665936,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 72.38112577247732,
-     "predHomeScore": 86.38894327987983
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-08T06:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "alvark-tokyo"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.4724838865443257,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.8312644126758,
-     "predHomeScore": 78.93880463968135
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-08T08:05:00Z"
    },
@@ -111,21 +87,13 @@
      "slug": "saga-ballooners"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.46386728214028394,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.12597056390437,
-     "predHomeScore": 78.95336357531944
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-08T08:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-07T18:53:09Z"
+  "generatedAt": "2026-11-08T09:06:04Z"
  }
 }

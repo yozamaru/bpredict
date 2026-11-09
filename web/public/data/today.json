@@ -21,15 +21,7 @@
      "slug": "ibaraki-robots"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.32762395553302703,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 82.27134086711139,
-     "predHomeScore": 76.49872818524575
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-09T10:05:00Z"
    },
@@ -51,15 +43,7 @@
      "slug": "gunma-crane-thunders"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.39400137543803515,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 81.20315551840807,
-     "predHomeScore": 77.72646682922937
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-09T10:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "kawasaki-brave-thunders"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.4280927844801859,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.55661319774745,
-     "predHomeScore": 78.21345585460969
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-09T10:05:00Z"
    },
@@ -111,15 +87,7 @@
      "slug": "shimane-susanoo-magic"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.43738749072124733,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.36641877652791,
-     "predHomeScore": 78.32884826625705
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-09T10:05:00Z"
    },
@@ -141,15 +109,7 @@
      "slug": "nagasaki-velca"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.30462064152265605,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 82.83620650728803,
-     "predHomeScore": 76.22743147639697
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-09T10:05:00Z"
    },
@@ -171,21 +131,13 @@
      "slug": "kyoto-hannaryz"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.592696098726642,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.76891998387065,
-     "predHomeScore": 80.8006011224105
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-09T10:15:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-08T18:54:56Z"
+  "generatedAt": "2026-11-09T09:55:17Z"
  }
 }

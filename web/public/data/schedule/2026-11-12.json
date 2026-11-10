@@ -22,13 +22,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4581931846337492,
+     "homeWinProb": 0.45889523934385923,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.07655865155655,
-     "predHomeScore": 78.71917974794934
+     "predAwayScore": 80.06512062572169,
+     "predHomeScore": 78.7306177737842
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-12T10:05:00Z"
@@ -52,13 +52,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.8326583639043461,
+     "homeWinProb": 0.8172809563990114,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.13501779518968,
-     "predHomeScore": 85.60798408980166
+     "predAwayScore": 73.52076956246387,
+     "predHomeScore": 85.22223232252747
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-12T10:05:00Z"
@@ -82,13 +82,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5403766111853647,
+     "homeWinProb": 0.4989669863528444,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.62937008851257,
-     "predHomeScore": 79.94015101776857
+     "predAwayScore": 79.40177367342098,
+     "predHomeScore": 79.36829537893617
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-12T10:05:00Z"
@@ -112,13 +112,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5040818487513794,
+     "homeWinProb": 0.4669118402429905,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.39828518899104,
-     "predHomeScore": 79.5305734376545
+     "predAwayScore": 80.00121167078085,
+     "predHomeScore": 78.92764695586469
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-12T10:35:00Z"
@@ -126,6 +126,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-10T09:58:32Z"
+  "generatedAt": "2026-11-10T14:54:25Z"
  }
 }

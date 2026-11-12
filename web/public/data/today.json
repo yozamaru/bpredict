@@ -21,15 +21,7 @@
      "slug": "altiri-chiba"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.45734220647038143,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.0904258227881,
-     "predHomeScore": 78.70531257671779
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-12T10:05:00Z"
    },
@@ -51,15 +43,7 @@
      "slug": "toyama-grouses"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.817645803146044,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.51185956621211,
-     "predHomeScore": 85.23114231877923
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-12T10:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "shiga-lakes"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.49628958753309216,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.44515954662565,
-     "predHomeScore": 79.3249095057315
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-12T10:05:00Z"
    },
@@ -112,7 +88,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.469877095224826,
+     "homeWinProb": 0.46987709522482574,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -126,6 +102,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-11T21:30:26Z"
+  "generatedAt": "2026-11-12T09:56:22Z"
  }
 }

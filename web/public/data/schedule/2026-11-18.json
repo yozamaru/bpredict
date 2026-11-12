@@ -22,7 +22,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5041983633161792,
+     "homeWinProb": 0.504198363316179,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -52,13 +52,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4991552811929634,
+     "homeWinProb": 0.49915528119296326,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.44479123661529,
-     "predHomeScore": 79.4174152822066
+     "predAwayScore": 79.4447912366153,
+     "predHomeScore": 79.41741528220659
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-18T10:05:00Z"
@@ -82,7 +82,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.7651185639771574,
+     "homeWinProb": 0.7651185639771575,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -112,7 +112,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.7446849177544259,
+     "homeWinProb": 0.7446849177544258,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -142,7 +142,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.46699403910468257,
+     "homeWinProb": 0.46699403910468246,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -172,7 +172,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.662890390934206,
+     "homeWinProb": 0.6628903909342058,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -292,7 +292,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5208889561539172,
+     "homeWinProb": 0.520888956153917,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -306,6 +306,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-11T21:30:26Z"
+  "generatedAt": "2026-11-12T09:56:22Z"
  }
 }

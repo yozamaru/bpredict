@@ -52,13 +52,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.8037300934286542,
+     "homeWinProb": 0.8035960662211672,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.93854579580287,
-     "predHomeScore": 84.99315415789067
+     "predAwayScore": 73.94167531450161,
+     "predHomeScore": 84.99002463919193
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-15T05:05:00Z"
@@ -82,13 +82,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.6420486017007546,
+     "homeWinProb": 0.6413473904783609,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.03233388987181,
-     "predHomeScore": 81.73773516248534
+     "predAwayScore": 77.04447027036153,
+     "predHomeScore": 81.72559878199561
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-15T05:05:00Z"
@@ -112,13 +112,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.41733884386285924,
+     "homeWinProb": 0.3975159622344424,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.89198383205488,
-     "predHomeScore": 78.19361095292854
+     "predAwayScore": 81.22216562128683,
+     "predHomeScore": 77.86342916369658
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-15T05:05:00Z"
@@ -142,13 +142,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.6354208957344342,
+     "homeWinProb": 0.6355914171926572,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.19278925050388,
-     "predHomeScore": 81.66941726831801
+     "predAwayScore": 77.18985516430865,
+     "predHomeScore": 81.67235135451324
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-15T10:35:00Z"
@@ -156,6 +156,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-12T21:32:22Z"
+  "generatedAt": "2026-11-13T09:38:47Z"
  }
 }

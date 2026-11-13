@@ -52,13 +52,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.20434971779750966,
+     "homeWinProb": 0.2047376301054114,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 84.93392631933554,
-     "predHomeScore": 74.2521398223688
+     "predAwayScore": 84.92508869085057,
+     "predHomeScore": 74.26097745085377
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-14T05:05:00Z"
@@ -82,13 +82,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5407843632211455,
+     "homeWinProb": 0.5406146024711063,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.72300238763887,
-     "predHomeScore": 80.04706666471827
+     "predAwayScore": 78.72576762215029,
+     "predHomeScore": 80.04430143020686
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-14T06:05:00Z"
@@ -112,13 +112,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.7489455029386954,
+     "homeWinProb": 0.7492222341051522,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 75.0462040483536,
-     "predHomeScore": 83.72386500400354
+     "predAwayScore": 75.04058540841379,
+     "predHomeScore": 83.72948364394335
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-14T06:05:00Z"
@@ -142,13 +142,13 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.602113040535568,
+     "homeWinProb": 0.6022783689411969,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
      "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.47222539041161,
-     "predHomeScore": 80.81852736278415
+     "predAwayScore": 77.46945497684,
+     "predHomeScore": 80.82129777635576
     },
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-14T08:05:00Z"
@@ -156,6 +156,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-12T21:32:22Z"
+  "generatedAt": "2026-11-13T09:38:47Z"
  }
 }

@@ -10,8 +10,8 @@
      "shortName": "群馬",
      "slug": "gunma-crane-thunders"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 85,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506582",
     "home": {
@@ -20,17 +20,9 @@
      "shortName": "信州",
      "slug": "shinshu-brave-warriors"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.20432977371218664,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 84.93438096606606,
-     "predHomeScore": 74.25168517563829
-    },
-    "status": "SCHEDULED",
+    "homeScore": 74,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-13T04:05:00Z"
    },
    {
@@ -51,15 +43,7 @@
      "slug": "levanga-hokkaido"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.7330111250291033,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 75.37728526171465,
-     "predHomeScore": 83.41845313779125
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-13T10:05:00Z"
    },
@@ -81,15 +65,7 @@
      "slug": "kawasaki-brave-thunders"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.4880013300136392,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.47921836079628,
-     "predHomeScore": 79.09030274548486
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-13T10:05:00Z"
    },
@@ -111,15 +87,7 @@
      "slug": "shimane-susanoo-magic"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.3091674299533329,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 82.60573802211145,
-     "predHomeScore": 76.16433103024569
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-13T10:05:00Z"
    },
@@ -186,6 +154,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-12T21:32:22Z"
+  "generatedAt": "2026-11-13T09:38:47Z"
  }
 }

@@ -22,7 +22,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4826565951594253,
+     "homeWinProb": 0.48265659515942533,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -52,7 +52,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.46348066755650413,
+     "homeWinProb": 0.4634806675565042,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -112,7 +112,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.7941570812426175,
+     "homeWinProb": 0.7941570812426174,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -142,7 +142,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.4490969436331294,
+     "homeWinProb": 0.4490969436331295,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -172,7 +172,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.6710744057126343,
+     "homeWinProb": 0.6710744057126342,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -202,7 +202,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.7359817217881119,
+     "homeWinProb": 0.735981721788112,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -232,7 +232,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.10120649021016162,
+     "homeWinProb": 0.10120649021016158,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -262,7 +262,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.6194946513692611,
+     "homeWinProb": 0.6194946513692612,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -306,6 +306,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-14T16:38:51Z"
+  "generatedAt": "2026-11-14T19:15:57Z"
  }
 }

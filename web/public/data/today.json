@@ -10,8 +10,8 @@
      "shortName": "長崎",
      "slug": "nagasaki-velca"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 80,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506586",
     "home": {
@@ -20,17 +20,9 @@
      "shortName": "千葉J",
      "slug": "chiba-jets"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5816329198494349,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.08823251870464,
-     "predHomeScore": 80.75255757028444
-    },
-    "status": "SCHEDULED",
+    "homeScore": 86,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-14T04:00:00Z"
    },
    {
@@ -40,8 +32,8 @@
      "shortName": "三遠",
      "slug": "san-en-neophoenix"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 86,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506585",
     "home": {
@@ -50,17 +42,9 @@
      "shortName": "A千葉",
      "slug": "altiri-chiba"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.20941008149266943,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 84.81940933408487,
-     "predHomeScore": 74.36665680761948
-    },
-    "status": "SCHEDULED",
+    "homeScore": 69,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-14T05:05:00Z"
    },
    {
@@ -70,8 +54,8 @@
      "shortName": "滋賀",
      "slug": "shiga-lakes"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 98,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506588",
     "home": {
@@ -80,17 +64,9 @@
      "shortName": "横浜BC",
      "slug": "yokohama-b-corsairs"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.540779339388619,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 78.72308422263275,
-     "predHomeScore": 80.0469848297244
-    },
-    "status": "SCHEDULED",
+    "homeScore": 88,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-14T06:05:00Z"
    },
    {
@@ -111,15 +87,7 @@
      "slug": "seahorses-mikawa"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.7487511948490816,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 75.05014724478873,
-     "predHomeScore": 83.71992180756841
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-14T06:05:00Z"
    },
@@ -141,21 +109,13 @@
      "slug": "alvark-tokyo"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.6054012753086365,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.41706585765539,
-     "predHomeScore": 80.87368689554037
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-14T08:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-13T20:58:00Z"
+  "generatedAt": "2026-11-14T09:04:19Z"
  }
 }

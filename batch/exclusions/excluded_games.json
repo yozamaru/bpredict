@@ -398,5 +398,15 @@
   "homeScore": "41",
   "reason": "状態欄が空で得点がある（不戦敗の形）",
   "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "広島",
+  "awayScore": "41",
+  "gameDate": "2026-11-14",
+  "gameId": "506587",
+  "home": "A東京",
+  "homeScore": "47",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
  }
 ]

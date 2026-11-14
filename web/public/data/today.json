@@ -76,8 +76,8 @@
      "shortName": "富山",
      "slug": "toyama-grouses"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 70,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506589",
     "home": {
@@ -86,9 +86,9 @@
      "shortName": "三河",
      "slug": "seahorses-mikawa"
     },
-    "homeScore": null,
+    "homeScore": 111,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-14T06:05:00Z"
    },
    {
@@ -98,8 +98,8 @@
      "shortName": "広島",
      "slug": "hiroshima-dragonflies"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 83,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506587",
     "home": {
@@ -108,14 +108,14 @@
      "shortName": "A東京",
      "slug": "alvark-tokyo"
     },
-    "homeScore": null,
+    "homeScore": 99,
     "prediction": null,
-    "status": "SCHEDULED",
+    "status": "FINISHED",
     "tipoffAt": "2026-11-14T08:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-14T09:04:19Z"
+  "generatedAt": "2026-11-14T13:31:29Z"
  }
 }

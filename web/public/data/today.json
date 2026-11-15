@@ -98,8 +98,8 @@
      "shortName": "東京SR",
      "slug": "tokyo-sunrockers"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 105,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506593",
     "home": {
@@ -108,22 +108,14 @@
      "shortName": "名古屋D",
      "slug": "nagoya-diamond-dolphins"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5892695502528209,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.92620771818771,
-     "predHomeScore": 80.84386133416943
-    },
-    "status": "SCHEDULED",
+    "homeScore": 73,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-15T10:35:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-15T09:33:34Z"
+  "generatedAt": "2026-11-15T13:56:51Z"
  }
 }

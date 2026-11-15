@@ -10,8 +10,8 @@
      "shortName": "宇都宮",
      "slug": "utsunomiya-brex"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 69,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506594",
     "home": {
@@ -20,17 +20,9 @@
      "shortName": "島根",
      "slug": "shimane-susanoo-magic"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.5104999888238712,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 79.2148712760535,
-     "predHomeScore": 79.55519777630364
-    },
-    "status": "SCHEDULED",
+    "homeScore": 83,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-15T04:35:00Z"
    },
    {
@@ -40,8 +32,8 @@
      "shortName": "佐賀",
      "slug": "saga-ballooners"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 70,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506590",
     "home": {
@@ -50,17 +42,9 @@
      "shortName": "北海道",
      "slug": "levanga-hokkaido"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.8345081489363945,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 73.18145964271335,
-     "predHomeScore": 85.75024031098019
-    },
-    "status": "SCHEDULED",
+    "homeScore": 107,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-15T05:05:00Z"
    },
    {
@@ -70,8 +54,8 @@
      "shortName": "大阪",
      "slug": "osaka-evessa"
     },
-    "awayScore": null,
-    "competition": "REGULAR",
+    "awayScore": 76,
+    "competition": "PLAYOFF",
     "evaluation": null,
     "gameId": "506591",
     "home": {
@@ -80,17 +64,9 @@
      "shortName": "秋田",
      "slug": "akita-northern-happinets"
     },
-    "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.6294884519369823,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 77.24851560490552,
-     "predHomeScore": 81.52155344745162
-    },
-    "status": "SCHEDULED",
+    "homeScore": 82,
+    "prediction": null,
+    "status": "FINISHED",
     "tipoffAt": "2026-11-15T05:05:00Z"
    },
    {
@@ -111,15 +87,7 @@
      "slug": "shinshu-brave-warriors"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.44090771441539545,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 80.34610454938283,
-     "predHomeScore": 78.42396450297431
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-15T05:05:00Z"
    },
@@ -142,7 +110,7 @@
     },
     "homeScore": null,
     "prediction": {
-     "homeWinProb": 0.5892695502528208,
+     "homeWinProb": 0.5892695502528209,
      "isEarlySeason": null,
      "isFinal": false,
      "isProvisional": true,
@@ -156,6 +124,6 @@
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-14T19:15:57Z"
+  "generatedAt": "2026-11-15T09:33:34Z"
  }
 }

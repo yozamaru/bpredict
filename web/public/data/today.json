@@ -21,21 +21,13 @@
      "slug": "nagasaki-velca"
     },
     "homeScore": null,
-    "prediction": {
-     "homeWinProb": 0.18205270725180123,
-     "isEarlySeason": null,
-     "isFinal": false,
-     "isProvisional": true,
-     "modelVersion": "winner-v1.2026.1009",
-     "predAwayScore": 85.2297832326155,
-     "predHomeScore": 73.49575818622178
-    },
+    "prediction": null,
     "status": "SCHEDULED",
     "tipoffAt": "2026-11-17T10:05:00Z"
    }
   ]
  },
  "meta": {
-  "generatedAt": "2026-11-16T23:28:17Z"
+  "generatedAt": "2026-11-17T10:50:01Z"
  }
 }

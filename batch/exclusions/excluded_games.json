@@ -408,5 +408,15 @@
   "homeScore": "47",
   "reason": "状態欄が空で得点がある（不戦敗の形）",
   "seasonId": "2026-27-PREMIER"
+ },
+ {
+  "away": "三河",
+  "awayScore": "27",
+  "gameDate": "2026-11-17",
+  "gameId": "506601",
+  "home": "長崎",
+  "homeScore": "24",
+  "reason": "状態欄が空で得点がある（不戦敗の形）",
+  "seasonId": "2026-27-PREMIER"
  }
 ]

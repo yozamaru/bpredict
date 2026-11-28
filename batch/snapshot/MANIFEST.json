@@ -13,8 +13,8 @@
       "sha256": "2ceb98590ca5c3866d05585d12387a466da506cd4d79ade81d193cdad1c08c9f"
     },
     "games": {
-      "rows": 6477,
-      "sha256": "aca6fa65fa625efd4a180dfb732949374e9dadfc9599e771b4c2f136d64bf896"
+      "rows": 6487,
+      "sha256": "4f807080c0b90307bfff2307ab565493e2d5f20b87b496e7e6d342e7c9298f6d"
     },
     "player_game_stats": {
       "rows": 150990,
@@ -37,8 +37,8 @@
       "sha256": "e5444ccbe29408309df9a9d5fa2b690cccbec710a6edc9b3c96b9d0c7f1b9bae"
     },
     "team_games": {
-      "rows": 12954,
-      "sha256": "3919fb9c498b6dd0d91c65ebddfc6e65ed0042302b06f42f97467d2c4309b392"
+      "rows": 12974,
+      "sha256": "df345c9a5aa4b3e5e642c46ec52dc7c6bbda67d5e5567ccb3432e08246920eab"
     },
     "team_ratings": {
       "rows": 12916,
@@ -53,7 +53,7 @@
       "sha256": "9046826bf7a9665602eca3d62a0ba1e41c4c0753895096aa893bd18325a4d941"
     }
   },
-  "generated_at": "2026-11-18T15:40:29Z",
+  "generated_at": "2026-11-28T10:33:49Z",
   "max_finished_at": "2026-11-18T12:15:00Z",
   "version": 1
 }

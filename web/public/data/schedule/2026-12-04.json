@@ -2,9 +2,190 @@
  "data": {
   "accuracy": null,
   "gameDate": "2026-12-04",
-  "games": []
+  "games": [
+   {
+    "away": {
+     "clubId": "720",
+     "name": "島根スサノオマジック",
+     "shortName": "島根",
+     "slug": "shimane-susanoo-magic"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506612",
+    "home": {
+     "clubId": "694",
+     "name": "横浜ビー・コルセアーズ",
+     "shortName": "横浜BC",
+     "slug": "yokohama-b-corsairs"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.2475180349260835,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 83.87531208507077,
+     "predHomeScore": 75.05354654157476
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-12-04T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "702",
+     "name": "レバンガ北海道",
+     "shortName": "北海道",
+     "slug": "levanga-hokkaido"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506613",
+    "home": {
+     "clubId": "697",
+     "name": "三遠ネオフェニックス",
+     "shortName": "三遠",
+     "slug": "san-en-neophoenix"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.6348053496890396,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 77.15730811140173,
+     "predHomeScore": 81.61276094095541
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-12-04T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "2488",
+     "name": "長崎ヴェルカ",
+     "shortName": "長崎",
+     "slug": "nagasaki-velca"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506615",
+    "home": {
+     "clubId": "729",
+     "name": "名古屋ダイヤモンドドルフィンズ",
+     "shortName": "名古屋D",
+     "slug": "nagoya-diamond-dolphins"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.7959299073001144,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 74.024230927632,
+     "predHomeScore": 84.71877095735934
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-12-04T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "706",
+     "name": "アルバルク東京",
+     "shortName": "A東京",
+     "slug": "alvark-tokyo"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506616",
+    "home": {
+     "clubId": "698",
+     "name": "滋賀レイクス",
+     "shortName": "滋賀",
+     "slug": "shiga-lakes"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.16715004804897557,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 85.7198821209475,
+     "predHomeScore": 73.23702386025697
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-12-04T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "696",
+     "name": "富山グラウジーズ",
+     "shortName": "富山",
+     "slug": "toyama-grouses"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506617",
+    "home": {
+     "clubId": "1638",
+     "name": "佐賀バルーナーズ",
+     "shortName": "佐賀",
+     "slug": "saga-ballooners"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.31021250054579175,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 82.74121250383949,
+     "predHomeScore": 76.33812163538433
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-12-04T10:05:00Z"
+   },
+   {
+    "away": {
+     "clubId": "703",
+     "name": "宇都宮ブレックス",
+     "shortName": "宇都宮",
+     "slug": "utsunomiya-brex"
+    },
+    "awayScore": null,
+    "competition": "REGULAR",
+    "evaluation": null,
+    "gameId": "506614",
+    "home": {
+     "clubId": "728",
+     "name": "シーホース三河",
+     "shortName": "三河",
+     "slug": "seahorses-mikawa"
+    },
+    "homeScore": null,
+    "prediction": {
+     "homeWinProb": 0.6641826291428261,
+     "isEarlySeason": null,
+     "isFinal": false,
+     "isProvisional": true,
+     "modelVersion": "winner-v1.2026.1009",
+     "predAwayScore": 76.64468543997599,
+     "predHomeScore": 82.12538361238116
+    },
+    "status": "SCHEDULED",
+    "tipoffAt": "2026-12-04T10:35:00Z"
+   }
+  ]
  },
  "meta": {
-  "generatedAt": "2026-11-27T22:47:16Z"
+  "generatedAt": "2026-11-28T10:34:24Z"
  }
 }
